@@ -1071,6 +1071,7 @@ impl TopsiAgent {
                 "search_web" => self.tool_search_web(&call.arguments).await,
                 "fetch_web_page" => self.tool_fetch_web_page(&call.arguments).await,
                 "create_video" => self.tool_create_video(&call.arguments).await,
+                "get_video_status" => self.tool_get_video_status(&call.arguments).await,
 
                 // ── Specialist delegation (stay in agent) ───────────────────
                 "build_workflow" => {
@@ -1734,6 +1735,54 @@ impl TopsiAgent {
             .create_video_job(avatar_slug, script, background_url)
             .await
             .map_err(|e| TopsiError::ToolError(e))
+    }
+
+    async fn tool_get_video_status(&self, args: &serde_json::Value) -> Result<serde_json::Value> {
+        let job_id_str = args
+            .get("job_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| TopsiError::ToolError("job_id is required".to_string()))?;
+
+        let job_id = Uuid::parse_str(job_id_str)
+            .map_err(|_| TopsiError::ToolError(format!("invalid job_id: {}", job_id_str)))?;
+
+        let pool = self
+            .db
+            .as_ref()
+            .ok_or_else(|| TopsiError::NotInitialized("database".to_string()))?;
+
+        #[derive(sqlx::FromRow)]
+        struct VideoJobStatus {
+            status: String,
+            postprod_status: String,
+            postprod_video_path: Option<String>,
+            final_video_url: Option<String>,
+            error_message: Option<String>,
+        }
+
+        let row: Option<VideoJobStatus> = sqlx::query_as(
+            "SELECT status, postprod_status, postprod_video_path, final_video_url, error_message \
+             FROM video_jobs WHERE id = ?",
+        )
+        .bind(job_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(TopsiError::DatabaseError)?;
+
+        match row {
+            None => Err(TopsiError::ToolError(format!(
+                "video job {} not found",
+                job_id
+            ))),
+            Some(r) => Ok(serde_json::json!({
+                "job_id": job_id_str,
+                "status": r.status,
+                "postprod_status": r.postprod_status,
+                "postprod_video_path": r.postprod_video_path,
+                "final_video_url": r.final_video_url,
+                "error_message": r.error_message,
+            })),
+        }
     }
 
     async fn tool_verify_access(

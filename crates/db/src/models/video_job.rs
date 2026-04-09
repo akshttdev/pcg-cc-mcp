@@ -23,6 +23,9 @@ pub struct VideoJob {
     pub final_video_url: Option<String>,
     pub thumbnail_url: Option<String>,
     pub duration_seconds: Option<f64>,
+    // Post-production (overlay + B-roll assembly)
+    pub postprod_status: String,
+    pub postprod_video_path: Option<String>,
     // Overall
     pub status: String,
     pub error_message: Option<String>,
@@ -170,6 +173,51 @@ impl VideoJob {
         .bind(final_video_url)
         .bind(thumbnail_url)
         .bind(duration_seconds)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_postprod_started(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE video_jobs SET postprod_status = 'processing', updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_postprod_done(
+        pool: &SqlitePool,
+        id: Uuid,
+        output_path: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"UPDATE video_jobs SET
+               postprod_status = 'done',
+               postprod_video_path = ?,
+               status = 'postprod_ready',
+               updated_at = datetime('now','subsec')
+               WHERE id = ?"#,
+        )
+        .bind(output_path)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_postprod_failed(
+        pool: &SqlitePool,
+        id: Uuid,
+        error: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE video_jobs SET postprod_status = 'failed', error_message = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(error)
         .bind(id)
         .execute(pool)
         .await?;

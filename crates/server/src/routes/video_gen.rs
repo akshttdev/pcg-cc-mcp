@@ -376,6 +376,14 @@ pub(crate) async fn produce_job(
                 .await?;
 
                 tracing::info!("video job {} complete: {}", job_id, video_url);
+
+                // Kick off post-production pipeline (non-blocking)
+                let pool_pp = pool.clone();
+                let vid_path_pp = vid_path.clone();
+                tokio::spawn(async move {
+                    run_post_production(&pool_pp, job_id, &vid_path_pp).await;
+                });
+
                 return Ok(());
             }
             "failed" => {
@@ -388,6 +396,79 @@ pub(crate) async fn produce_job(
                 }
                 // still processing
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Post-production pipeline
+// ---------------------------------------------------------------------------
+
+/// Runs the generic Tech Briefing post-production pipeline on a completed
+/// HeyGen raw video. Adds B-roll placeholder backgrounds, overlay graphics,
+/// PiP circles, thumbnail, logo, and outro via FFmpeg.
+///
+/// Non-blocking — spawned as a tokio task after `produce_job` completes.
+async fn run_post_production(pool: &sqlx::SqlitePool, job_id: Uuid, raw_path: &std::path::Path) {
+    tracing::info!("video job {}: starting post-production", job_id);
+
+    if let Err(e) = VideoJob::update_postprod_started(pool, job_id).await {
+        tracing::error!(
+            "video job {}: failed to mark postprod started: {}",
+            job_id,
+            e
+        );
+        return;
+    }
+
+    // Locate pipeline script relative to the working directory
+    let script = std::path::Path::new("dev_assets/video_gen/build_techbrief_generic.py");
+    if !script.exists() {
+        tracing::error!(
+            "video job {}: post-production script not found at {:?}",
+            job_id,
+            script
+        );
+        let _ = VideoJob::update_postprod_failed(pool, job_id, "pipeline script not found").await;
+        return;
+    }
+
+    let output = tokio::process::Command::new("python3")
+        .arg(script)
+        .arg("--raw")
+        .arg(raw_path)
+        .arg("--job-id")
+        .arg(job_id.to_string())
+        .output()
+        .await;
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let final_path = video_dir()
+                .join(format!("{}_final.mp4", job_id))
+                .to_string_lossy()
+                .to_string();
+            tracing::info!(
+                "video job {}: post-production done → {}",
+                job_id,
+                final_path
+            );
+            let _ = VideoJob::update_postprod_done(pool, job_id, &final_path).await;
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let err = format!(
+                "post-prod failed (exit {}): {}",
+                out.status,
+                &stderr[stderr.len().saturating_sub(500)..]
+            );
+            tracing::error!("video job {}: {}", job_id, err);
+            let _ = VideoJob::update_postprod_failed(pool, job_id, &err).await;
+        }
+        Err(e) => {
+            let err = format!("failed to spawn post-prod: {}", e);
+            tracing::error!("video job {}: {}", job_id, err);
+            let _ = VideoJob::update_postprod_failed(pool, job_id, &err).await;
         }
     }
 }

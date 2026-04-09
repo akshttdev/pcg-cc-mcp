@@ -914,17 +914,17 @@ pub fn get_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "create_video",
-                "description": "Generate a new AI video using the established avatar identity (default: Sami Satoshi). Triggers ElevenLabs TTS + HeyGen talking-head production pipeline. Returns a job ID for tracking. Use when asked to create, produce, or generate a video briefing, announcement, or content piece.",
+                "description": "Generate a fully-produced PCG Tech Briefing video with Sami Satoshi. Full pipeline: ElevenLabs TTS → HeyGen talking-head → post-production (B-roll placeholder backgrounds, show bug overlay, host ID strip, PiP circles, thumbnail, logo intro, outro, fade). Returns a job ID. The post-production step runs automatically after HeyGen completes — check status with get_video_status. Use when asked to create, produce, or generate a video briefing, announcement, or Tech Brief.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "script_text": {
                             "type": "string",
-                            "description": "The script/narration text for the video. This will be spoken by the avatar."
+                            "description": "The script/narration text for the video. This will be spoken by Sami Satoshi."
                         },
                         "avatar_slug": {
                             "type": "string",
-                            "description": "Avatar slug to use. Defaults to 'sami-satoshi'. Use 'sami-satoshi' for the PCG Tech Brief presenter."
+                            "description": "Avatar slug to use. Defaults to 'sami-satoshi'."
                         },
                         "background_url": {
                             "type": "string",
@@ -932,6 +932,23 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         }
                     },
                     "required": ["script_text"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_video_status",
+                "description": "Check the status of a video production job. Returns the current stage (tts_generating, avatar_generating, ready, postprod_ready) and the path to the final composited video when post-production is complete. Use this after create_video to check progress or get the output file path.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "job_id": {
+                            "type": "string",
+                            "description": "The video job ID returned by create_video."
+                        }
+                    },
+                    "required": ["job_id"]
                 }
             }
         }),
