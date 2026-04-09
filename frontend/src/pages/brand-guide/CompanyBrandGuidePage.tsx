@@ -165,12 +165,13 @@ export function CompanyBrandGuidePage() {
         }
         .page-break { display: none; }
         @media print {
-          @page { size: A4; margin: 0; }
+          @page { size: A4 landscape; margin: 0; }
           html, body { margin: 0; padding: 0; }
           .no-print { display: none !important; }
           .page-break { display: block; page-break-before: always; break-before: page; }
-          .print-page { min-height: 297mm; page-break-after: always; break-after: page; }
-          .cover-page { min-height: 297mm; }
+          .print-page { min-height: 210mm !important; max-height: 210mm !important; page-break-after: always; break-after: page; overflow: hidden; }
+          .cover-page { min-height: 210mm !important; max-height: 210mm !important; }
+          .min-h-screen { min-height: 210mm !important; }
         }
       `}</style>
 
@@ -201,7 +202,18 @@ export function CompanyBrandGuidePage() {
               size="sm"
               variant="outline"
               className="text-xs gap-1.5 border-yellow-700/40 text-yellow-500 hover:bg-yellow-900/20 hover:text-yellow-400"
-              onClick={() => window.print()}
+              onClick={() => {
+                const style = document.createElement('style');
+                style.id = '__print-override';
+                style.textContent =
+                  '@page { size: A4 landscape; margin: 0; } .no-print { display: none !important; } .print-page { min-height: 210mm !important; max-height: 210mm !important; page-break-after: always; break-after: page; overflow: hidden; } .cover-page, .min-h-screen { min-height: 210mm !important; }';
+                document.head.appendChild(style);
+                window.print();
+                setTimeout(
+                  () => document.getElementById('__print-override')?.remove(),
+                  1000
+                );
+              }}
             >
               <Printer className="h-3.5 w-3.5" />
               Print / PDF

@@ -1,32 +1,33 @@
 import {
-  FolderOpen,
-  Settings,
-  BookOpen,
-  MessageCircleQuestion,
-  AlertTriangle,
-  ListTodo,
-  Network,
-  Users,
-  Building2,
-  Receipt,
-  LayoutDashboard,
-  Box,
-  Crown,
-  Bot,
-  Calendar,
   Activity,
+  AlertTriangle,
+  BookOpen,
+  Bot,
+  Box,
+  Brain,
+  Building2,
+  Calendar,
+  ClipboardList,
+  Coins,
+  Cpu,
+  Crown,
+  FileText,
+  FolderOpen,
   Globe,
   Headphones,
-  Workflow,
+  Home,
+  LayoutDashboard,
+  ListTodo,
   Map,
-  Coins,
-  Rocket,
-  Cpu,
   Megaphone,
+  MessageCircleQuestion,
+  Network,
   PhoneIncoming,
-  ClipboardList,
-  FileText,
-  Brain,
+  Receipt,
+  Rocket,
+  Settings,
+  Users,
+  Workflow,
 } from 'lucide-react';
 
 // Navigation items with role-based visibility
@@ -42,53 +43,201 @@ export interface NavItem {
 
 // Admin tools — separated visually at top
 export const ADMIN_NAV_ITEMS: NavItem[] = [
-  { label: 'Site Directory', icon: Map, to: '/site-directory', id: 'site-directory', adminOnly: true },
-  { label: 'Nora Command', icon: Crown, to: '/nora', id: 'nora', adminOnly: true },
-  { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi', adminOnly: true },
-  { label: 'Mission Control', icon: Rocket, to: '/mission-control', id: 'mission-control', adminOnly: true },
-  { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse', adminOnly: true },
-  { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
-  { label: 'Agent Executions', icon: Bot, to: '/agent-executions', id: 'agent-executions', adminOnly: true },
-  { label: 'Topsi Activity', icon: Activity, to: '/topsi-activity', id: 'topsi-activity', adminOnly: true },
+  {
+    label: 'Site Directory',
+    icon: Map,
+    to: '/site-directory',
+    id: 'site-directory',
+    adminOnly: true,
+  },
+  {
+    label: 'Nora Command',
+    icon: Crown,
+    to: '/nora',
+    id: 'nora',
+    adminOnly: true,
+  },
+  {
+    label: 'Topsi Platform',
+    icon: Network,
+    to: '/topsi',
+    id: 'topsi',
+    adminOnly: true,
+  },
+  {
+    label: 'Mission Control',
+    icon: Rocket,
+    to: '/mission-control',
+    id: 'mission-control',
+    adminOnly: true,
+  },
+  {
+    label: 'Pulse Engine',
+    icon: Activity,
+    to: '/pulse',
+    id: 'pulse',
+    adminOnly: true,
+  },
+  {
+    label: 'Mesh Network',
+    icon: Globe,
+    to: '/mesh',
+    id: 'mesh',
+    adminOnly: true,
+  },
+  {
+    label: 'Agent Executions',
+    icon: Bot,
+    to: '/agent-executions',
+    id: 'agent-executions',
+    adminOnly: true,
+  },
+  {
+    label: 'Topsi Activity',
+    icon: Activity,
+    to: '/topsi-activity',
+    id: 'topsi-activity',
+    adminOnly: true,
+  },
 ];
 
 // Primary navigation - workspace destinations (user-level pages)
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
-  { label: 'Intelligence', icon: Brain, to: '/intelligence', id: 'intelligence' },
+  {
+    label: 'Interface',
+    icon: Home,
+    to: '/interface',
+    id: 'interface',
+    tooltip: 'Talk to Nora / Topsi',
+  },
+  {
+    label: 'Intelligence',
+    icon: Brain,
+    to: '/intelligence',
+    id: 'intelligence',
+  },
   { label: 'My Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
-  { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
+  {
+    label: 'My Tasks',
+    icon: ListTodo,
+    to: '/my-tasks',
+    id: 'my-tasks',
+    memberOnly: true,
+  },
   { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
   { label: 'Calendar', icon: Calendar, to: '/calendar', id: 'calendar' },
-  { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment', tooltip: '3D virtual environment' },
-  { label: 'VIBE', icon: Coins, to: '/vibe', id: 'vibe', tooltip: 'Token treasury & transactions' },
+  {
+    label: 'VIBELAND',
+    icon: Box,
+    to: '/virtual-environment',
+    id: 'virtual-environment',
+    tooltip: '3D virtual environment',
+  },
+  {
+    label: 'VIBE',
+    icon: Coins,
+    to: '/vibe',
+    id: 'vibe',
+    tooltip: 'Token treasury & transactions',
+  },
 ];
 
 // Business tools — CRM-adjacent admin views
 export const BUSINESS_NAV_ITEMS: NavItem[] = [
-  { label: 'All People', icon: Users, to: '/people', id: 'people', adminOnly: true },
-  { label: 'All Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
-  { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
-  { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
-  { label: 'Reports', icon: ClipboardList, to: '/business-reports', id: 'business-reports', adminOnly: true },
+  {
+    label: 'All People',
+    icon: Users,
+    to: '/people',
+    id: 'people',
+    adminOnly: true,
+  },
+  {
+    label: 'All Companies',
+    icon: Building2,
+    to: '/companies',
+    id: 'companies',
+    adminOnly: true,
+  },
+  {
+    label: 'Proposals',
+    icon: FileText,
+    to: '/proposals',
+    id: 'proposals',
+    adminOnly: true,
+  },
+  {
+    label: 'Invoices',
+    icon: Receipt,
+    to: '/invoices',
+    id: 'invoices',
+    adminOnly: true,
+  },
+  {
+    label: 'Reports',
+    icon: ClipboardList,
+    to: '/business-reports',
+    id: 'business-reports',
+    adminOnly: true,
+  },
 ];
 
 // Platform tools — operational dashboards and utilities
 export const PLATFORM_NAV_ITEMS: NavItem[] = [
-  { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
-  { label: 'AI Usage', icon: Cpu, to: '/ai-usage', id: 'ai-usage', adminOnly: true, tooltip: 'AI cost tracking by model & project' },
-  { label: 'Call Intake', icon: PhoneIncoming, to: '/call-intake', id: 'call-intake', adminOnly: true },
-  { label: 'Discord Voice', icon: Headphones, to: '/discord', id: 'discord', adminOnly: true },
+  {
+    label: 'Command Center',
+    icon: LayoutDashboard,
+    to: '/command-center',
+    id: 'command-center',
+    adminOnly: true,
+  },
+  {
+    label: 'AI Usage',
+    icon: Cpu,
+    to: '/ai-usage',
+    id: 'ai-usage',
+    adminOnly: true,
+    tooltip: 'AI cost tracking by model & project',
+  },
+  {
+    label: 'Call Intake',
+    icon: PhoneIncoming,
+    to: '/call-intake',
+    id: 'call-intake',
+    adminOnly: true,
+  },
+  {
+    label: 'Discord Voice',
+    icon: Headphones,
+    to: '/discord',
+    id: 'discord',
+    adminOnly: true,
+  },
 ];
 
 // Global views — cross-org admin views
 export const GLOBAL_VIEW_ITEMS: NavItem[] = [
-  { label: 'All Tasks', icon: ListTodo, to: '/global-tasks', id: 'global-tasks', adminOnly: true },
+  {
+    label: 'All Tasks',
+    icon: ListTodo,
+    to: '/global-tasks',
+    id: 'global-tasks',
+    adminOnly: true,
+  },
   { label: 'CRM Admin', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
-  { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
+  {
+    label: 'All Social',
+    icon: Megaphone,
+    to: '/social-command',
+    id: 'social-command',
+    adminOnly: true,
+  },
 ];
 
 // Backward compat: combined for components that still reference the old array
-export const MANAGEMENT_NAV_ITEMS: NavItem[] = [...BUSINESS_NAV_ITEMS, ...PLATFORM_NAV_ITEMS];
+export const MANAGEMENT_NAV_ITEMS: NavItem[] = [
+  ...BUSINESS_NAV_ITEMS,
+  ...PLATFORM_NAV_ITEMS,
+];
 
 // Utility nav — pinned to bottom above external links
 export const UTILITY_NAV_ITEMS: NavItem[] = [

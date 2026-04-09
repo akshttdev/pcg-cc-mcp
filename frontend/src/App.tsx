@@ -54,6 +54,9 @@ const GlobalTasksPage = lazy(() =>
 const NoraPage = lazy(() =>
   import('@/pages/nora').then((m) => ({ default: m.NoraPage }))
 );
+const HomePage = lazy(() =>
+  import('@/pages/home').then((m) => ({ default: m.HomePage }))
+);
 const TopsiPage = lazy(() =>
   import('@/pages/topsi').then((m) => ({ default: m.TopsiPage }))
 );
@@ -383,6 +386,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <HomeRedirect />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/interface"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<PageLoader />}>
+                  <HomePage />
+                </Suspense>
               </ProtectedRoute>
             }
           />
