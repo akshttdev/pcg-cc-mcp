@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use axum::{
     body::Body,
     extract::{Path, Query, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::Response,
     routing::get,
     Extension, Json, Router,
@@ -255,18 +255,65 @@ async fn serve_video(Path(job_id): Path<String>) -> Result<Response, ApiError> {
         .unwrap())
 }
 
-async fn serve_final_video(Path(job_id): Path<String>) -> Result<Response, ApiError> {
+async fn serve_final_video(
+    Path(job_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
     let path = video_dir().join(format!("{}_final.mp4", job_id));
+
+    let meta = tokio::fs::metadata(&path)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("final video {}", job_id)))?;
+    let file_size = meta.len();
+
+    let disposition = format!("inline; filename=\"{}_techbrief.mp4\"", &job_id[..8]);
+
+    // Parse Range header for browser video seeking support
+    if let Some(range_hdr) = headers.get(header::RANGE) {
+        if let Ok(range_str) = range_hdr.to_str() {
+            if let Some(range_val) = range_str.strip_prefix("bytes=") {
+                let parts: Vec<&str> = range_val.splitn(2, '-').collect();
+                if parts.len() == 2 {
+                    let start: u64 = parts[0].parse().unwrap_or(0);
+                    let end: u64 = parts[1].parse().unwrap_or(file_size - 1).min(file_size - 1);
+                    if start <= end && start < file_size {
+                        let length = end - start + 1;
+                        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+                        let mut file = tokio::fs::File::open(&path)
+                            .await
+                            .map_err(|_| ApiError::NotFound(format!("final video {}", job_id)))?;
+                        file.seek(std::io::SeekFrom::Start(start)).await.ok();
+                        let mut buf = vec![0u8; length as usize];
+                        let _ = file.read_exact(&mut buf).await;
+                        return Ok(Response::builder()
+                            .status(StatusCode::PARTIAL_CONTENT)
+                            .header(header::CONTENT_TYPE, "video/mp4")
+                            .header(header::CONTENT_DISPOSITION, disposition)
+                            .header(header::ACCEPT_RANGES, "bytes")
+                            .header(header::CONTENT_LENGTH, length)
+                            .header(
+                                header::CONTENT_RANGE,
+                                format!("bytes {}-{}/{}", start, end, file_size),
+                            )
+                            .body(Body::from(buf))
+                            .unwrap());
+                    }
+                }
+            }
+        }
+    }
+
+    // Full file response
     let data = fs::read(&path)
         .await
         .map_err(|_| ApiError::NotFound(format!("final video {}", job_id)))?;
 
     Ok(Response::builder()
+        .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "video/mp4")
-        .header(
-            header::CONTENT_DISPOSITION,
-            format!("inline; filename=\"{}_techbrief.mp4\"", &job_id[..8]),
-        )
+        .header(header::CONTENT_DISPOSITION, disposition)
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(header::CONTENT_LENGTH, file_size)
         .body(Body::from(data))
         .unwrap())
 }

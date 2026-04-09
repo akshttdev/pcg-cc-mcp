@@ -15,6 +15,11 @@ pub async fn serve_frontend(uri: axum::extract::Path<String>) -> impl IntoRespon
     serve_file(path).await
 }
 
+/// Fallback handler for SPA routing — catches all unmatched routes
+pub async fn serve_frontend_fallback() -> impl IntoResponse {
+    serve_file("index.html").await
+}
+
 pub async fn serve_frontend_root() -> impl IntoResponse {
     serve_file("index.html").await
 }

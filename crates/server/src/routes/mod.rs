@@ -329,8 +329,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
 
     Router::new()
         .route("/", get(frontend::serve_frontend_root))
-        .route("/{*path}", get(frontend::serve_frontend))
         .nest("/api", base_routes)
+        .fallback(frontend::serve_frontend_fallback)
         .layer(cors)
         .into_make_service()
 }
