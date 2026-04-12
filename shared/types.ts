@@ -1009,3 +1009,114 @@ attachments: string, proposal_id: string | null, created_at: string, updated_at:
 export type ContactResearchPass = { id: string, crm_contact_id: string, pass_number: bigint, research_focus: string, focus_prompt: string | null, status: string, summary: string | null, raw_results: string | null, key_findings: string, search_queries: string, confidence_delta: number, agent_used: string | null, tokens_used: bigint | null, error: string | null, created_at: string, completed_at: string | null, };
 
 export type ContactSocialProfile = { id: string, crm_contact_id: string, platform: string, handle: string | null, profile_url: string | null, follower_count: bigint | null, following_count: bigint | null, bio: string | null, verified: number, raw_data: string | null, last_synced_at: string | null, created_at: string, updated_at: string, };
+
+export type DeckDocument = { id: string, deal_id: string, version: bigint, brand_token_version: string | null, 
+/**
+ * Opaque serialized `Canvas`. Use [`DeckDocument::canvas`] to parse.
+ */
+canvas_json: string, 
+/**
+ * Who last touched the deck: `lux` | `operator` | `system`.
+ */
+last_edited_by: string, created_at: string, updated_at: string, };
+
+export type DeckSlide = { id: string, deck_id: string, slide_index: bigint, name: string | null, layout_hint: string | null, 
+/**
+ * Opaque serialized `Fill`.
+ */
+background_json: string, 
+/**
+ * Opaque serialized `Vec<SlideElement>`.
+ */
+elements_json: string, notes: string | null, 
+/**
+ * `lux` | `operator`.
+ */
+origin: string, locked: bigint, created_at: string, updated_at: string, };
+
+export type DeckRevision = { id: string, deck_id: string, version: bigint, 
+/**
+ * `lux` | `operator` | user UUID string.
+ */
+author: string, 
+/**
+ * Full serialized `DeckSnapshot` for restore/diff.
+ */
+snapshot_json: string, diff_summary: string | null, created_at: string, };
+
+export type DeckSuggestion = { id: string, deck_id: string, target_slide_id: string | null, target_element_id: string | null, op: string, payload_json: string, rationale: string | null, status: string, run_id: string | null, created_at: string, resolved_at: string | null, resolved_by: string | null, };
+
+export type Canvas = { width: number, height: number, 
+/**
+ * `px` | `pt`.
+ */
+unit: string, dpi: number, };
+
+export type Color = { r: number, g: number, b: number, a: number, token?: string, };
+
+export type Fill = { "kind": "solid", color: Color, } | { "kind": "linear-gradient", stops: Array<GradientStop>, angle: number, } | { "kind": "none" };
+
+export type GradientStop = { offset: number, color: Color, };
+
+export type Stroke = { color: Color, width: number, 
+/**
+ * `solid` | `dashed` | `dotted`.
+ */
+style: string, };
+
+export type BBox = { x: number, y: number, w: number, h: number, rotation?: number, };
+
+export type SlideElement = { "type": "text" } & TextElement | { "type": "image" } & ImageElement | { "type": "shape" } & ShapeElement | { "type": "group" } & GroupElement;
+
+export type TextElement = { id: string, bbox: BBox, z: bigint, 
+/**
+ * `lux` | `operator`.
+ */
+origin: string, locked_by?: string, opacity?: number, token_refs?: { [key in string]?: string }, text: string, font_family: string, font_size: number, font_weight: bigint, line_height: number, letter_spacing: number, color: Color, 
+/**
+ * `left` | `center` | `right` | `justify`.
+ */
+align: string, runs?: Array<TextRun>, };
+
+export type TextRun = { start: bigint, end: bigint, 
+/**
+ * Partial overrides — stored as a free-form JSON map.
+ */
+overrides: JsonValue, };
+
+export type ImageElement = { id: string, bbox: BBox, z: bigint, origin: string, locked_by?: string, opacity?: number, token_refs?: { [key in string]?: string }, 
+/**
+ * FK to `media_assets.id`. Nullable while the asset is pending a Maci
+ * generation (see Phase 7).
+ */
+asset_id?: string, 
+/**
+ * `pending` | `resolved` | `failed`.
+ */
+asset_status: string, asset_request_id?: string, 
+/**
+ * `cover` | `contain` | `fill`.
+ */
+fit: string, crop?: BBox, };
+
+export type ShapeElement = { id: string, bbox: BBox, z: bigint, origin: string, locked_by?: string, opacity?: number, token_refs?: { [key in string]?: string }, 
+/**
+ * `rect` | `ellipse` | `line` | `path`.
+ */
+shape: string, path?: string, fill: Fill, stroke?: Stroke, corner_radius?: number, };
+
+export type GroupElement = { id: string, bbox: BBox, z: bigint, origin: string, locked_by?: string, opacity?: number, token_refs?: { [key in string]?: string }, children: Array<SlideElement>, };
+
+export type DeckSnapshot = { id: string, deal_id: string, version: bigint, brand_token_version?: string, canvas: Canvas, slides: Array<SlideSnapshot>, last_edited_by: string, created_at: string, updated_at: string, };
+
+export type SlideSnapshot = { id: string, slide_index: bigint, name?: string, layout_hint?: string, background: Fill, elements: Array<SlideElement>, notes?: string, origin: string, locked: boolean, };
+
+export type CreateDeckDocument = { deal_id: string, canvas?: Canvas, brand_token_version?: string, };
+
+export type UpdateDeckDocument = { canvas?: Canvas, brand_token_version?: string, last_edited_by?: string, };
+
+export type CreateDeckSlide = { deck_id: string, slide_index: bigint, name?: string, layout_hint?: string, background: Fill, elements: Array<SlideElement>, notes?: string, origin?: string, };
+
+export type UpdateDeckSlide = { name?: string, layout_hint?: string, background?: Fill, elements?: Array<SlideElement>, notes?: string, locked?: boolean, };
+
+export type CreateDeckSuggestion = { deck_id: string, target_slide_id?: string, target_element_id?: string, op: string, payload: JsonValue, rationale?: string, run_id?: string, };
