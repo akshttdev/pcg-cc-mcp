@@ -16,7 +16,7 @@ use db::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 // ── Pre-compiled regexes for text extraction ────────────────────────────────
@@ -2867,6 +2867,7 @@ fn build_deal_update(template: &Value, record: &Value) -> UpdateCrmDeal {
         proposal_text: None,
         proposal_status: None,
         deck_url: None,
+        deck_document_id: None,
         invoice_id: None,
         expedited: None,
     }
