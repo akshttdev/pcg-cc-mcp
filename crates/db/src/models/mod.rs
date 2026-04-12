@@ -107,6 +107,7 @@ pub mod company;
 pub mod contact_association;
 pub mod contact_note;
 pub mod data_source;
+pub mod deck_document;
 pub mod deliverable;
 pub mod entity_conversion;
 pub mod entity_graph;
