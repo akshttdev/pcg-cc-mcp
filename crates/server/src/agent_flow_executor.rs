@@ -1813,6 +1813,29 @@ impl BackgroundWorker for AgentFlowExecutor {
             self.config.max_concurrent
         );
 
+        // On startup, mark any flows that were left in `running`/`executing`/`planning`
+        // state from a previous server boot as failed — they have no live executor.
+        match sqlx::query(
+            "UPDATE agent_flows \
+             SET status = 'failed', failure_reason = 'Engine restarted — flow orphaned' \
+             WHERE status IN ('running', 'executing', 'planning') \
+               AND updated_at < datetime('now', '-5 minutes')",
+        )
+        .execute(&self.pool)
+        .await
+        {
+            Ok(r) if r.rows_affected() > 0 => {
+                tracing::warn!(
+                    "[AgentFlowEngine] Cleaned up {} orphaned flow(s) from previous boot",
+                    r.rows_affected()
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!("[AgentFlowEngine] Orphan cleanup failed: {}", e);
+            }
+        }
+
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
