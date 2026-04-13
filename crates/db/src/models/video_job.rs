@@ -258,3 +258,193 @@ impl VideoJob {
         Ok(r.rows_affected() > 0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::test_utils::{
+        bootstrap_video_schema, create_test_avatar_profile, create_test_video_job, setup_test_pool,
+    };
+
+    #[tokio::test]
+    async fn test_video_job_create_and_find() {
+        let pool = setup_test_pool().await;
+        bootstrap_video_schema(&pool).await;
+
+        let avatar_id = create_test_avatar_profile(&pool).await;
+        let input = CreateVideoJob {
+            avatar_profile_id: avatar_id,
+            script_text: "Hello world test script.".to_string(),
+            background_url: None,
+            segments_json: None,
+        };
+
+        let job = VideoJob::create(&pool, input, None)
+            .await
+            .expect("create should succeed");
+
+        assert_eq!(job.avatar_profile_id, avatar_id);
+        assert_eq!(job.script_text, "Hello world test script.");
+        assert_eq!(job.status, "pending");
+        assert_eq!(job.tts_status, "pending");
+        assert_eq!(job.postprod_status, "pending");
+        assert!(job.error_message.is_none());
+
+        let found = VideoJob::find(&pool, job.id)
+            .await
+            .expect("find should succeed")
+            .expect("job should exist");
+
+        assert_eq!(found.id, job.id);
+        assert_eq!(found.script_text, "Hello world test script.");
+    }
+
+    #[tokio::test]
+    async fn test_video_job_update_status() {
+        let pool = setup_test_pool().await;
+        bootstrap_video_schema(&pool).await;
+
+        let avatar_id = create_test_avatar_profile(&pool).await;
+        let job_id = create_test_video_job(&pool, avatar_id).await;
+
+        VideoJob::update_status(&pool, job_id, "failed", Some("test error"))
+            .await
+            .expect("update_status should succeed");
+
+        let job = VideoJob::find(&pool, job_id)
+            .await
+            .expect("find should succeed")
+            .expect("job should exist");
+
+        assert_eq!(job.status, "failed");
+        assert_eq!(job.error_message.as_deref(), Some("test error"));
+    }
+
+    #[tokio::test]
+    async fn test_video_job_update_tts_done() {
+        let pool = setup_test_pool().await;
+        bootstrap_video_schema(&pool).await;
+
+        let avatar_id = create_test_avatar_profile(&pool).await;
+        let job_id = create_test_video_job(&pool, avatar_id).await;
+
+        VideoJob::update_tts_done(&pool, job_id, "https://audio.example/test.mp3")
+            .await
+            .expect("update_tts_done should succeed");
+
+        let job = VideoJob::find(&pool, job_id)
+            .await
+            .expect("find should succeed")
+            .expect("job should exist");
+
+        assert_eq!(job.tts_status, "done");
+        assert_eq!(
+            job.tts_audio_url.as_deref(),
+            Some("https://audio.example/test.mp3")
+        );
+        assert_eq!(job.status, "avatar_generating");
+    }
+
+    #[tokio::test]
+    async fn test_video_job_update_postprod_done() {
+        let pool = setup_test_pool().await;
+        bootstrap_video_schema(&pool).await;
+
+        let avatar_id = create_test_avatar_profile(&pool).await;
+        let job_id = create_test_video_job(&pool, avatar_id).await;
+
+        VideoJob::update_postprod_done(
+            &pool,
+            job_id,
+            "/tmp/output.mp4",
+            "https://example.com/final/123",
+        )
+        .await
+        .expect("update_postprod_done should succeed");
+
+        let job = VideoJob::find(&pool, job_id)
+            .await
+            .expect("find should succeed")
+            .expect("job should exist");
+
+        assert_eq!(job.postprod_status, "done");
+        assert_eq!(
+            job.final_video_url.as_deref(),
+            Some("https://example.com/final/123")
+        );
+        assert_eq!(job.postprod_video_path.as_deref(), Some("/tmp/output.mp4"));
+        assert_eq!(job.status, "postprod_ready");
+    }
+
+    #[tokio::test]
+    async fn test_video_job_update_tts_metadata() {
+        let pool = setup_test_pool().await;
+        bootstrap_video_schema(&pool).await;
+
+        let avatar_id = create_test_avatar_profile(&pool).await;
+        let job_id = create_test_video_job(&pool, avatar_id).await;
+
+        let word_ts = r#"[{"word":"hello","start_time":0.1,"end_time":0.5}]"#;
+        let cut_pts = "[5.0, 12.3]";
+
+        VideoJob::update_tts_metadata(&pool, job_id, word_ts, cut_pts)
+            .await
+            .expect("update_tts_metadata should succeed");
+
+        let job = VideoJob::find(&pool, job_id)
+            .await
+            .expect("find should succeed")
+            .expect("job should exist");
+
+        assert_eq!(job.word_timestamps_json.as_deref(), Some(word_ts));
+        assert_eq!(job.cut_points_json.as_deref(), Some(cut_pts));
+    }
+
+    #[tokio::test]
+    async fn test_video_job_list() {
+        let pool = setup_test_pool().await;
+        bootstrap_video_schema(&pool).await;
+
+        let avatar_id = create_test_avatar_profile(&pool).await;
+        let _job1 = create_test_video_job(&pool, avatar_id).await;
+        let _job2 = create_test_video_job(&pool, avatar_id).await;
+
+        // Create a second avatar with its own job — should not appear in filtered list
+        let other_avatar_id = create_test_avatar_profile(&pool).await;
+        let _other_job = create_test_video_job(&pool, other_avatar_id).await;
+
+        let jobs = VideoJob::list(&pool, Some(avatar_id))
+            .await
+            .expect("list should succeed");
+
+        assert_eq!(jobs.len(), 2);
+        for job in &jobs {
+            assert_eq!(job.avatar_profile_id, avatar_id);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_video_job_delete() {
+        let pool = setup_test_pool().await;
+        bootstrap_video_schema(&pool).await;
+
+        let avatar_id = create_test_avatar_profile(&pool).await;
+        let job_id = create_test_video_job(&pool, avatar_id).await;
+
+        // Confirm it exists first
+        let found = VideoJob::find(&pool, job_id)
+            .await
+            .expect("find should succeed");
+        assert!(found.is_some());
+
+        let deleted = VideoJob::delete(&pool, job_id)
+            .await
+            .expect("delete should succeed");
+        assert!(deleted);
+
+        let after = VideoJob::find(&pool, job_id)
+            .await
+            .expect("find after delete should succeed");
+        assert!(after.is_none());
+    }
+}
