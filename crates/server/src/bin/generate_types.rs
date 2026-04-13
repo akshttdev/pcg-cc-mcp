@@ -465,11 +465,11 @@ fn main() {
             std::process::exit(1);
         }
     } else {
-        // Wipe existing shared
-        fs::remove_dir_all(shared_path).ok();
-
-        // Recreate folder
+        // Only remove the artifacts we own — don't wipe the whole shared/
+        // directory or we'll nuke hand-maintained files like `testids.ts`.
         fs::create_dir_all(shared_path).expect("cannot create shared");
+        fs::remove_file(&types_path).ok();
+        fs::remove_dir_all(&schemas_path).ok();
 
         // Write the file as before
         fs::write(&types_path, generated_types).expect("unable to write types.ts");
