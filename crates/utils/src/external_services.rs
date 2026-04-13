@@ -207,37 +207,13 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
             );
         }
     } else {
-        warn!("[APN] Node not running and AUTO_START_APN=false");
+        // APN node binary is optional — native ApnPeerManager handles mesh networking
+        tracing::debug!("[APN] External APN node binary not running (native peer manager active)");
     }
 
-    // ── APN Bridge (HTTP API for dashboard ↔ APN Core) ──
-    if is_service_running("127.0.0.1", config.apn_bridge_port) {
-        info!(
-            "[APN] Bridge already running on port {}",
-            config.apn_bridge_port
-        );
-        status.apn_bridge_running = true;
-    } else if config.auto_start_apn {
-        info!(
-            "[APN] Bridge not running, starting on port {}...",
-            config.apn_bridge_port
-        );
-        if let Some(ref script) = config.apn_bridge_script {
-            if start_apn_bridge(script, config).await {
-                status.apn_bridge_running = true;
-                status.apn_bridge_started_by_us = true;
-                info!("[APN] Bridge started on port {}", config.apn_bridge_port);
-            } else {
-                warn!(
-                    "[APN] Failed to start bridge - dashboard mesh API will fall back to log parsing"
-                );
-            }
-        } else {
-            warn!("[APN] apn_bridge_server.py not found");
-        }
-    } else {
-        warn!("[APN] Bridge not running and AUTO_START_APN=false");
-    }
+    // ── APN Bridge — retired, native peer manager replaces it ──
+    // Bridge (pcg-apn-bridge container) was retired 2026-04-12.
+    // Peer discovery now handled by server::apn_peer_manager via NATS directly.
 
     // ── Verify APN network sync ──
     if status.apn_node_running {
@@ -306,16 +282,7 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
     let mut ready = Vec::new();
     let mut missing = Vec::new();
 
-    if status.apn_node_running {
-        ready.push("APN Node");
-    } else {
-        missing.push("APN Node");
-    }
-    if status.apn_bridge_running {
-        ready.push("APN Bridge");
-    } else {
-        missing.push("APN Bridge");
-    }
+    // APN node/bridge removed from summary — native peer manager handles mesh networking
     if status.ollama_running {
         ready.push("Ollama");
     } else {

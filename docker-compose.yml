@@ -88,11 +88,11 @@ services:
       # GitHub OAuth
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
-      # APN (Alpha Protocol Network)
-      # Note: AUTO_START_APN is false in Docker since apn_node binary is not built
-      # The apn-bridge container handles mesh networking instead
+      # APN (Alpha Protocol Network) — native peer manager (bridge retired)
       - AUTO_START_APN=${AUTO_START_APN:-false}
-      - APN_DEVICE_NAME=${APN_DEVICE_NAME:-dashboard}
+      - APN_NODE_ID=${APN_NODE_ID:-apn_814d37f4}
+      - APN_WALLET_ADDRESS=${APN_WALLET_ADDRESS:-0x814d37f4ab0c7ef2d9c7aa5f3de9fc5c0f79b3b576b77f84edc9e773eed71c92}
+      - APN_CAPABILITIES=${APN_CAPABILITIES:-compute,relay,storage}
       # Admin API Key (used for WebDAV APN Drive auth)
       - ADMIN_API_KEY=${ADMIN_API_KEY:-}
     volumes:
@@ -172,35 +172,6 @@ services:
     depends_on:
       - app
 
-  # APN Bridge Server - HTTP API bridge to Alpha Protocol Network
-  apn-bridge:
-    build:
-      context: .
-      dockerfile: Dockerfile.apn-bridge
-    container_name: pcg-apn-bridge
-    restart: always
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    environment:
-      - NODE_ID=${APN_NODE_ID:-apn_dashboard}
-      - WALLET_ADDRESS=${APN_WALLET_ADDRESS:-0x09465b9572fb354fdf4e34040386f180d1ff0c2a3a668333bedee17b266a4b74}
-      - RELAY_URL=${APN_RELAY_URL:-nats://nonlocal.info:4222}
-      - MASTER_NODES=${APN_MASTER_NODES:-}
-      - CAPABILITIES=${APN_CAPABILITIES:-relay,dashboard}
-    networks:
-      app-network:
-        aliases:
-          - apn-bridge
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
   # Nginx - Reverse proxy router
   nginx:
     image: nginx:alpine
@@ -219,8 +190,6 @@ services:
       - "8080:80"
     depends_on:
       app:
-        condition: service_healthy
-      apn-bridge:
         condition: service_healthy
     networks:
       app-network:

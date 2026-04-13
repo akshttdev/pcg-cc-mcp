@@ -1,5 +1,6 @@
 pub mod agent_flow_executor;
 pub mod apn_data_service;
+pub mod apn_peer_manager;
 pub mod error;
 pub mod helpers;
 pub mod mcp;

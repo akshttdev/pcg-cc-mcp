@@ -1,33 +1,34 @@
 // Authenticated app shell with sidebar, navbar, and scoped providers
-import { Suspense, useEffect, useCallback } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
-import { I18nextProvider } from 'react-i18next';
-import i18n from '@/i18n';
-import { PageErrorBoundary } from '@/components/PageErrorBoundary';
-import { Navbar } from '@/components/layout/navbar';
-import { Sidebar } from '@/components/layout/sidebar';
-import { useViewStore } from '@/stores/useViewStore';
-import { TopsiWidget } from '@/components/topsi';
-import { useTaskViewManager } from '@/hooks/useTaskViewManager';
-import { usePreviousPath } from '@/hooks/usePreviousPath';
-import { usePageTitle } from '@/hooks/usePageTitle';
-import { useUserSystem } from '@/components/config-provider';
-import { ThemeProvider } from '@/components/theme-provider';
-import { SearchProvider } from '@/contexts/search-context';
-import { ShortcutsHelp } from '@/components/shortcuts-help';
-import { ThemeMode } from 'shared/types';
-import { Loader } from '@/components/ui/loader';
-import { AppWithStyleOverride } from '@/utils/style-override';
-import { WebviewContextMenu } from '@/vscode/ContextMenu';
 import NiceModal from '@ebay/nice-modal-react';
-import type { WelcomeWizardResult } from '@/components/onboarding';
-import { Toaster } from '@/components/ui/toaster';
+import { Suspense, useCallback, useEffect } from 'react';
+import { I18nextProvider } from 'react-i18next';
+import { Outlet, useLocation } from 'react-router-dom';
+import { ThemeMode } from 'shared/types';
+
 import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
 import { CommandPalette } from '@/components/command/CommandPalette';
-import { KeyboardShortcutsOverlay } from '@/components/keyboard-shortcuts/KeyboardShortcutsOverlay';
+import { useUserSystem } from '@/components/config-provider';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { KeyboardShortcutsOverlay } from '@/components/keyboard-shortcuts/KeyboardShortcutsOverlay';
+import { Navbar } from '@/components/layout/navbar';
+import { Sidebar } from '@/components/layout/sidebar';
 import { ViewAsBanner } from '@/components/layout/ViewAsBanner';
-import { useKeyReportFriction, Scope } from '@/keyboard';
+import type { WelcomeWizardResult } from '@/components/onboarding';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { ShortcutsHelp } from '@/components/shortcuts-help';
+import { ThemeProvider } from '@/components/theme-provider';
+import { TopsiWidget } from '@/components/topsi';
+import { Loader } from '@/components/ui/loader';
+import { Toaster } from '@/components/ui/toaster';
+import { SearchProvider } from '@/contexts/search-context';
+import { usePageTitle } from '@/hooks/usePageTitle';
+import { usePreviousPath } from '@/hooks/usePreviousPath';
+import { useTaskViewManager } from '@/hooks/useTaskViewManager';
+import i18n from '@/i18n';
+import { Scope, useKeyReportFriction } from '@/keyboard';
+import { useViewStore } from '@/stores/useViewStore';
+import { AppWithStyleOverride } from '@/utils/style-override';
+import { WebviewContextMenu } from '@/vscode/ContextMenu';
 
 // Shared suspense fallback
 export const PageLoader = () => (
@@ -41,6 +42,7 @@ export function AppShell() {
   const { isFullscreen, toggleFullscreen } = useTaskViewManager();
   const location = useLocation();
   const isVirtualEnv = location.pathname.startsWith('/virtual-environment');
+  const isInterfacePage = location.pathname === '/interface';
   const {
     sidebarCollapsed,
     toggleSidebar,
@@ -209,7 +211,7 @@ export function AppShell() {
                 </div>
               </div>
             </div>
-            {!isVirtualEnv && <TopsiWidget />}
+            {!isVirtualEnv && !isInterfacePage && <TopsiWidget />}
             <ShortcutsHelp />
             <CommandPalette />
             <KeyboardShortcutsOverlay />

@@ -191,7 +191,23 @@ pub async fn handle_incoming_call(
             .await
             .unwrap_or_default();
             let project_id = match prev_logs.first().map(|l| l.project_id) {
-                Some(pid) => pid,
+                Some(pid) => {
+                    // Verify project still exists (may have been deleted or DB restored)
+                    let exists: bool =
+                        sqlx::query_scalar("SELECT COUNT(*) FROM projects WHERE id = ?")
+                            .bind(pid)
+                            .fetch_one(pool)
+                            .await
+                            .unwrap_or(0i64)
+                            > 0;
+                    if exists {
+                        pid
+                    } else {
+                        get_fallback_project_id(pool)
+                            .await
+                            .unwrap_or_else(Uuid::new_v4)
+                    }
+                }
                 None => get_fallback_project_id(pool)
                     .await
                     .unwrap_or_else(Uuid::new_v4),
@@ -433,12 +449,12 @@ pub async fn handle_incoming_call(
     let session_id = format!("twilio-{}", request.call_sid);
 
     let nora_agent_id: Uuid = {
-        let row: Option<(Vec<u8>,)> =
+        let row: Option<(String,)> =
             sqlx::query_as("SELECT id FROM agents WHERE short_name = 'Nora' LIMIT 1")
                 .fetch_optional(pool)
                 .await
                 .unwrap_or(None);
-        row.and_then(|(bytes,)| Uuid::from_slice(&bytes).ok())
+        row.and_then(|(s,)| Uuid::parse_str(&s).ok())
             .unwrap_or_else(Uuid::new_v4)
     };
 

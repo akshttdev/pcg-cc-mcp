@@ -1,17 +1,7 @@
-//! Mesh Network Routes - API endpoints for APN mesh network stats and operations
+//! Mesh Network Routes — native APN peer discovery (no external bridge)
 //!
-//! Provides real-time mesh network statistics, peer information, and
-//! transaction logs for the Alpha Protocol Network integration.
-//!
-//! ## Architecture Change (v3.0)
-//!
-//! These routes now consume APN Core's API via the `apn-client` crate
-//! instead of parsing log files. APN Core (Layer 0) is the single source
-//! of truth for network state.
-//!
-//! ```text
-//! Dashboard mesh routes  -->  apn-client  -->  APN Core (localhost:8000)
-//! ```
+//! Reads from the ApnPeerManager singleton which maintains a live NATS-based
+//! peer map under the single Pythia Master Node identity (apn_814d37f4).
 
 use axum::{extract::State, response::Json as ResponseJson, routing::get, Router};
 use chrono::{DateTime, Utc};
@@ -20,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{apn_peer_manager, error::ApiError, DeploymentImpl};
 
 /// Mesh network statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +41,9 @@ pub struct PeerInfo {
     pub bandwidth_mbps: Option<f64>,
     pub reputation: f64,
     pub capabilities: Vec<String>,
+    pub device_name: Option<String>,
+    pub resources: Option<serde_json::Value>,
+    pub last_seen: Option<String>,
 }
 
 /// Bandwidth statistics
@@ -86,155 +79,79 @@ pub struct TransactionLog {
     pub task_id: Option<Uuid>,
 }
 
-/// Fetch peers from APN Core API (replaces log file parsing)
-async fn fetch_peers_from_apn_core() -> (Vec<PeerInfo>, bool, String, u64) {
-    let client = apn_client::ApnClient::new();
-
-    // Try to get identity and peers from APN Core
-    let node_id = match client.get_identity().await {
-        Ok(identity) => identity.node_id,
-        Err(_) => {
-            // Fall back to hostname if APN Core not available
-            let hostname = hostname::get()
-                .map(|h| h.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "unknown".to_string());
-            format!("omega-{}", &hostname[..hostname.len().min(8)])
-        }
+fn get_local_resources() -> ResourceStats {
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_all();
+    let cpu_percent = sys.global_cpu_usage() as f64;
+    let memory_percent = if sys.total_memory() > 0 {
+        sys.used_memory() as f64 / sys.total_memory() as f64 * 100.0
+    } else {
+        0.0
     };
-
-    let (peers, relay_connected, uptime) = match client.get_network_stats().await {
-        Ok(stats) => {
-            let relay = stats.status == "online";
-            let uptime = stats.uptime_seconds;
-
-            let peers = match client.get_peers().await {
-                Ok(peer_list) => peer_list
-                    .peers
-                    .into_iter()
-                    .map(|p| PeerInfo {
-                        peer_id: p.node_id,
-                        address: p.wallet_address,
-                        latency_ms: None,
-                        connection_type: p.connection_type,
-                        bandwidth_mbps: None,
-                        reputation: 1.0,
-                        capabilities: p.capabilities,
-                    })
-                    .collect(),
-                Err(_) => vec![],
-            };
-
-            (peers, relay, uptime)
-        }
-        Err(_) => {
-            // APN Core not available - fall back to log parsing for backwards compat
-            let (legacy_peers, legacy_relay) = fetch_peers_from_log_fallback().await;
-            (legacy_peers, legacy_relay, 0)
-        }
-    };
-
-    (peers, relay_connected, node_id, uptime)
-}
-
-/// Legacy fallback: parse peers from log file (used when APN Core is not running)
-async fn fetch_peers_from_log_fallback() -> (Vec<PeerInfo>, bool) {
-    use std::{
-        fs::File,
-        io::{BufRead, BufReader},
-    };
-
-    use regex::Regex;
-
-    let log_path = "/tmp/apn_node.log";
-    let mut peers = std::collections::HashMap::new();
-    let mut relay_connected = false;
-
-    if let Ok(file) = File::open(log_path) {
-        let reader = BufReader::new(file);
-
-        let peer_regex = Regex::new(
-            r#"Message from apn\.discovery \(([^)]+)\): PeerAnnouncement \{ wallet_address: "([^"]+)", capabilities: \[([^\]]+)\], resources: (.+?) \}"#
-        ).unwrap();
-
-        let relay_regex = Regex::new(r"Relay connected").unwrap();
-
-        let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
-
-        for line in lines.iter().rev().take(1000) {
-            if relay_regex.is_match(line) {
-                relay_connected = true;
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let disk_percent = disks
+        .list()
+        .first()
+        .map(|d| {
+            let total = d.total_space();
+            if total > 0 {
+                (total - d.available_space()) as f64 / total as f64 * 100.0
+            } else {
+                0.0
             }
-
-            if let Some(caps) = peer_regex.captures(line) {
-                let node_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-                let wallet = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-                let caps_str = caps.get(3).map(|m| m.as_str()).unwrap_or("");
-
-                let capabilities: Vec<String> = caps_str
-                    .split(',')
-                    .map(|s| s.trim().trim_matches('"').to_string())
-                    .collect();
-
-                if !peers.contains_key(node_id) {
-                    peers.insert(
-                        node_id.to_string(),
-                        PeerInfo {
-                            peer_id: node_id.to_string(),
-                            address: wallet.to_string(),
-                            latency_ms: None,
-                            connection_type: "NATS".to_string(),
-                            bandwidth_mbps: None,
-                            reputation: 1.0,
-                            capabilities,
-                        },
-                    );
-                }
-            }
-        }
+        })
+        .unwrap_or(0.0);
+    ResourceStats {
+        cpu_percent,
+        memory_percent,
+        disk_percent,
+        available_compute: 100.0 - cpu_percent,
     }
-
-    (peers.into_values().collect(), relay_connected)
 }
 
-/// Get mesh network statistics
+/// GET /api/mesh/stats
 pub async fn get_mesh_stats(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<MeshStats>>, ApiError> {
-    // Get peers and identity from APN Core
-    let (peers, relay_connected, node_id, uptime) = fetch_peers_from_apn_core().await;
-
-    // Get real system metrics
-    let sys_info = sysinfo::System::new_all();
-
-    let cpu_percent = sys_info.global_cpu_usage() as f64;
-    let memory_percent = if sys_info.total_memory() > 0 {
-        (sys_info.used_memory() as f64 / sys_info.total_memory() as f64) * 100.0
-    } else {
-        0.0
-    };
-
-    let disks = sysinfo::Disks::new_with_refreshed_list();
-    let disk_percent = if let Some(disk) = disks.list().first() {
-        let total = disk.total_space();
-        let available = disk.available_space();
-        if total > 0 {
-            ((total - available) as f64 / total as f64) * 100.0
-        } else {
-            0.0
-        }
-    } else {
-        0.0
-    };
-
-    // Get transaction logs from recent activity
     let pool = &deployment.db().pool;
+
+    let (node_id, peers, relay_connected, uptime) = if let Some(mgr) = apn_peer_manager::global() {
+        let discovered = mgr.get_peers().await;
+        let peers: Vec<PeerInfo> = discovered
+            .into_iter()
+            .map(|p| PeerInfo {
+                peer_id: p.peer_id,
+                address: p.wallet_address,
+                latency_ms: None,
+                connection_type: "NATS".to_string(),
+                bandwidth_mbps: None,
+                reputation: 1.0,
+                capabilities: p.capabilities,
+                device_name: Some(p.device_name),
+                resources: p.resources,
+                last_seen: Some(p.last_seen),
+            })
+            .collect();
+        (
+            mgr.node_id.clone(),
+            peers,
+            mgr.is_relay_connected().await,
+            mgr.uptime_seconds(),
+        )
+    } else {
+        (
+            std::env::var("APN_NODE_ID").unwrap_or_else(|_| "apn_unknown".to_string()),
+            vec![],
+            false,
+            0,
+        )
+    };
+
+    let resources = get_local_resources();
+
     let recent_flows = sqlx::query_as::<_, (String, String, String, Option<String>)>(
         r#"
-        SELECT
-            af.id,
-            af.flow_type,
-            af.status,
-            af.planning_started_at
+        SELECT af.id, af.flow_type, af.status, af.planning_started_at
         FROM agent_flows af
         ORDER BY af.planning_started_at DESC
         LIMIT 20
@@ -246,31 +163,27 @@ pub async fn get_mesh_stats(
 
     let transactions: Vec<TransactionLog> = recent_flows
         .into_iter()
-        .map(|(id, flow_type, status, timestamp_opt)| {
+        .map(|(id, flow_type, status, ts)| {
             let tx_type = match status.as_str() {
                 "completed" => "execution_completed",
                 "failed" => "execution_failed",
                 "planning" | "executing" => "task_received",
                 _ => "task_distributed",
             };
-
-            let timestamp = timestamp_opt
-                .and_then(|ts| chrono::DateTime::parse_from_rfc3339(&ts).ok())
+            let timestamp = ts
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(Utc::now);
-
             TransactionLog {
                 id: id.clone(),
                 timestamp,
                 tx_type: tx_type.to_string(),
                 description: format!(
                     "{} workflow: {}",
-                    if status == "completed" {
-                        "Completed"
-                    } else if status == "failed" {
-                        "Failed"
-                    } else {
-                        "Processing"
+                    match status.as_str() {
+                        "completed" => "Completed",
+                        "failed" => "Failed",
+                        _ => "Processing",
                     },
                     flow_type
                 ),
@@ -289,17 +202,12 @@ pub async fn get_mesh_stats(
     .unwrap_or((0,));
 
     let completed_today: (i64,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*) FROM agent_flows
-        WHERE status = 'completed'
-        AND date(verification_completed_at) = date('now')
-        "#,
+        r#"SELECT COUNT(*) FROM agent_flows
+           WHERE status = 'completed' AND date(verification_completed_at) = date('now')"#,
     )
     .fetch_one(pool)
     .await
     .unwrap_or((0,));
-
-    let vibe_balance = completed_today.0 as f64 * 10.0;
 
     let stats = MeshStats {
         node_id,
@@ -316,15 +224,10 @@ pub async fn get_mesh_stats(
             upload_rate: 0.0,
             download_rate: 0.0,
         },
-        resources: ResourceStats {
-            cpu_percent,
-            memory_percent,
-            disk_percent,
-            available_compute: 100.0 - cpu_percent,
-        },
+        resources,
         relay_connected,
         uptime,
-        vibe_balance,
+        vibe_balance: completed_today.0 as f64 * 10.0,
         transactions,
         active_tasks: active_count.0 as u32,
         completed_tasks_today: completed_today.0 as u32,
@@ -333,56 +236,67 @@ pub async fn get_mesh_stats(
     Ok(ResponseJson(ApiResponse::success(stats)))
 }
 
-/// Get mesh peers (now from APN Core)
+/// GET /api/mesh/peers
 pub async fn get_mesh_peers(
     State(_deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PeerInfo>>>, ApiError> {
-    let (peers, _, _, _) = fetch_peers_from_apn_core().await;
+    let peers = if let Some(mgr) = apn_peer_manager::global() {
+        mgr.get_peers()
+            .await
+            .into_iter()
+            .map(|p| PeerInfo {
+                peer_id: p.peer_id,
+                address: p.wallet_address,
+                latency_ms: None,
+                connection_type: "NATS".to_string(),
+                bandwidth_mbps: None,
+                reputation: 1.0,
+                capabilities: p.capabilities,
+                device_name: Some(p.device_name),
+                resources: p.resources,
+                last_seen: Some(p.last_seen),
+            })
+            .collect()
+    } else {
+        vec![]
+    };
     Ok(ResponseJson(ApiResponse::success(peers)))
 }
 
-/// Get APN Core identity (proxy endpoint for frontend)
+/// GET /api/apn/identity
 pub async fn get_apn_identity(
     State(_deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    match client.get_identity().await {
-        Ok(identity) => {
-            let value = serde_json::json!({
-                "node_id": identity.node_id,
-                "wallet_address": identity.wallet_address,
-                "public_key": identity.public_key,
-                "apn_core_connected": true,
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(_) => {
-            let value = serde_json::json!({
-                "node_id": null,
-                "wallet_address": null,
-                "public_key": null,
-                "apn_core_connected": false,
-                "message": "APN Core not running at localhost:8000",
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
+    if let Some(mgr) = apn_peer_manager::global() {
+        let value = serde_json::json!({
+            "node_id": mgr.node_id,
+            "wallet_address": mgr.wallet_address,
+            "public_key": mgr.public_key,
+            "apn_core_connected": mgr.is_relay_connected().await,
+            "capabilities": mgr.capabilities,
+            "uptime_seconds": mgr.uptime_seconds(),
+        });
+        Ok(ResponseJson(ApiResponse::success(value)))
+    } else {
+        let value = serde_json::json!({
+            "node_id": null,
+            "wallet_address": null,
+            "public_key": null,
+            "apn_core_connected": false,
+            "message": "APN peer manager not initialized",
+        });
+        Ok(ResponseJson(ApiResponse::success(value)))
     }
 }
 
-/// Get transaction history
+/// GET /api/mesh/transactions
 pub async fn get_transactions(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TransactionLog>>>, ApiError> {
     let pool = &deployment.db().pool;
-
     let flows = sqlx::query_as::<_, (String, String, String, Option<String>)>(
         r#"
-        SELECT
-            af.id,
-            af.flow_type,
-            af.status,
-            af.planning_started_at
+        SELECT af.id, af.flow_type, af.status, af.planning_started_at
         FROM agent_flows af
         ORDER BY af.planning_started_at DESC
         LIMIT 50
@@ -394,31 +308,27 @@ pub async fn get_transactions(
 
     let transactions: Vec<TransactionLog> = flows
         .into_iter()
-        .map(|(id, flow_type, status, timestamp_opt)| {
+        .map(|(id, flow_type, status, ts)| {
             let tx_type = match status.as_str() {
                 "completed" => "execution_completed",
                 "failed" => "execution_failed",
                 "planning" | "executing" => "task_received",
                 _ => "task_distributed",
             };
-
-            let timestamp = timestamp_opt
-                .and_then(|ts| chrono::DateTime::parse_from_rfc3339(&ts).ok())
+            let timestamp = ts
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(Utc::now);
-
             TransactionLog {
                 id: id.clone(),
                 timestamp,
                 tx_type: tx_type.to_string(),
                 description: format!(
                     "{} workflow: {}",
-                    if status == "completed" {
-                        "Completed"
-                    } else if status == "failed" {
-                        "Failed"
-                    } else {
-                        "Processing"
+                    match status.as_str() {
+                        "completed" => "Completed",
+                        "failed" => "Failed",
+                        _ => "Processing",
                     },
                     flow_type
                 ),
@@ -432,237 +342,106 @@ pub async fn get_transactions(
     Ok(ResponseJson(ApiResponse::success(transactions)))
 }
 
-// ============= File Transfer Proxy Routes =============
+// ─── File transfer & cloud import routes (stubbed — bridge no longer proxies) ─
 
-/// Send a file to a peer node (proxies to APN Core)
 pub async fn send_file(
-    State(_deployment): State<DeploymentImpl>,
-    axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
+    State(_): State<DeploymentImpl>,
+    axum::extract::Json(_body): axum::extract::Json<serde_json::Value>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    let target = body["target_node_id"].as_str().unwrap_or("");
-    let path = body["file_path"].as_str().unwrap_or("");
-
-    match client.send_file(target, path).await {
-        Ok(resp) => {
-            let value = serde_json::to_value(resp.transfer).unwrap_or_default();
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(e) => {
-            let value = serde_json::json!({
-                "error": format!("{}", e),
-                "service_status": "error",
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(serde_json::json!({
+        "status": "not_implemented",
+        "message": "File transfer via APN native P2P — coming soon"
+    }))))
 }
 
-/// Get active file transfers
 pub async fn get_active_transfers(
-    State(_deployment): State<DeploymentImpl>,
+    State(_): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    match client.get_active_transfers().await {
-        Ok(resp) => {
-            let value = serde_json::to_value(resp).unwrap_or_default();
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(_) => {
-            let value = serde_json::json!({
-                "active": [],
-                "service_status": "not_running",
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "active": [] }),
+    )))
 }
 
-/// Get a specific transfer status
 pub async fn get_transfer_status(
-    State(_deployment): State<DeploymentImpl>,
-    axum::extract::Path(transfer_id): axum::extract::Path<String>,
+    State(_): State<DeploymentImpl>,
+    axum::extract::Path(_id): axum::extract::Path<String>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    match client.get_transfer(&transfer_id).await {
-        Ok(resp) => {
-            let value = serde_json::to_value(resp.transfer).unwrap_or_default();
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(e) => {
-            let value = serde_json::json!({
-                "error": format!("{}", e),
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "status": "not_found" }),
+    )))
 }
 
-/// Get file transfer history
 pub async fn get_file_transfer_history(
-    State(_deployment): State<DeploymentImpl>,
+    State(_): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    match client.get_transfer_history(50).await {
-        Ok(resp) => {
-            let value = serde_json::to_value(resp).unwrap_or_default();
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(_) => {
-            let value = serde_json::json!({
-                "history": [],
-                "service_status": "not_running",
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "history": [] }),
+    )))
 }
 
-/// Accept a pending transfer
 pub async fn accept_file_transfer(
-    State(_deployment): State<DeploymentImpl>,
-    axum::extract::Path(transfer_id): axum::extract::Path<String>,
+    State(_): State<DeploymentImpl>,
+    axum::extract::Path(_id): axum::extract::Path<String>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    match client.accept_transfer(&transfer_id).await {
-        Ok(resp) => Ok(ResponseJson(ApiResponse::success(resp))),
-        Err(e) => {
-            let value = serde_json::json!({ "error": format!("{}", e) });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "status": "not_implemented" }),
+    )))
 }
 
-/// Cancel an active transfer
 pub async fn cancel_file_transfer(
-    State(_deployment): State<DeploymentImpl>,
-    axum::extract::Path(transfer_id): axum::extract::Path<String>,
+    State(_): State<DeploymentImpl>,
+    axum::extract::Path(_id): axum::extract::Path<String>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    match client.cancel_transfer(&transfer_id).await {
-        Ok(resp) => Ok(ResponseJson(ApiResponse::success(resp))),
-        Err(e) => {
-            let value = serde_json::json!({ "error": format!("{}", e) });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "status": "not_implemented" }),
+    )))
 }
 
-// ============= Cloud Import Proxy Routes =============
-
-/// Import a file from a cloud URL (Google Drive, OneDrive, Dropbox)
 pub async fn cloud_import(
-    State(_deployment): State<DeploymentImpl>,
+    State(_): State<DeploymentImpl>,
     axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    let url = body["url"].as_str().unwrap_or("");
-    let file_name = body["file_name"].as_str();
-
-    match client.cloud_import(url, file_name).await {
-        Ok(resp) => {
-            let value = serde_json::to_value(resp.import_job).unwrap_or_default();
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(e) => {
-            let value = serde_json::json!({
-                "error": format!("{}", e),
-                "service_status": "error",
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    // Cloud import now handled via sovereign storage — stub for API compat
+    Ok(ResponseJson(ApiResponse::success(serde_json::json!({
+        "status": "not_implemented",
+        "url": body.get("url"),
+        "message": "Cloud import via APN native — coming soon"
+    }))))
 }
 
-/// Get active cloud imports
 pub async fn get_cloud_imports(
-    State(_deployment): State<DeploymentImpl>,
+    State(_): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    match client.get_active_imports().await {
-        Ok(resp) => {
-            let value = serde_json::to_value(resp).unwrap_or_default();
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(_) => {
-            let value = serde_json::json!({
-                "active": [],
-                "service_status": "not_running",
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "active": [] }),
+    )))
 }
 
-/// Get cloud import history
 pub async fn get_cloud_import_history(
-    State(_deployment): State<DeploymentImpl>,
+    State(_): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    match client.get_import_history(50).await {
-        Ok(resp) => {
-            let value = serde_json::to_value(resp).unwrap_or_default();
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(_) => {
-            let value = serde_json::json!({
-                "history": [],
-                "service_status": "not_running",
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "history": [] }),
+    )))
 }
 
-/// Get download cache stats
 pub async fn get_cloud_cache(
-    State(_deployment): State<DeploymentImpl>,
+    State(_): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    match client.get_cache_stats().await {
-        Ok(resp) => {
-            let value = serde_json::to_value(resp).unwrap_or_default();
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(_) => {
-            let value = serde_json::json!({
-                "cache": null,
-                "service_status": "not_running",
-            });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "cache": null }),
+    )))
 }
 
-/// Resolve a cloud URL to direct download URL
 pub async fn resolve_cloud_url(
-    State(_deployment): State<DeploymentImpl>,
+    State(_): State<DeploymentImpl>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    let client = apn_client::ApnClient::new();
-
-    let url = params.get("url").map(|s| s.as_str()).unwrap_or("");
-
-    match client.resolve_cloud_url(url).await {
-        Ok(resp) => {
-            let value = serde_json::to_value(resp).unwrap_or_default();
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-        Err(e) => {
-            let value = serde_json::json!({ "error": format!("{}", e) });
-            Ok(ResponseJson(ApiResponse::success(value)))
-        }
-    }
+    Ok(ResponseJson(ApiResponse::success(serde_json::json!({
+        "url": params.get("url"),
+        "resolved": null,
+        "status": "not_implemented"
+    }))))
 }
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
@@ -671,7 +450,6 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/mesh/peers", get(get_mesh_peers))
         .route("/mesh/transactions", get(get_transactions))
         .route("/apn/identity", get(get_apn_identity))
-        // File transfer routes (proxy to APN Core)
         .route("/files/send", axum::routing::post(send_file))
         .route("/files/transfers", get(get_active_transfers))
         .route("/files/transfers/{id}", get(get_transfer_status))
@@ -683,8 +461,6 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/files/transfers/{id}/cancel",
             axum::routing::post(cancel_file_transfer),
         )
-        .route("/files/history", get(get_file_transfer_history))
-        // Cloud import routes (proxy to APN Core)
         .route("/cloud/import", axum::routing::post(cloud_import))
         .route("/cloud/imports", get(get_cloud_imports))
         .route("/cloud/history", get(get_cloud_import_history))

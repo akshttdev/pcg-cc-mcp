@@ -1,14 +1,14 @@
 use anyhow::{self, Error as AnyhowError};
 use deployment::{Deployment, DeploymentError};
-use server::{DeploymentImpl, routes};
+use server::{routes, DeploymentImpl};
 use sqlx::Error as SqlxError;
 use strip_ansi_escapes::strip;
 use thiserror::Error;
-use tracing_subscriber::{EnvFilter, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter};
 use utils::{
     assets::asset_dir,
     browser::open_browser,
-    external_services::{ExternalServicesConfig, initialize_external_services},
+    external_services::{initialize_external_services, ExternalServicesConfig},
     port_file::write_port_file,
     sentry::sentry_layer,
 };
@@ -52,25 +52,22 @@ async fn main() -> Result<(), VibeKanbanError> {
         std::fs::create_dir_all(asset_dir())?;
     }
 
-    // Initialize external services (APN node/bridge, Ollama, ComfyUI)
+    // Initialize external services (Ollama, ComfyUI — APN bridge retired)
     let external_config = ExternalServicesConfig::default();
     let service_status = initialize_external_services(&external_config).await;
-    if service_status.apn_node_running {
+
+    // Start native APN peer manager (replaces pcg-apn-bridge container)
+    {
+        let manager = std::sync::Arc::new(server::apn_peer_manager::ApnPeerManager::from_env());
+        let apn_node_id = manager.node_id.clone();
+        server::apn_peer_manager::set_global(manager.clone());
+        manager.clone().start().await;
         tracing::info!(
-            "[MASTER] Media Monsters Master Node — APN mesh online on port {}",
-            external_config.apn_node_port
+            "[APN] Pythia Master Node peer manager started — identity: {}",
+            apn_node_id
         );
-    } else {
-        tracing::warn!("APN node not available - mesh networking disabled");
     }
-    if service_status.apn_bridge_running {
-        tracing::info!(
-            "[MASTER] Media Monsters Master Node — APN bridge API on port {}",
-            external_config.apn_bridge_port
-        );
-    } else {
-        tracing::warn!("APN bridge not available - mesh API will use log fallback");
-    }
+
     if !service_status.ollama_running {
         tracing::warn!(
             "Ollama not available - agents will fall back to cloud LLMs (may incur API costs)"
@@ -363,11 +360,9 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     // Nora inbox poller — monitors nora@powerclubglobal.com, routes to intake pipeline
     registry
-        .spawn_worker(
-            server::workers::background_tasks::NoraInboxPoller::new(
-                deployment.db().pool.clone(),
-            ),
-        )
+        .spawn_worker(server::workers::background_tasks::NoraInboxPoller::new(
+            deployment.db().pool.clone(),
+        ))
         .await;
 
     let app_router = routes::router(deployment);
