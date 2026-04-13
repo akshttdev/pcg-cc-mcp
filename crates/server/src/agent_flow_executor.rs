@@ -556,6 +556,14 @@ impl AgentFlowExecutor {
             .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
             .unwrap_or_default();
 
+        // Extract deal_id from flow config for simulated mode
+        let flow_deal_id = flow
+            .flow_config
+            .as_deref()
+            .and_then(|c| serde_json::from_str::<Value>(c).ok())
+            .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
+            .unwrap_or_default();
+
         for attempt in 0..max_retries {
             let model_hint = models.get(attempt).copied().flatten();
 
