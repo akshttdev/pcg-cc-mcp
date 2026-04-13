@@ -214,6 +214,33 @@ impl ExecutiveTools {
             serde_json::json!({
                 "type": "function",
                 "function": {
+                    "name": "dispatch_agents_parallel",
+                    "description": "Dispatch multiple sub-agents simultaneously and collect all results. Use this when you need to run several agents in parallel (e.g. Scout research AND Astra strategy at the same time). All agents run concurrently and results are returned together.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "dispatches": {
+                                "type": "array",
+                                "description": "List of agent dispatches to run in parallel",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "agent_id": { "type": "string", "description": "Agent identifier (e.g. 'scout-research', 'astra-strategy')" },
+                                        "workflow_id": { "type": "string", "description": "Workflow identifier" },
+                                        "inputs": { "type": "object", "description": "Inputs including 'request' field" }
+                                    },
+                                    "required": ["agent_id", "workflow_id", "inputs"]
+                                }
+                            },
+                            "project_id": { "type": "string", "description": "Optional project ID to associate all workflows with" }
+                        },
+                        "required": ["dispatches"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
                     "name": "cancel_workflow",
                     "description": "Cancel a running workflow execution. Use this when a workflow is stuck, failing repeatedly, or needs to be stopped.",
                     "parameters": {

@@ -112,6 +112,35 @@ impl ExecutiveTools {
                     inputs,
                 })
             }
+            "dispatch_agents_parallel" => {
+                let project_id = arguments
+                    .get("project_id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let dispatches = arguments
+                    .get("dispatches")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|d| {
+                        let agent_id = d.get("agent_id")?.as_str()?.to_string();
+                        let workflow_id = d.get("workflow_id")?.as_str()?.to_string();
+                        let inputs = d
+                            .get("inputs")
+                            .and_then(|v| v.as_object())
+                            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                            .unwrap_or_default();
+                        Some(ParallelDispatch {
+                            agent_id,
+                            workflow_id,
+                            inputs,
+                        })
+                    })
+                    .collect();
+                Some(NoraExecutiveTool::DispatchAgentsParallel {
+                    dispatches,
+                    project_id,
+                })
+            }
             "cancel_workflow" => {
                 let workflow_instance_id =
                     arguments.get("workflow_instance_id")?.as_str()?.to_string();

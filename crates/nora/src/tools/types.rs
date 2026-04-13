@@ -6,6 +6,15 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// A single agent dispatch entry for parallel execution
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ParallelDispatch {
+    pub agent_id: String,
+    pub workflow_id: String,
+    pub inputs: HashMap<String, serde_json::Value>,
+}
+
 /// Definition of an executive tool
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -131,6 +140,11 @@ pub enum NoraExecutiveTool {
         workflow_id: String,
         project_id: Option<String>,
         inputs: HashMap<String, serde_json::Value>,
+    },
+    /// Dispatch multiple agents in parallel and collect all results
+    DispatchAgentsParallel {
+        dispatches: Vec<ParallelDispatch>,
+        project_id: Option<String>,
     },
     /// Cancel a running workflow
     CancelWorkflow {

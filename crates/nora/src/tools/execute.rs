@@ -852,6 +852,9 @@ impl ExecutiveTools {
             NoraExecutiveTool::CreateTaskOnBoard { .. } => "create_task_on_board".to_string(),
             NoraExecutiveTool::AddTaskToBoard { .. } => "add_task_to_board".to_string(),
             NoraExecutiveTool::ExecuteWorkflow { .. } => "execute_workflow".to_string(),
+            NoraExecutiveTool::DispatchAgentsParallel { .. } => {
+                "dispatch_agents_parallel".to_string()
+            }
             NoraExecutiveTool::CancelWorkflow { .. } => "cancel_workflow".to_string(),
             NoraExecutiveTool::ListActiveWorkflows => "list_active_workflows".to_string(),
             NoraExecutiveTool::ListAvailableWorkflows { .. } => {

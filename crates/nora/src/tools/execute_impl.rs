@@ -1,6 +1,11 @@
 //! Tool implementation logic — the main execution handler
 
 use chrono::{DateTime, Utc};
+
+/// Nora Topos — catchall project for Nora's workflows when no project_id is provided.
+/// Created via DB migration; boards: Workflows (5e7da560) + Inbox (317ecac1).
+const NORA_TOPOS_PROJECT_ID: &str = "88f72301-2e19-470a-b855-afcd2eb7c49c";
+
 use db::models::{
     project_board::ProjectBoardType,
     task::{Priority, TaskStatus},
@@ -426,8 +431,11 @@ impl ExecutiveTools {
                     project_id
                 );
 
-                // Parse project_id if provided
-                let project_uuid = project_id.as_ref().and_then(|id| Uuid::parse_str(id).ok());
+                // Parse project_id if provided; fall back to Nora Topos catchall board
+                let project_uuid = project_id
+                    .as_ref()
+                    .and_then(|id| Uuid::parse_str(id).ok())
+                    .or_else(|| Uuid::parse_str(NORA_TOPOS_PROJECT_ID).ok());
 
                 // Prefer new ExecutionEngine if available
                 if let Some(engine) = &self.execution_engine {
@@ -451,9 +459,41 @@ impl ExecutiveTools {
                                 result.total_stages
                             );
 
-                            Ok(serde_json::json!({
+                            // Retrieve stage outputs so Nora can relay findings to the user
+                            let stage_outputs = engine
+                                .artifacts()
+                                .get_all_stage_outputs(result.execution_id)
+                                .await;
+
+                            // Extract the final stage output (highest stage index = synthesis/final report)
+                            let findings = if !stage_outputs.is_empty() {
+                                let final_stage = stage_outputs.iter().max_by_key(|(idx, _)| *idx);
+                                final_stage.and_then(|(_, v)| v.get("output").cloned())
+                            } else {
+                                None
+                            };
+
+                            // Collect all stage summaries for context
+                            let mut stage_summaries = serde_json::Map::new();
+                            let mut sorted_stages: Vec<_> = stage_outputs.iter().collect();
+                            sorted_stages.sort_by_key(|(idx, _)| *idx);
+                            for (idx, output) in &sorted_stages {
+                                let stage_name = output
+                                    .get("stage")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("unknown")
+                                    .to_string();
+                                if let Some(stage_output) = output.get("output") {
+                                    stage_summaries.insert(
+                                        format!("stage_{}", idx),
+                                        serde_json::json!({ "name": stage_name, "output": stage_output })
+                                    );
+                                }
+                            }
+
+                            let mut response = serde_json::json!({
                                 "success": true,
-                                "message": format!("Workflow '{}' completed for agent '{}'", workflow_id, agent_id),
+                                "message": format!("Agent '{}' completed workflow '{}'. The research findings are in 'findings' — relay them to the user.", result.agent_name, result.workflow_name),
                                 "execution_id": result.execution_id.to_string(),
                                 "agent_id": result.agent_id,
                                 "agent_name": result.agent_name,
@@ -464,9 +504,16 @@ impl ExecutiveTools {
                                 "stages_completed": result.stages_completed,
                                 "total_stages": result.total_stages,
                                 "tasks_created": result.tasks_created.len(),
-                                "artifacts": result.artifacts.len(),
                                 "duration_ms": result.duration_ms,
-                            }))
+                            });
+
+                            if let Some(f) = findings {
+                                response["findings"] = f;
+                                response["stage_outputs"] =
+                                    serde_json::Value::Object(stage_summaries);
+                            }
+
+                            Ok(response)
                         }
                         Err(e) => {
                             tracing::error!("[TOOL] ExecutionEngine workflow failed: {}", e);
@@ -529,6 +576,79 @@ impl ExecutiveTools {
                     }))
                 }
             }
+            NoraExecutiveTool::DispatchAgentsParallel {
+                dispatches,
+                project_id,
+            } => {
+                if let Some(engine) = &self.execution_engine {
+                    let project_uuid = project_id
+                        .as_ref()
+                        .and_then(|id| Uuid::parse_str(id).ok())
+                        .or_else(|| Uuid::parse_str(NORA_TOPOS_PROJECT_ID).ok());
+                    let engine = engine.clone();
+
+                    // Build all execution futures
+                    let futs: Vec<_> = dispatches
+                        .into_iter()
+                        .map(|d| {
+                            let eng = engine.clone();
+                            let request = crate::execution::ExecutionRequest {
+                                project_id: project_uuid,
+                                agent: Some(d.agent_id.clone()),
+                                workflow_id: Some(d.workflow_id.clone()),
+                                request: d
+                                    .inputs
+                                    .get("request")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                inputs: d.inputs,
+                            };
+                            async move {
+                                let label = format!("{}/{}", d.agent_id, d.workflow_id);
+                                match eng.execute(request).await {
+                                    Ok(result) => {
+                                        let stage_outputs = eng
+                                            .artifacts()
+                                            .get_all_stage_outputs(result.execution_id)
+                                            .await;
+                                        let findings = stage_outputs
+                                            .iter()
+                                            .max_by_key(|(idx, _)| *idx)
+                                            .and_then(|(_, v)| v.get("output").cloned());
+                                        serde_json::json!({
+                                            "agent": result.agent_name,
+                                            "workflow": result.workflow_name,
+                                            "status": "completed",
+                                            "stages": result.stages_completed,
+                                            "findings": findings,
+                                        })
+                                    }
+                                    Err(e) => serde_json::json!({
+                                        "agent": label,
+                                        "status": "failed",
+                                        "error": e,
+                                    }),
+                                }
+                            }
+                        })
+                        .collect();
+
+                    // Run all in parallel
+                    let results = futures::future::join_all(futs).await;
+
+                    Ok(serde_json::json!({
+                        "success": true,
+                        "message": format!("All {} agents completed. Relay the findings to the user.", results.len()),
+                        "results": results,
+                    }))
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "ExecutionEngine not available for parallel dispatch",
+                    }))
+                }
+            }
+
             NoraExecutiveTool::CancelWorkflow {
                 workflow_instance_id,
             } => {

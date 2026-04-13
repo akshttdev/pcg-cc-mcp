@@ -86,7 +86,7 @@ impl TTSConfig {
             Self {
                 provider: TTSProvider::ElevenLabs,
                 voice_id: "ZtcPZrt9K4w8e1OB9M6w".to_string(), // ElevenLabs: Mia Moore - Studio Presenter (British, young, conversational)
-                speed: 1.0,
+                speed: 1.15,
                 volume: 0.85,
                 pitch: 1.0,
                 quality: TTSQuality::Premium,
