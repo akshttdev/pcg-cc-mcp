@@ -329,6 +329,7 @@ impl BackgroundWorker for NoraInboxPoller {
 
     async fn run(&self, shutdown: CancellationToken) {
         use std::sync::Arc;
+
         use services::services::agent_channels::{AgentChannelService, ChannelOwner};
 
         let svc = Arc::new(AgentChannelService::new(self.pool.clone()));
@@ -336,7 +337,9 @@ impl BackgroundWorker for NoraInboxPoller {
         // Look up Nora's agent owner_id from her email account record.
         // owner_id is stored as a 32-char hex UUID string (no dashes).
         #[derive(sqlx::FromRow)]
-        struct AccountRow { owner_id: String }
+        struct AccountRow {
+            owner_id: String,
+        }
         let nora_account = sqlx::query_as::<_, AccountRow>(
             "SELECT owner_id FROM email_accounts WHERE email_address = 'nora@powerclubglobal.com' AND owner_type = 'agent' AND status != 'revoked' ORDER BY last_sync_at DESC NULLS LAST LIMIT 1"
         )
@@ -347,7 +350,10 @@ impl BackgroundWorker for NoraInboxPoller {
             Ok(Some(r)) => match uuid::Uuid::parse_str(&r.owner_id) {
                 Ok(id) => id,
                 Err(_) => {
-                    tracing::warn!("[NORA_INBOX] Could not parse Nora agent UUID '{}' — poller disabled", r.owner_id);
+                    tracing::warn!(
+                        "[NORA_INBOX] Could not parse Nora agent UUID '{}' — poller disabled",
+                        r.owner_id
+                    );
                     return;
                 }
             },
@@ -360,7 +366,9 @@ impl BackgroundWorker for NoraInboxPoller {
 
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(180)); // 3 min
 
-        tracing::info!("[NORA_INBOX] Poller started — checking nora@powerclubglobal.com every 3 min");
+        tracing::info!(
+            "[NORA_INBOX] Poller started — checking nora@powerclubglobal.com every 3 min"
+        );
 
         loop {
             tokio::select! {
