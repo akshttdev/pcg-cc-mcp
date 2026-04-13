@@ -11,4 +11,8 @@ deliverable_type: string, title: string, description: string,
 /**
  * working | internal_review | client_review | revision | client_revision | done
  */
-status: string, revision_rounds_allowed: bigint, revision_rounds_used: bigint, working_file_url: string | null, final_link: string | null, due_date: string | null, delivered_at: string | null, created_at: string, updated_at: string, };
+status: string, revision_rounds_allowed: bigint, revision_rounds_used: bigint, working_file_url: string | null, final_link: string | null, due_date: string | null, delivered_at: string | null, created_at: string, updated_at: string, 
+/**
+ * ID of the active Editron cinematic brief, if one has been dispatched
+ */
+cinematic_brief_id: string | null, };
