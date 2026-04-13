@@ -1,9 +1,20 @@
 //! Deck documents — structured slide authoring for the Lux Creator Studio.
 //!
+//! ## Storage pattern
+//!
 //! The DB layer stores `canvas_json`, `background_json`, and `elements_json`
 //! as opaque TEXT. The strongly-typed domain model (`Canvas`, `Slide`,
 //! `SlideElement`, etc.) lives in this module and is exported via ts-rs so
 //! the frontend can consume it directly.
+//!
+//! We deliberately keep the element tree as opaque JSON in the DB for Phase 0
+//! rather than normalizing into an `elements` table. Rationale: the
+//! mutations Lux and the studio perform are almost always whole-slide or
+//! whole-tree writes, not element-level queries. If we find ourselves
+//! wanting to query "all text elements referencing token X across a deal's
+//! decks", that's the signal to normalize. Until then, opaque JSON wins on
+//! simplicity, round-trip fidelity (rich text runs, nested groups), and
+//! migration-free evolution of the element schema.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -185,6 +196,18 @@ pub enum SlideElement {
     Image(ImageElement),
     Shape(ShapeElement),
     Group(GroupElement),
+}
+
+impl SlideElement {
+    /// Return the element's UUID regardless of variant.
+    pub fn id(&self) -> Uuid {
+        match self {
+            Self::Text(e) => e.id,
+            Self::Image(e) => e.id,
+            Self::Shape(e) => e.id,
+            Self::Group(e) => e.id,
+        }
+    }
 }
 
 /// Fields common to every element variant. Kept flat on each variant so the
@@ -982,5 +1005,22 @@ mod tests {
         assert_eq!(json, "[]");
         let back: Vec<SlideElement> = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(empty, back);
+    }
+
+    #[test]
+    fn slide_element_id_accessor_returns_correct_uuid() {
+        let text = sample_text();
+        let expected = match &text {
+            SlideElement::Text(e) => e.id,
+            _ => unreachable!(),
+        };
+        assert_eq!(text.id(), expected);
+
+        let shape = sample_shape();
+        let expected = match &shape {
+            SlideElement::Shape(e) => e.id,
+            _ => unreachable!(),
+        };
+        assert_eq!(shape.id(), expected);
     }
 }

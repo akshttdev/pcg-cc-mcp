@@ -11,6 +11,10 @@ use db::{
         agent_flow::{AgentFlow, AgentPhase, FlowStatus},
         agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
         crm_deal::CrmDeal,
+        deck_document::{
+            Color, CreateDeckDocument, CreateDeckSlide, DeckDocument, DeckSlide, Fill,
+            SlideElement, UpdateDeckDocument, UpdateDeckSlide,
+        },
     },
 };
 use serde_json::{json, Value};
@@ -279,14 +283,6 @@ impl AgentFlowExecutor {
             .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
             .unwrap_or_default();
 
-        // Extract deal_id from flow config for simulated mode
-        let flow_deal_id = flow
-            .flow_config
-            .as_deref()
-            .and_then(|c| serde_json::from_str::<Value>(c).ok())
-            .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
-            .unwrap_or_default();
-
         for attempt in 0..max_retries {
             let model_hint = models.get(attempt).copied().flatten();
 
@@ -470,6 +466,17 @@ impl AgentFlowExecutor {
                     .unwrap_or("");
                 self.save_artifact(flow_id, title, content).await
             }
+            // ── Lux Creator Studio deck authoring tools ────────────────────
+            "create_deck_document" => {
+                let deal_id = call
+                    .arguments
+                    .get("deal_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                self.create_deck_document(deal_id).await
+            }
+            "append_slide" => self.append_slide(&call.arguments).await,
+            "add_element" => self.add_element(&call.arguments).await,
             _ => {
                 format!("Unknown tool: {}", call.name)
             }
@@ -700,6 +707,220 @@ impl AgentFlowExecutor {
                 json!({"success": true, "artifact_id": artifact_id_str}).to_string()
             }
             Err(e) => json!({"error": e.to_string()}).to_string(),
+        }
+    }
+
+    // ── Lux deck authoring tools ────────────────────────────────────────
+    // These tools let Lux compose a structured DeckDocument via the agent
+    // flow tool loop. Every mutation bumps `deck.version` and flips
+    // `last_edited_by = "lux"` so the studio UI can detect external changes.
+
+    async fn create_deck_document(&self, deal_id_str: &str) -> String {
+        let deal_id = match DbUuid::parse(deal_id_str) {
+            Ok(id) => id,
+            Err(_) => return json!({"error": "Invalid deal_id"}).to_string(),
+        };
+
+        let deck = match DeckDocument::create(
+            &self.pool,
+            CreateDeckDocument {
+                deal_id: deal_id.to_uuid(),
+                canvas: None,
+                brand_token_version: None,
+            },
+        )
+        .await
+        {
+            Ok(d) => d,
+            Err(e) => {
+                return json!({"error": format!("Failed to create deck: {e}")}).to_string();
+            }
+        };
+
+        // Link the deck to the deal for downstream lookup. Failure here is
+        // non-fatal — the deck row still exists and can be rediscovered via
+        // DeckDocument::find_latest_for_deal.
+        if let Err(e) = sqlx::query(
+            "UPDATE crm_deals SET deck_document_id = ?1, updated_at = datetime('now','subsec') \
+             WHERE id = ?2",
+        )
+        .bind(deck.id.to_string())
+        .bind(deal_id.to_string())
+        .execute(&self.pool)
+        .await
+        {
+            tracing::warn!(
+                "[AgentFlowEngine] create_deck_document: failed to link deal {}: {}",
+                deal_id,
+                e
+            );
+        }
+
+        json!({
+            "success": true,
+            "deck_id": deck.id.to_string(),
+            "version": deck.version,
+            "canvas": serde_json::from_str::<serde_json::Value>(&deck.canvas_json).unwrap_or(Value::Null),
+        })
+        .to_string()
+    }
+
+    async fn append_slide(&self, args: &Value) -> String {
+        let deck_id_str = args.get("deck_id").and_then(|v| v.as_str()).unwrap_or("");
+        let deck_id = match DbUuid::parse(deck_id_str) {
+            Ok(id) => id,
+            Err(_) => return json!({"error": "Invalid deck_id"}).to_string(),
+        };
+
+        let slide_index = args
+            .get("slide_index")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let name = args.get("name").and_then(|v| v.as_str()).map(String::from);
+        let layout_hint = args
+            .get("layout_hint")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let notes = args.get("notes").and_then(|v| v.as_str()).map(String::from);
+
+        let background: Fill = match args.get("background") {
+            Some(bg) => match serde_json::from_value(bg.clone()) {
+                Ok(f) => f,
+                Err(e) => {
+                    return json!({"error": format!("Invalid background: {e}")}).to_string();
+                }
+            },
+            None => Fill::Solid {
+                color: Color {
+                    r: 255.0,
+                    g: 255.0,
+                    b: 255.0,
+                    a: 1.0,
+                    token: None,
+                },
+            },
+        };
+
+        let slide = match DeckSlide::create(
+            &self.pool,
+            CreateDeckSlide {
+                deck_id: deck_id.to_uuid(),
+                slide_index,
+                name,
+                layout_hint,
+                background,
+                elements: vec![],
+                notes,
+                origin: Some("lux".to_string()),
+            },
+        )
+        .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                return json!({"error": format!("Failed to append slide: {e}")}).to_string();
+            }
+        };
+
+        self.mark_deck_edited_by_lux(deck_id.to_uuid()).await;
+
+        json!({
+            "success": true,
+            "slide_id": slide.id.to_string(),
+            "slide_index": slide.slide_index,
+        })
+        .to_string()
+    }
+
+    async fn add_element(&self, args: &Value) -> String {
+        let deck_id_str = args.get("deck_id").and_then(|v| v.as_str()).unwrap_or("");
+        let slide_id_str = args.get("slide_id").and_then(|v| v.as_str()).unwrap_or("");
+        let element_value = match args.get("element") {
+            Some(v) => v.clone(),
+            None => return json!({"error": "Missing 'element' argument"}).to_string(),
+        };
+
+        let deck_id = match DbUuid::parse(deck_id_str) {
+            Ok(id) => id,
+            Err(_) => return json!({"error": "Invalid deck_id"}).to_string(),
+        };
+        let slide_id = match DbUuid::parse(slide_id_str) {
+            Ok(id) => id,
+            Err(_) => return json!({"error": "Invalid slide_id"}).to_string(),
+        };
+
+        let element: SlideElement = match serde_json::from_value(element_value) {
+            Ok(e) => e,
+            Err(e) => return json!({"error": format!("Invalid element JSON: {e}")}).to_string(),
+        };
+
+        let slide = match DeckSlide::find_by_id(&self.pool, slide_id.to_uuid()).await {
+            Ok(Some(s)) => s,
+            Ok(None) => return json!({"error": "Slide not found"}).to_string(),
+            Err(e) => {
+                return json!({"error": format!("Failed to load slide: {e}")}).to_string();
+            }
+        };
+
+        // Enforce that the slide belongs to the claimed deck — prevents a
+        // malformed prompt from writing elements into the wrong deck.
+        if slide.deck_id != deck_id.to_uuid() {
+            return json!({"error": "Slide does not belong to deck_id"}).to_string();
+        }
+
+        let mut elements: Vec<SlideElement> = match slide.elements() {
+            Ok(v) => v,
+            Err(e) => {
+                return json!({"error": format!("Failed to parse existing elements: {e}")})
+                    .to_string();
+            }
+        };
+        elements.push(element);
+        let element_id = elements
+            .last()
+            .map(|el| el.id().to_string())
+            .unwrap_or_default();
+
+        if let Err(e) = DeckSlide::update(
+            &self.pool,
+            slide_id.to_uuid(),
+            UpdateDeckSlide {
+                elements: Some(elements),
+                ..Default::default()
+            },
+        )
+        .await
+        {
+            return json!({"error": format!("Failed to persist slide: {e}")}).to_string();
+        }
+
+        self.mark_deck_edited_by_lux(deck_id.to_uuid()).await;
+
+        json!({
+            "success": true,
+            "element_id": element_id,
+        })
+        .to_string()
+    }
+
+    /// Bump `deck.version` and tag the deck as last-edited-by-lux. Failures
+    /// are logged but not fatal — the preceding mutation already succeeded.
+    async fn mark_deck_edited_by_lux(&self, deck_id: uuid::Uuid) {
+        if let Err(e) = DeckDocument::update(
+            &self.pool,
+            deck_id,
+            UpdateDeckDocument {
+                last_edited_by: Some("lux".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        {
+            tracing::warn!(
+                "[AgentFlowEngine] mark_deck_edited_by_lux: failed on deck {}: {}",
+                deck_id,
+                e
+            );
         }
     }
 
@@ -1447,6 +1668,86 @@ fn build_agent_tools() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["flow_id", "title", "content"]
+            }),
+        },
+        // ── Lux Creator Studio deck authoring tools ────────────────────
+        ToolDefinition {
+            name: "create_deck_document".to_string(),
+            description:
+                "Create a new structured deck document for a deal and link it. Returns the \
+                 new deck_id. Canvas defaults to 1920x1080 at 72dpi. Call this once at the \
+                 start of a deck generation run, then use append_slide + add_element to fill it."
+                    .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "deal_id": {
+                        "type": "string",
+                        "description": "The deal ID this deck belongs to"
+                    }
+                },
+                "required": ["deal_id"]
+            }),
+        },
+        ToolDefinition {
+            name: "append_slide".to_string(),
+            description: "Append a slide to a deck. Creates an empty slide at `slide_index`; add \
+                 elements to it with `add_element`. Returns the new slide_id."
+                .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "deck_id": {
+                        "type": "string",
+                        "description": "The deck to append to"
+                    },
+                    "slide_index": {
+                        "type": "integer",
+                        "description": "Zero-based position of this slide (Cover=0, Agenda=1, ...)"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Short slide name shown in the slide navigator (e.g. 'Cover', 'Agenda', 'Solution')"
+                    },
+                    "layout_hint": {
+                        "type": "string",
+                        "enum": ["title", "content", "split", "cover", "closer"],
+                        "description": "Optional layout family for the renderer"
+                    },
+                    "background": {
+                        "type": "object",
+                        "description": "Optional Fill: { kind: 'solid' | 'linear-gradient' | 'none', ... }. Defaults to solid white."
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Speaker notes for this slide"
+                    }
+                },
+                "required": ["deck_id", "slide_index"]
+            }),
+        },
+        ToolDefinition {
+            name: "add_element".to_string(),
+            description: "Append a SlideElement (text, image, shape, or group) to a slide. The \
+                 element JSON follows the SlideElement discriminated union: every element \
+                 has `type` ('text'|'image'|'shape'|'group'), `id` (uuid), `bbox` (x,y,w,h), \
+                 `z` (integer z-index), and `origin` ('lux'). Text adds `text`, `font_family`, \
+                 `font_size`, `color`, `align`. Image adds `asset_id?`, `asset_status` \
+                 ('pending'|'resolved'|'failed'), `fit`. Shape adds `shape`, `fill`. Group \
+                 adds `children` (nested SlideElement array). Use token_refs to reference \
+                 design tokens like color.brand.primary."
+                .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "deck_id": { "type": "string" },
+                    "slide_id": { "type": "string" },
+                    "element": {
+                        "type": "object",
+                        "description": "Full SlideElement JSON. Must include type, id, bbox, z, origin, and type-specific fields."
+                    }
+                },
+                "required": ["deck_id", "slide_id", "element"]
             }),
         },
     ]

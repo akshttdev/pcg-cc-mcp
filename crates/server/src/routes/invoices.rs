@@ -5,7 +5,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    routing::{delete, get, patch, post},
+    routing::{get, patch},
     Json, Router,
 };
 use db::models::invoice::{CreateInvoice, Invoice, UpdateInvoice};
