@@ -265,6 +265,139 @@ pub(crate) async fn create_test_project(pool: &SqlitePool) -> Uuid {
     project_id
 }
 
+pub(crate) async fn create_test_organization(pool: &SqlitePool) -> Uuid {
+    let org_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO organizations (id, name, slug, created_at)
+           VALUES (?, ?, ?, datetime('now','subsec'))"#,
+    )
+    .bind(org_id.as_bytes().as_slice())
+    .bind(format!("Test Org {org_id}"))
+    .bind(format!("test-org-{org_id}"))
+    .execute(pool)
+    .await
+    .expect("failed to create test organization");
+    org_id
+}
+
+pub(crate) async fn create_test_user(pool: &SqlitePool, org_id: Uuid) -> Uuid {
+    let user_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO users (id, username, email, full_name, password_hash, is_admin, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'test', 0, 1, datetime('now','subsec'), datetime('now','subsec'))"#,
+    )
+    .bind(user_id.as_bytes().as_slice())
+    .bind(format!("testuser-{user_id}"))
+    .bind(format!("testuser-{user_id}@example.com"))
+    .bind(format!("Test User {org_id}"))
+    .execute(pool)
+    .await
+    .expect("failed to create test user");
+    user_id
+}
+
+pub(crate) async fn create_test_avatar_profile(pool: &SqlitePool) -> Uuid {
+    let avatar_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO avatar_profiles (id, slug, display_name, heygen_avatar_id, heygen_avatar_type, elevenlabs_voice_id, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, 'heygen-test', 'talking_photo', 'eleven-test', 1, datetime('now','subsec'), datetime('now','subsec'))"#,
+    )
+    .bind(avatar_id.as_bytes().as_slice())
+    .bind(format!("test-avatar-{avatar_id}"))
+    .bind(format!("Test Avatar {avatar_id}"))
+    .execute(pool)
+    .await
+    .expect("failed to create test avatar profile");
+    avatar_id
+}
+
+pub(crate) async fn create_test_video_job(pool: &SqlitePool, avatar_id: Uuid) -> Uuid {
+    let job_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO video_jobs
+           (id, avatar_profile_id, script_text, tts_status, postprod_status, status, created_at, updated_at)
+           VALUES (?, ?, 'Test script.', 'pending', 'pending', 'pending', datetime('now','subsec'), datetime('now','subsec'))"#,
+    )
+    .bind(job_id.as_bytes().as_slice())
+    .bind(avatar_id.as_bytes().as_slice())
+    .execute(pool)
+    .await
+    .expect("failed to create test video job");
+    job_id
+}
+
+pub(crate) async fn bootstrap_video_schema(pool: &SqlitePool) {
+    let statements = [
+        r#"
+        CREATE TABLE IF NOT EXISTS organizations (
+            id BLOB PRIMARY KEY,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','subsec'))
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS users (
+            id BLOB PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT NOT NULL UNIQUE,
+            full_name TEXT,
+            password_hash TEXT NOT NULL,
+            is_admin INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec'))
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS avatar_profiles (
+            id BLOB PRIMARY KEY,
+            slug TEXT NOT NULL UNIQUE,
+            display_name TEXT,
+            heygen_avatar_id TEXT,
+            heygen_avatar_type TEXT NOT NULL DEFAULT 'talking_photo',
+            elevenlabs_voice_id TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec'))
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS video_jobs (
+            id BLOB PRIMARY KEY,
+            avatar_profile_id BLOB NOT NULL,
+            created_by BLOB,
+            script_text TEXT NOT NULL DEFAULT '',
+            background_url TEXT,
+            tts_status TEXT NOT NULL DEFAULT 'pending',
+            tts_audio_url TEXT,
+            heygen_video_id TEXT,
+            heygen_status TEXT,
+            raw_video_url TEXT,
+            final_video_url TEXT,
+            thumbnail_url TEXT,
+            duration_seconds REAL,
+            postprod_status TEXT NOT NULL DEFAULT 'pending',
+            postprod_video_path TEXT,
+            segments_json TEXT,
+            word_timestamps_json TEXT,
+            cut_points_json TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            error_message TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec'))
+        );
+        "#,
+    ];
+
+    for statement in statements {
+        sqlx::query(statement)
+            .execute(pool)
+            .await
+            .expect("failed to bootstrap video schema");
+    }
+}
+
 pub(crate) async fn create_test_social_account(
     pool: &SqlitePool,
     project_id: Uuid,
