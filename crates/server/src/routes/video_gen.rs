@@ -912,6 +912,7 @@ mod heygen {
         Ok(data.data.video_id)
     }
 
+    #[allow(dead_code)]
     /// Poll HeyGen for video status.
     pub async fn poll_status(api_key: &str, video_id: &str) -> anyhow::Result<HeyGenStatus> {
         let client = reqwest::Client::new();
@@ -951,5 +952,153 @@ mod heygen {
             duration: data.data.duration,
             error: data.data.error,
         })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Unit Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::{find_cut_points, snap_to_pause, tts::WordAlignment};
+
+    fn w(word: &str, start: f64, end: f64) -> WordAlignment {
+        WordAlignment {
+            word: word.to_string(),
+            start_time: start,
+            end_time: end,
+        }
+    }
+
+    // ---- snap_to_pause tests ------------------------------------------------
+
+    #[test]
+    fn test_snap_to_pause_finds_largest_gap() {
+        // Gap1: world(2.0) - hello(1.0) = 1.0s gap, mid = 1.5
+        // Gap2: test(3.05) - world(3.0) = 0.05s gap, mid = 3.025
+        let words = vec![
+            w("hello", 0.0, 1.0),
+            w("world", 2.0, 3.0),
+            w("test", 3.05, 4.0),
+        ];
+
+        // target=1.5, window=3.0 — both gaps are within 3.0s of 1.5
+        // largest gap (1.0s) is at mid=1.5, should be chosen
+        let result = snap_to_pause(&words, 1.5, 3.0);
+        assert!(
+            (result - 1.5).abs() < 0.001,
+            "expected ~1.5, got {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_snap_to_pause_falls_back_to_target() {
+        // All words run together with tiny gaps nowhere near the target
+        let words = vec![w("a", 0.0, 0.1), w("b", 0.11, 0.2), w("c", 0.21, 0.3)];
+
+        // target = 50.0 — no words within ±3.0s of 50.0
+        let result = snap_to_pause(&words, 50.0, 3.0);
+        assert!(
+            (result - 50.0).abs() < 0.001,
+            "expected fallback to ~50.0, got {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_snap_to_pause_outside_window() {
+        // Gap1: mid between hello(1.0) and world(2.0) = 1.5, 3.5s from target=5.0
+        // Gap2: mid between world(3.0) and end(100.0) = 51.5, far from target=5.0
+        // window=3.0 → neither gap is within 3.0s of 5.0, should fall back to target
+        let words = vec![
+            w("hello", 0.0, 1.0),
+            w("world", 2.0, 3.0),
+            w("end", 100.0, 101.0),
+        ];
+
+        // target=5.0, window=3.0
+        // gap mid=1.5 is 3.5 away (outside window)
+        // gap mid=51.5 is 46.5 away (outside window)
+        let result = snap_to_pause(&words, 5.0, 3.0);
+        assert!(
+            (result - 5.0).abs() < 0.001,
+            "expected fallback to ~5.0, got {}",
+            result
+        );
+    }
+
+    // ---- find_cut_points tests ----------------------------------------------
+
+    #[test]
+    fn test_find_cut_points_empty() {
+        let cuts = find_cut_points(&[], None);
+        assert!(cuts.is_empty(), "empty word_alignment should yield no cuts");
+    }
+
+    #[test]
+    fn test_find_cut_points_no_segments() {
+        // 10 words evenly spaced 0–10s (each word 0.0-0.8s, gap 0.2s)
+        let words: Vec<WordAlignment> = (0..10)
+            .map(|i| {
+                let start = i as f64;
+                w(&format!("word{}", i), start, start + 0.8)
+            })
+            .collect();
+
+        let cuts = find_cut_points(&words, None);
+
+        // No segments → 2-cut 40/80 split; total_dur ≈ 9.8
+        assert_eq!(cuts.len(), 2, "expected 2 cut points");
+
+        let total_dur = 9.8f64;
+        // Each cut should be close to 40% and 80% of total_dur (±3s window)
+        assert!(
+            cuts[0] > 0.0 && cuts[0] < total_dur,
+            "first cut should be within audio range"
+        );
+        assert!(cuts[1] > cuts[0], "second cut should be after first");
+    }
+
+    #[test]
+    fn test_find_cut_points_with_segments() {
+        // 20 words: Intro(5) + AI(10) + Closing(5) — 1.0s per word
+        let words: Vec<WordAlignment> = (0..20)
+            .map(|i| {
+                let start = i as f64;
+                w(&format!("word{}", i), start, start + 0.9)
+            })
+            .collect();
+
+        let segments_json = r#"[
+            {"label":"Intro","approx_words":5,"broll_category":"pcg"},
+            {"label":"AI","approx_words":10,"broll_category":"ai"},
+            {"label":"Closing","approx_words":5,"broll_category":"pcg"}
+        ]"#;
+
+        let cuts = find_cut_points(&words, Some(segments_json));
+
+        // 3 segments → 2 cut points (N-1)
+        assert_eq!(cuts.len(), 2, "expected 2 cut points for 3 segments");
+
+        // First cut should be after ~5 words (around t=5.0)
+        // Second cut should be after ~15 words (around t=15.0)
+        assert!(cuts[0] > 0.0, "first cut should be positive");
+        assert!(cuts[1] > cuts[0], "second cut should be after first");
+        assert!(cuts[1] < 20.0, "second cut should be within audio");
+    }
+
+    #[test]
+    fn test_find_cut_points_with_segments_short_audio() {
+        // total_dur < 1.0 should return empty vec
+        let words = vec![w("hi", 0.0, 0.5)];
+        let segments_json = r#"[{"label":"A","approx_words":1,"broll_category":"pcg"}]"#;
+        let cuts = find_cut_points(&words, Some(segments_json));
+        assert!(
+            cuts.is_empty(),
+            "short audio should yield no cuts, got {:?}",
+            cuts
+        );
     }
 }
