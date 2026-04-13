@@ -1,11 +1,18 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { organizationsApi, type ClientData } from '@/lib/api';
-import { Briefcase, Brain, ExternalLink, Building2, Search } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import {
+  Brain,
+  Briefcase,
+  Building2,
+  ExternalLink,
+  Search,
+} from 'lucide-react';
+import { useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Loader } from '@/components/ui/loader';
+import { type ClientData, organizationsApi } from '@/lib/api';
 
 export function OrgClientsPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -19,16 +26,25 @@ export function OrgClientsPage() {
   });
 
   const filtered = (clients as ClientData[]).filter((c) => {
-    const matchesSearch = !search || c.name.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch =
+      !search || c.name.toLowerCase().includes(search.toLowerCase());
     const matchesFilter =
-      filter === 'all' ? true :
-      filter === 'clients' ? !!c.client_since :
-      filter === 'prospects' ? (!c.client_since && !!c.prospect_at) : true;
+      filter === 'all'
+        ? true
+        : filter === 'clients'
+          ? !!c.client_since
+          : filter === 'prospects'
+            ? !c.client_since && !!c.prospect_at
+            : true;
     return matchesSearch && matchesFilter && c.is_active;
   });
 
-  const clientCount = (clients as ClientData[]).filter((c) => !!c.client_since).length;
-  const prospectCount = (clients as ClientData[]).filter((c) => !c.client_since && !!c.prospect_at).length;
+  const clientCount = (clients as ClientData[]).filter(
+    (c) => !!c.client_since
+  ).length;
+  const prospectCount = (clients as ClientData[]).filter(
+    (c) => !c.client_since && !!c.prospect_at
+  ).length;
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -39,7 +55,8 @@ export function OrgClientsPage() {
             Clients
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {clientCount} active client{clientCount !== 1 ? 's' : ''} · {prospectCount} prospect{prospectCount !== 1 ? 's' : ''}
+            {clientCount} active client{clientCount !== 1 ? 's' : ''} ·{' '}
+            {prospectCount} prospect{prospectCount !== 1 ? 's' : ''}
           </p>
         </div>
       </div>
@@ -100,18 +117,31 @@ export function OrgClientsPage() {
             >
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-                  {(client as ClientData & { company_logo_url?: string }).company_logo_url
-                    ? <img src={(client as ClientData & { company_logo_url?: string }).company_logo_url} className="w-full h-full object-contain p-1" alt="" />
-                    : <Building2 className="h-5 w-5 text-muted-foreground" />
-                  }
+                  {(client as ClientData & { company_logo_url?: string })
+                    .company_logo_url ? (
+                    <img
+                      src={
+                        (client as ClientData & { company_logo_url?: string })
+                          .company_logo_url
+                      }
+                      className="w-full h-full object-contain p-1"
+                      alt=""
+                    />
+                  ) : (
+                    <Building2 className="h-5 w-5 text-muted-foreground" />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold truncate group-hover:text-indigo-400 transition-colors">
                     {client.name}
                   </p>
-                  {(client as ClientData & { company_industry?: string }).company_industry && (
+                  {(client as ClientData & { company_industry?: string })
+                    .company_industry && (
                     <p className="text-xs text-muted-foreground truncate">
-                      {(client as ClientData & { company_industry?: string }).company_industry}
+                      {
+                        (client as ClientData & { company_industry?: string })
+                          .company_industry
+                      }
                     </p>
                   )}
                 </div>
@@ -125,7 +155,8 @@ export function OrgClientsPage() {
                 >
                   {isClient ? 'Client' : isProspect ? 'Prospect' : 'Active'}
                 </Badge>
-                {(client as ClientData & { company_intel_status?: string }).company_intel_status === 'done' && (
+                {(client as ClientData & { company_intel_status?: string })
+                  .company_intel_status === 'done' && (
                   <span className="flex items-center gap-1 text-xs text-indigo-400">
                     <Brain className="h-3 w-3" /> Intel
                   </span>

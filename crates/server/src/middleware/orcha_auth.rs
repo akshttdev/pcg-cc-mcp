@@ -16,10 +16,10 @@ use deployment::Deployment;
 use sqlx::SqlitePool;
 
 use crate::{
-    DeploymentImpl,
     error::ApiError,
-    middleware::access_control::{AccessContext, get_current_user},
+    middleware::access_control::{get_current_user, AccessContext},
     orcha_routing::{OrchaRouter, TopsiRoute},
+    DeploymentImpl,
 };
 
 /// Extended access context with ORCHA routing information

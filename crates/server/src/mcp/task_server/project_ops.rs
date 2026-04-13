@@ -3,11 +3,11 @@ use db::models::{
     project::Project,
     task::{CreateTask, Task},
 };
-use rmcp::{ErrorData, handler::server::tool::Parameters, model::CallToolResult, tool};
+use rmcp::{handler::server::tool::Parameters, model::CallToolResult, tool, ErrorData};
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
-use super::{TaskServer, helpers::*, types::*};
+use super::{helpers::*, types::*, TaskServer};
 
 impl TaskServer {
     #[tool(description = "List all projects accessible to the current user")]

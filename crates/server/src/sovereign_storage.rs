@@ -25,7 +25,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use flate2::{Compression, read::GzDecoder, write::GzEncoder};
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::time;

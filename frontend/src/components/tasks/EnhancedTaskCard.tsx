@@ -185,11 +185,17 @@ function ArtifactPreview({
 
     case 'document': {
       const filePath = artifact.file_path;
-      const fileLabel = filePath?.toLowerCase().includes('.pdf') ? 'PDF'
-        : filePath?.toLowerCase().includes('.docx') ? 'DOCX'
-        : filePath?.includes('docs.google.com') ? 'Doc'
-        : filePath?.includes('dropbox.com') ? 'File'
-        : filePath ? 'Link' : null;
+      const fileLabel = filePath?.toLowerCase().includes('.pdf')
+        ? 'PDF'
+        : filePath?.toLowerCase().includes('.docx')
+          ? 'DOCX'
+          : filePath?.includes('docs.google.com')
+            ? 'Doc'
+            : filePath?.includes('dropbox.com')
+              ? 'File'
+              : filePath
+                ? 'Link'
+                : null;
       return (
         <div className="bg-gray-50 dark:bg-gray-900 rounded-md p-2 max-h-20 overflow-hidden">
           <div className="flex items-center gap-1.5 mb-1">

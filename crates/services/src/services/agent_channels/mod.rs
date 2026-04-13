@@ -307,18 +307,33 @@ impl AgentChannelService {
             .as_array()
             .and_then(|arr| {
                 arr.iter().find(|f| {
-                    f["folderName"].as_str().map(|n| n.eq_ignore_ascii_case("Inbox")).unwrap_or(false)
+                    f["folderName"]
+                        .as_str()
+                        .map(|n| n.eq_ignore_ascii_case("Inbox"))
+                        .unwrap_or(false)
                 })
             })
-            .and_then(|f| f["folderId"].as_str().or_else(|| f["folderId"].as_u64().map(|_| "")).map(|_| ()))
+            .and_then(|f| {
+                f["folderId"]
+                    .as_str()
+                    .or_else(|| f["folderId"].as_u64().map(|_| ""))
+                    .map(|_| ())
+            })
             .and_then(|_| {
                 folders["data"].as_array().and_then(|arr| {
-                    arr.iter().find(|f| {
-                        f["folderName"].as_str().map(|n| n.eq_ignore_ascii_case("Inbox")).unwrap_or(false)
-                    }).and_then(|f| {
-                        f["folderId"].as_u64().map(|id| id.to_string())
-                            .or_else(|| f["folderId"].as_str().map(String::from))
-                    })
+                    arr.iter()
+                        .find(|f| {
+                            f["folderName"]
+                                .as_str()
+                                .map(|n| n.eq_ignore_ascii_case("Inbox"))
+                                .unwrap_or(false)
+                        })
+                        .and_then(|f| {
+                            f["folderId"]
+                                .as_u64()
+                                .map(|id| id.to_string())
+                                .or_else(|| f["folderId"].as_str().map(String::from))
+                        })
                 })
             })
             .ok_or_else(|| ChannelError::Api("Inbox folder not found".into()))?;
@@ -560,7 +575,9 @@ async fn fetch_linked_documents(http: &Client, text: &str) -> String {
     let mut results = Vec::new();
 
     for url_match in re_url.find_iter(text) {
-        let url = url_match.as_str().trim_end_matches(&['.', ',', ')', ']'][..]);
+        let url = url_match
+            .as_str()
+            .trim_end_matches(&['.', ',', ')', ']'][..]);
 
         if url.contains("docs.google.com/document") {
             // Convert to plain text export URL
@@ -568,7 +585,10 @@ async fn fetch_linked_documents(http: &Client, text: &str) -> String {
                 let after_d = &url[id_start + 3..];
                 let doc_id = after_d.split('/').next().unwrap_or("");
                 if !doc_id.is_empty() {
-                    format!("https://docs.google.com/document/d/{}/export?format=txt", doc_id)
+                    format!(
+                        "https://docs.google.com/document/d/{}/export?format=txt",
+                        doc_id
+                    )
                 } else {
                     continue;
                 }
@@ -580,14 +600,19 @@ async fn fetch_linked_documents(http: &Client, text: &str) -> String {
                 if resp.status().is_success() {
                     if let Ok(text) = resp.text().await {
                         if text.len() > 50 {
-                            results.push(format!("[Google Doc: {}]\n{}", url, &text[..text.len().min(8000)]));
+                            results.push(format!(
+                                "[Google Doc: {}]\n{}",
+                                url,
+                                &text[..text.len().min(8000)]
+                            ));
                         }
                     }
                 }
             }
         } else if url.contains("fireflies.ai/view") || url.contains("fireflies.ai/d") {
             // Fireflies public transcript page — fetch HTML and strip
-            if let Ok(resp) = http.get(url)
+            if let Ok(resp) = http
+                .get(url)
                 .header("User-Agent", "Mozilla/5.0")
                 .send()
                 .await
@@ -602,13 +627,18 @@ async fn fetch_linked_documents(http: &Client, text: &str) -> String {
                             &plain
                         };
                         if trimmed.len() > 100 {
-                            results.push(format!("[Fireflies Transcript: {}]\n{}", url, &trimmed[..trimmed.len().min(8000)]));
+                            results.push(format!(
+                                "[Fireflies Transcript: {}]\n{}",
+                                url,
+                                &trimmed[..trimmed.len().min(8000)]
+                            ));
                         }
                     }
                 }
             }
         } else if url.contains("otter.ai") {
-            if let Ok(resp) = http.get(url)
+            if let Ok(resp) = http
+                .get(url)
                 .header("User-Agent", "Mozilla/5.0")
                 .send()
                 .await
@@ -617,7 +647,11 @@ async fn fetch_linked_documents(http: &Client, text: &str) -> String {
                     if let Ok(html) = resp.text().await {
                         let plain = strip_html(&html);
                         if plain.len() > 100 {
-                            results.push(format!("[Otter.ai Transcript: {}]\n{}", url, &plain[..plain.len().min(8000)]));
+                            results.push(format!(
+                                "[Otter.ai Transcript: {}]\n{}",
+                                url,
+                                &plain[..plain.len().min(8000)]
+                            ));
                         }
                     }
                 }

@@ -181,14 +181,15 @@ export function EnhancedTaskDetailsPanel({
               )}
             </Button>
             <IconButton
-              variant="ghost" onClick={handleRefresh}
+              variant="ghost"
+              onClick={handleRefresh}
               className="h-8 w-8"
               icon={RefreshCw}
               label="Refresh"
               iconClassName={cn(
-                  'h-4 w-4',
-                  (artifactsLoading || workflowLoading) && 'animate-spin'
-                )}
+                'h-4 w-4',
+                (artifactsLoading || workflowLoading) && 'animate-spin'
+              )}
             />
           </div>
         </div>

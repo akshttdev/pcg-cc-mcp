@@ -4,12 +4,12 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use db::{DbUuid, bind_uuid_blob};
+use db::{bind_uuid_blob, DbUuid};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProjectRole {

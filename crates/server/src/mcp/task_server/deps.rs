@@ -2,10 +2,10 @@ use db::models::{
     task::Task,
     task_dependency::{CreateTaskDependency, DependencyType, TaskDependency},
 };
-use rmcp::{ErrorData, handler::server::tool::Parameters, model::CallToolResult, tool};
+use rmcp::{handler::server::tool::Parameters, model::CallToolResult, tool, ErrorData};
 use serde_json::Value;
 
-use super::{TaskServer, helpers::*, types::*};
+use super::{helpers::*, types::*, TaskServer};
 
 impl TaskServer {
     #[tool(

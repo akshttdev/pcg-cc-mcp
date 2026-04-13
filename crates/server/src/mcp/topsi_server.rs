@@ -9,12 +9,11 @@
 
 use db::models::{agent::Agent, task::Task};
 use rmcp::{
-    ErrorData, ServerHandler,
     handler::server::tool::{Parameters, ToolRouter},
     model::{
         CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
     },
-    schemars, tool, tool_handler, tool_router,
+    schemars, tool, tool_handler, tool_router, ErrorData, ServerHandler,
 };
 use serde::Deserialize;
 use sqlx::SqlitePool;

@@ -17,11 +17,7 @@ pub struct TtsResult {
 
 /// Generate TTS audio via ElevenLabs with-timestamps endpoint.
 /// Returns raw MP3 bytes + word-level alignment for lip sync.
-pub async fn generate_tts(
-    api_key: &str,
-    voice_id: &str,
-    text: &str,
-) -> Result<TtsResult> {
+pub async fn generate_tts(api_key: &str, voice_id: &str, text: &str) -> Result<TtsResult> {
     let client = reqwest::Client::new();
     let url = format!(
         "https://api.elevenlabs.io/v1/text-to-speech/{}/with-timestamps",
@@ -70,7 +66,11 @@ pub async fn generate_tts(
     let audio_bytes = base64_decode(&parsed.audio_base64)?;
 
     let word_alignment = if let Some(align) = parsed.alignment {
-        chars_to_words(&align.characters, &align.character_start_times_seconds, &align.character_end_times_seconds)
+        chars_to_words(
+            &align.characters,
+            &align.character_start_times_seconds,
+            &align.character_end_times_seconds,
+        )
     } else {
         vec![]
     };
@@ -81,15 +81,14 @@ pub async fn generate_tts(
         word_alignment.len()
     );
 
-    Ok(TtsResult { audio_bytes, word_alignment })
+    Ok(TtsResult {
+        audio_bytes,
+        word_alignment,
+    })
 }
 
 /// Collapse character-level alignment into word-level alignment.
-fn chars_to_words(
-    chars: &[String],
-    starts: &[f64],
-    ends: &[f64],
-) -> Vec<WordAlignment> {
+fn chars_to_words(chars: &[String], starts: &[f64], ends: &[f64]) -> Vec<WordAlignment> {
     let mut words = Vec::new();
     let mut current_word = String::new();
     let mut word_start = 0.0f64;
@@ -129,6 +128,6 @@ fn chars_to_words(
 }
 
 fn base64_decode(s: &str) -> Result<Vec<u8>> {
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
     STANDARD.decode(s).context("base64 decode failed")
 }

@@ -1,5 +1,9 @@
-import { makeRequest, handleApiResponse } from './client';
-import type { PersonOrgContact, OrgBrandProfile, OrgKnowledgeSource } from './communication';
+import { handleApiResponse, makeRequest } from './client';
+import type {
+  OrgBrandProfile,
+  OrgKnowledgeSource,
+  PersonOrgContact,
+} from './communication';
 
 // ── Member & share types ────────────────────────────────────────────────────
 
@@ -8,7 +12,12 @@ export interface OrgMemberRecord {
   user_id: string;
   role: string;
   joined_at: string;
-  user?: { username: string; full_name: string; email: string; avatar_url?: string };
+  user?: {
+    username: string;
+    full_name: string;
+    email: string;
+    avatar_url?: string;
+  };
 }
 
 export interface OrgInvitationRecord {
@@ -39,7 +48,11 @@ export interface MemberAssignmentRecord {
   projects: Array<{ project_id: string; project_name: string; role: string }>;
   clients: Array<{ client_id: string; client_name: string; role: string }>;
   tasks: Array<{ task_id: string; title: string; project_name: string }>;
-  watched_tasks: Array<{ task_id: string; title: string; project_name: string }>;
+  watched_tasks: Array<{
+    task_id: string;
+    title: string;
+    project_name: string;
+  }>;
 }
 
 // ============================================================================
@@ -172,7 +185,11 @@ export const organizationsApi = {
     return handleApiResponse<OrganizationData>(response);
   },
 
-  create: async (data: { name: string; slug: string; description?: string }): Promise<OrganizationData> => {
+  create: async (data: {
+    name: string;
+    slug: string;
+    description?: string;
+  }): Promise<OrganizationData> => {
     const response = await makeRequest('/api/organizations', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -180,7 +197,10 @@ export const organizationsApi = {
     return handleApiResponse<OrganizationData>(response);
   },
 
-  update: async (id: string, data: { name?: string; slug?: string; description?: string }): Promise<OrganizationData> => {
+  update: async (
+    id: string,
+    data: { name?: string; slug?: string; description?: string }
+  ): Promise<OrganizationData> => {
     const response = await makeRequest(`/api/organizations/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -215,7 +235,11 @@ export const organizationsApi = {
     return handleApiResponse<OrgMemberRecord[]>(response);
   },
 
-  addMember: async (orgId: string, userId: string, role?: string): Promise<OrgMemberRecord> => {
+  addMember: async (
+    orgId: string,
+    userId: string,
+    role?: string
+  ): Promise<OrgMemberRecord> => {
     const response = await makeRequest(`/api/organizations/${orgId}/members`, {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, role }),
@@ -224,67 +248,126 @@ export const organizationsApi = {
   },
 
   removeMember: async (orgId: string, userId: string): Promise<void> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}`, {
-      method: 'DELETE',
-    });
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/members/${userId}`,
+      {
+        method: 'DELETE',
+      }
+    );
     return handleApiResponse<void>(response);
   },
 
-  changeMemberRole: async (orgId: string, userId: string, role: string): Promise<OrgMemberRecord> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/role`, {
-      method: 'PUT',
-      body: JSON.stringify({ role }),
-    });
+  changeMemberRole: async (
+    orgId: string,
+    userId: string,
+    role: string
+  ): Promise<OrgMemberRecord> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/members/${userId}/role`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ role }),
+      }
+    );
     return handleApiResponse<OrgMemberRecord>(response);
   },
 
   // Member assignments
-  getMemberAssignments: async (orgId: string, userId: string): Promise<MemberAssignmentRecord> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments`);
+  getMemberAssignments: async (
+    orgId: string,
+    userId: string
+  ): Promise<MemberAssignmentRecord> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/members/${userId}/assignments`
+    );
     return handleApiResponse<MemberAssignmentRecord>(response);
   },
 
-  assignMember: async (orgId: string, userId: string, type: string, targetId: string, role?: string): Promise<{ success: boolean }> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assign`, {
-      method: 'POST',
-      body: JSON.stringify({ type, target_id: targetId, role }),
-    });
+  assignMember: async (
+    orgId: string,
+    userId: string,
+    type: string,
+    targetId: string,
+    role?: string
+  ): Promise<{ success: boolean }> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/members/${userId}/assign`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ type, target_id: targetId, role }),
+      }
+    );
     return handleApiResponse<{ success: boolean }>(response);
   },
 
-  watchTaskForMember: async (orgId: string, userId: string, taskId: string): Promise<{ success: boolean }> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/watch`, {
-      method: 'POST',
-      body: JSON.stringify({ task_id: taskId }),
-    });
+  watchTaskForMember: async (
+    orgId: string,
+    userId: string,
+    taskId: string
+  ): Promise<{ success: boolean }> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/members/${userId}/watch`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ task_id: taskId }),
+      }
+    );
     return handleApiResponse<{ success: boolean }>(response);
   },
 
-  unassignProject: async (orgId: string, userId: string, projectId: string): Promise<void> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments/project/${projectId}`, {
-      method: 'DELETE',
-    });
+  unassignProject: async (
+    orgId: string,
+    userId: string,
+    projectId: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/members/${userId}/assignments/project/${projectId}`,
+      {
+        method: 'DELETE',
+      }
+    );
     return handleApiResponse<void>(response);
   },
 
-  unassignClient: async (orgId: string, userId: string, clientId: string): Promise<void> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments/client/${clientId}`, {
-      method: 'DELETE',
-    });
+  unassignClient: async (
+    orgId: string,
+    userId: string,
+    clientId: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/members/${userId}/assignments/client/${clientId}`,
+      {
+        method: 'DELETE',
+      }
+    );
     return handleApiResponse<void>(response);
   },
 
   // Org invitations
-  createInvitation: async (orgId: string, role?: string, maxUses?: number, expiresInHours?: number): Promise<OrgInvitationRecord> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/invitations`, {
-      method: 'POST',
-      body: JSON.stringify({ role, max_uses: maxUses, expires_in_hours: expiresInHours }),
-    });
+  createInvitation: async (
+    orgId: string,
+    role?: string,
+    maxUses?: number,
+    expiresInHours?: number
+  ): Promise<OrgInvitationRecord> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/invitations`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          role,
+          max_uses: maxUses,
+          expires_in_hours: expiresInHours,
+        }),
+      }
+    );
     return handleApiResponse<OrgInvitationRecord>(response);
   },
 
   listInvitations: async (orgId: string): Promise<OrgInvitationRecord[]> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/invitations`);
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/invitations`
+    );
     return handleApiResponse<OrgInvitationRecord[]>(response);
   },
 
@@ -294,7 +377,10 @@ export const organizationsApi = {
     return handleApiResponse<ClientData[]>(response);
   },
 
-  createClient: async (orgId: string, data: { name: string; slug: string; description?: string; website?: string }): Promise<ClientData> => {
+  createClient: async (
+    orgId: string,
+    data: { name: string; slug: string; description?: string; website?: string }
+  ): Promise<ClientData> => {
     const response = await makeRequest(`/api/organizations/${orgId}/clients`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -307,15 +393,30 @@ export const organizationsApi = {
     return handleApiResponse<ClientWithIntel>(response);
   },
 
-  linkClientCompany: async (clientId: string, companyId: string, personId?: string): Promise<void> => {
-    const response = await makeRequest(`/api/clients/${clientId}/link-company`, {
-      method: 'POST',
-      body: JSON.stringify({ company_id: companyId, person_id: personId }),
-    });
+  linkClientCompany: async (
+    clientId: string,
+    companyId: string,
+    personId?: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/clients/${clientId}/link-company`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ company_id: companyId, person_id: personId }),
+      }
+    );
     return handleApiResponse<void>(response);
   },
 
-  updateClient: async (clientId: string, data: { name?: string; slug?: string; description?: string; website?: string }): Promise<ClientData> => {
+  updateClient: async (
+    clientId: string,
+    data: {
+      name?: string;
+      slug?: string;
+      description?: string;
+      website?: string;
+    }
+  ): Promise<ClientData> => {
     const response = await makeRequest(`/api/clients/${clientId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -332,24 +433,42 @@ export const organizationsApi = {
 
   // Board Shares
   getBoardShares: async (orgId: string): Promise<BoardShareRecord[]> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/board-shares`);
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/board-shares`
+    );
     return handleApiResponse<BoardShareRecord[]>(response);
   },
 
   getSharedBoards: async (orgId: string): Promise<BoardShareRecord[]> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/shared-boards`);
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/shared-boards`
+    );
     return handleApiResponse<BoardShareRecord[]>(response);
   },
 
-  createBoardShare: async (orgId: string, data: { board_id: string; target_organization_id: string; permission?: string; share_type?: string }): Promise<BoardShareRecord> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/board-shares`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  createBoardShare: async (
+    orgId: string,
+    data: {
+      board_id: string;
+      target_organization_id: string;
+      permission?: string;
+      share_type?: string;
+    }
+  ): Promise<BoardShareRecord> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/board-shares`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<BoardShareRecord>(response);
   },
 
-  updateBoardShare: async (shareId: string, data: { permission?: string; share_type?: string; is_active?: boolean }): Promise<BoardShareRecord> => {
+  updateBoardShare: async (
+    shareId: string,
+    data: { permission?: string; share_type?: string; is_active?: boolean }
+  ): Promise<BoardShareRecord> => {
     const response = await makeRequest(`/api/board-shares/${shareId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -366,49 +485,93 @@ export const organizationsApi = {
 
   // Person-org junction (for context badges)
   listPersonContacts: async (orgId: string): Promise<PersonOrgContact[]> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/person-contacts`);
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/person-contacts`
+    );
     return handleApiResponse<PersonOrgContact[]>(response);
   },
-  addPersonContact: async (orgId: string, data: { person_id: string; context?: string }): Promise<PersonOrgContact> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/person-contacts`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  addPersonContact: async (
+    orgId: string,
+    data: { person_id: string; context?: string }
+  ): Promise<PersonOrgContact> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/person-contacts`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<PersonOrgContact>(response);
   },
 
   // Brand profile
   getBrandProfile: async (orgId: string): Promise<OrgBrandProfile | null> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/brand-profile`);
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/brand-profile`
+    );
     return handleApiResponse<OrgBrandProfile | null>(response);
   },
-  upsertBrandProfile: async (orgId: string, data: Partial<OrgBrandProfile>): Promise<OrgBrandProfile> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/brand-profile`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  upsertBrandProfile: async (
+    orgId: string,
+    data: Partial<OrgBrandProfile>
+  ): Promise<OrgBrandProfile> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/brand-profile`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<OrgBrandProfile>(response);
   },
-  triggerBrandResearch: async (orgId: string): Promise<{ orgId: string; status: string; message: string }> => {
-    const r = await makeRequest(`/api/organizations/${orgId}/brand-research`, { method: 'POST' });
+  triggerBrandResearch: async (
+    orgId: string
+  ): Promise<{ orgId: string; status: string; message: string }> => {
+    const r = await makeRequest(`/api/organizations/${orgId}/brand-research`, {
+      method: 'POST',
+    });
     return handleApiResponse(r);
   },
-  seedBrandProject: async (orgId: string): Promise<{ project_id: string; message: string }> => {
+  seedBrandProject: async (
+    orgId: string
+  ): Promise<{ project_id: string; message: string }> => {
     const r = await fetch(`/api/organizations/${orgId}/seed-brand-project`, {
       method: 'POST',
       credentials: 'include',
     });
     return r.json() as Promise<{ project_id: string; message: string }>;
   },
-  getBrandResearchStatus: async (orgId: string): Promise<{ orgId: string; status: string; summary?: string; ranAt?: string }> => {
-    const r = await makeRequest(`/api/organizations/${orgId}/brand-research/status`);
+  getBrandResearchStatus: async (
+    orgId: string
+  ): Promise<{
+    orgId: string;
+    status: string;
+    summary?: string;
+    ranAt?: string;
+  }> => {
+    const r = await makeRequest(
+      `/api/organizations/${orgId}/brand-research/status`
+    );
     return handleApiResponse(r);
   },
-  generateIntakeToken: async (orgId: string): Promise<{ token: string; url: string; expiresAt: string }> => {
-    const r = await makeRequest(`/api/organizations/${orgId}/intake-token`, { method: 'POST' });
+  generateIntakeToken: async (
+    orgId: string
+  ): Promise<{ token: string; url: string; expiresAt: string }> => {
+    const r = await makeRequest(`/api/organizations/${orgId}/intake-token`, {
+      method: 'POST',
+    });
     return handleApiResponse(r);
   },
-  getKnowledge: async (orgId: string): Promise<{ knowledge_entries: OrgKnowledgeSource[]; stats: { knowledge_entry_count: number; data_source_count: number; avg_coverage: number } }> => {
+  getKnowledge: async (
+    orgId: string
+  ): Promise<{
+    knowledge_entries: OrgKnowledgeSource[];
+    stats: {
+      knowledge_entry_count: number;
+      data_source_count: number;
+      avg_coverage: number;
+    };
+  }> => {
     const r = await makeRequest(`/api/organizations/${orgId}/knowledge`);
     return handleApiResponse(r);
   },
@@ -419,12 +582,24 @@ export const organizationsApi = {
 // ============================================================================
 
 export const intakeApi = {
-  getContext: async (token: string): Promise<{ orgName: string; orgId: string; existing: Record<string, string | null> }> => {
+  getContext: async (
+    token: string
+  ): Promise<{
+    orgName: string;
+    orgId: string;
+    existing: Record<string, string | null>;
+  }> => {
     const r = await makeRequest(`/api/intake/${token}`);
     return handleApiResponse(r);
   },
-  submit: async (token: string, data: Record<string, string>): Promise<{ message: string }> => {
-    const r = await makeRequest(`/api/intake/${token}`, { method: 'POST', body: JSON.stringify(data) });
+  submit: async (
+    token: string,
+    data: Record<string, string>
+  ): Promise<{ message: string }> => {
+    const r = await makeRequest(`/api/intake/${token}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
     return handleApiResponse(r);
   },
 };
@@ -489,12 +664,17 @@ export interface CreateKnowledgeSourceRequest {
 }
 
 export const knowledgeApi = {
-  getProjectKnowledge: async (projectId: string): Promise<ProjectKnowledgeResponse> => {
+  getProjectKnowledge: async (
+    projectId: string
+  ): Promise<ProjectKnowledgeResponse> => {
     const response = await makeRequest(`/api/projects/${projectId}/knowledge`);
     return handleApiResponse<ProjectKnowledgeResponse>(response);
   },
 
-  createSource: async (projectId: string, data: CreateKnowledgeSourceRequest): Promise<ProjectKnowledgeSource> => {
+  createSource: async (
+    projectId: string,
+    data: CreateKnowledgeSourceRequest
+  ): Promise<ProjectKnowledgeSource> => {
     const response = await makeRequest(`/api/projects/${projectId}/knowledge`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -503,16 +683,22 @@ export const knowledgeApi = {
   },
 
   refreshSource: async (projectId: string, sourceId: string): Promise<void> => {
-    const response = await makeRequest(`/api/projects/${projectId}/knowledge/${sourceId}/refresh`, {
-      method: 'POST',
-    });
+    const response = await makeRequest(
+      `/api/projects/${projectId}/knowledge/${sourceId}/refresh`,
+      {
+        method: 'POST',
+      }
+    );
     await handleApiResponse<void>(response);
   },
 
   markStale: async (projectId: string, sourceId: string): Promise<void> => {
-    const response = await makeRequest(`/api/projects/${projectId}/knowledge/${sourceId}/stale`, {
-      method: 'POST',
-    });
+    const response = await makeRequest(
+      `/api/projects/${projectId}/knowledge/${sourceId}/stale`,
+      {
+        method: 'POST',
+      }
+    );
     await handleApiResponse<void>(response);
   },
 };
@@ -538,7 +724,9 @@ export interface ConvertEntityResponse {
 }
 
 export const entityConversionApi = {
-  convert: async (data: ConvertEntityRequest): Promise<ConvertEntityResponse> => {
+  convert: async (
+    data: ConvertEntityRequest
+  ): Promise<ConvertEntityResponse> => {
     const response = await makeRequest('/api/entities/convert', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -552,7 +740,14 @@ export const entityConversionApi = {
 // ============================================================================
 
 export type ExecutionMode = 'standard' | 'ralph' | 'parallel' | 'pipeline';
-export type RalphLoopStatus = 'initializing' | 'running' | 'validating' | 'complete' | 'maxreached' | 'failed' | 'cancelled';
+export type RalphLoopStatus =
+  | 'initializing'
+  | 'running'
+  | 'validating'
+  | 'complete'
+  | 'maxreached'
+  | 'failed'
+  | 'cancelled';
 
 export interface AgentExecutionProfile {
   id: string;
@@ -646,22 +841,40 @@ export const agentExecutionConfigApi = {
     const response = await makeRequest('/api/execution-profiles');
     return handleApiResponse<AgentExecutionProfile[]>(response);
   },
-  getAgentConfig: async (agentId: string): Promise<AgentExecutionConfig | { type: 'NotFound' }> => {
-    const response = await makeRequest(`/api/agents/${agentId}/execution-config`);
-    return handleApiResponse<AgentExecutionConfig | { type: 'NotFound' }>(response);
+  getAgentConfig: async (
+    agentId: string
+  ): Promise<AgentExecutionConfig | { type: 'NotFound' }> => {
+    const response = await makeRequest(
+      `/api/agents/${agentId}/execution-config`
+    );
+    return handleApiResponse<AgentExecutionConfig | { type: 'NotFound' }>(
+      response
+    );
   },
-  createAgentConfig: async (agentId: string, data: CreateAgentExecutionConfig): Promise<AgentExecutionConfig> => {
-    const response = await makeRequest(`/api/agents/${agentId}/execution-config`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  createAgentConfig: async (
+    agentId: string,
+    data: CreateAgentExecutionConfig
+  ): Promise<AgentExecutionConfig> => {
+    const response = await makeRequest(
+      `/api/agents/${agentId}/execution-config`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<AgentExecutionConfig>(response);
   },
-  updateAgentConfig: async (agentId: string, data: UpdateAgentExecutionConfig): Promise<AgentExecutionConfig> => {
-    const response = await makeRequest(`/api/agents/${agentId}/execution-config`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updateAgentConfig: async (
+    agentId: string,
+    data: UpdateAgentExecutionConfig
+  ): Promise<AgentExecutionConfig> => {
+    const response = await makeRequest(
+      `/api/agents/${agentId}/execution-config`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<AgentExecutionConfig>(response);
   },
 };

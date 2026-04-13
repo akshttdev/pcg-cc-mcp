@@ -14,7 +14,11 @@ pub async fn upload_audio_wav(api_key: &str, wav_bytes: Vec<u8>) -> Result<Strin
     upload_audio_with_type(api_key, wav_bytes, "audio/x-wav").await
 }
 
-async fn upload_audio_with_type(api_key: &str, audio_bytes: Vec<u8>, content_type: &str) -> Result<String> {
+async fn upload_audio_with_type(
+    api_key: &str,
+    audio_bytes: Vec<u8>,
+    content_type: &str,
+) -> Result<String> {
     let client = reqwest::Client::new();
 
     let resp = client
@@ -41,7 +45,10 @@ async fn upload_audio_with_type(api_key: &str, audio_bytes: Vec<u8>, content_typ
         url: String,
     }
 
-    let parsed: UploadResp = resp.json().await.context("parsing HeyGen upload response")?;
+    let parsed: UploadResp = resp
+        .json()
+        .await
+        .context("parsing HeyGen upload response")?;
     Ok(parsed.data.url)
 }
 
@@ -116,13 +123,16 @@ pub async fn generate_with_audio(
         video_id: String,
     }
 
-    let parsed: GenerateResp = resp.json().await.context("parsing HeyGen generate response")?;
+    let parsed: GenerateResp = resp
+        .json()
+        .await
+        .context("parsing HeyGen generate response")?;
     Ok(parsed.data.video_id)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoStatus {
-    pub status: String,        // "pending" | "processing" | "completed" | "failed"
+    pub status: String, // "pending" | "processing" | "completed" | "failed"
     pub video_url: Option<String>,
     pub thumbnail_url: Option<String>,
     pub duration: Option<f64>, // seconds
@@ -163,7 +173,10 @@ pub async fn poll_status(api_key: &str, video_id: &str) -> Result<VideoStatus> {
         error: Option<String>,
     }
 
-    let parsed: StatusResp = resp.json().await.context("parsing HeyGen status response")?;
+    let parsed: StatusResp = resp
+        .json()
+        .await
+        .context("parsing HeyGen status response")?;
     Ok(VideoStatus {
         status: parsed.data.status,
         video_url: parsed.data.video_url,

@@ -1,6 +1,8 @@
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { ExecutionArtifact } from 'shared/types';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
+
 import { ArtifactGallery } from '../../ArtifactGallery';
 
 interface ArtifactsTabProps {

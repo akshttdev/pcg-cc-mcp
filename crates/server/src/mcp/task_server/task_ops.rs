@@ -4,16 +4,15 @@ use db::models::{
     task::{CreateTask, Priority, Task, TaskWithAttemptStatus},
 };
 use rmcp::{
-    ErrorData,
     handler::server::tool::Parameters,
     model::{CallToolResult, Content},
-    tool,
+    tool, ErrorData,
 };
 use serde_json::Value;
 use sqlx::types::Json as SqlxJson;
 use uuid::Uuid;
 
-use super::{TaskServer, helpers::*, types::*};
+use super::{helpers::*, types::*, TaskServer};
 
 impl TaskServer {
     #[tool(

@@ -2,8 +2,8 @@
 
 use lazy_static::lazy_static;
 use prometheus::{
-    CounterVec, Encoder, Gauge, HistogramVec, TextEncoder, register_counter_vec, register_gauge,
-    register_histogram_vec,
+    register_counter_vec, register_gauge, register_histogram_vec, CounterVec, Encoder, Gauge,
+    HistogramVec, TextEncoder,
 };
 
 lazy_static! {
