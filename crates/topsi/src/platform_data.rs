@@ -1630,7 +1630,7 @@ impl PlatformDataService {
                     "stage": d.stage,
                     "pipeline": d.pipeline,
                     "probability": d.probability,
-                    "expected_close_date": d.expected_close_date.map(|d| d.to_rfc3339()),
+                    "expected_close_date": d.expected_close_date,
                     "contact_id": d.crm_contact_id.as_ref().map(|id| id.to_string()),
                     "created_at": d.created_at.to_rfc3339()
                 })

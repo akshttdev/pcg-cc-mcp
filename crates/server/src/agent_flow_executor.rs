@@ -1809,7 +1809,7 @@ impl BackgroundWorker for AgentFlowExecutor {
         // state from a previous server boot as failed — they have no live executor.
         match sqlx::query(
             "UPDATE agent_flows \
-             SET status = 'failed', failure_reason = 'Engine restarted — flow orphaned' \
+             SET status = 'failed', last_error = 'Engine restarted — flow orphaned' \
              WHERE status IN ('running', 'executing', 'planning') \
                AND updated_at < datetime('now', '-5 minutes')",
         )
