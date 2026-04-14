@@ -8,6 +8,15 @@ use axum::{
     extract::{Path, State},
     Extension, Json,
 };
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        crm_deal::CrmDeal,
+        project_knowledge_source::{
+            KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource,
+        },
+    },
+};
 use deployment::Deployment;
 use utils::response::ApiResponse;
 

@@ -93,7 +93,6 @@ pub mod pcg_router;
 pub mod peer_rewards;
 pub mod permissions;
 pub mod pipeline_events;
-pub mod pipeline_events;
 pub mod project_boards;
 pub mod project_controllers;
 pub mod project_folders;

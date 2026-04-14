@@ -216,6 +216,12 @@ impl AgentFlowExecutor {
             WorkflowLLMService::user_message(&user_prompt),
         ];
 
+        // Extract agent model hint for conversation persistence (optional override)
+        let agent_model = flow_config
+            .get("agent_model")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
         // Call LLM with retry logic (pass flow.id for artifact saving in simulation)
         let result = self
             .call_llm_with_retry(flow, messages, &tools, &flow.id)
