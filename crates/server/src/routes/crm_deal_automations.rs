@@ -8,15 +8,6 @@ use axum::{
     extract::{Path, State},
     Extension, Json,
 };
-use db::{
-    db_uuid::DbUuid,
-    models::{
-        crm_deal::CrmDeal,
-        project_knowledge_source::{
-            KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource,
-        },
-    },
-};
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
@@ -195,133 +186,10 @@ pub async fn trigger_who_is_research(
         }
     }
 
-    // Register deal in the Knowledge Graph so agents have deal context
-    register_deal_in_kg(pool, &deal_id).await;
-
     // Trigger company research in parallel (auto-create company if missing)
     if let Some(company_name) = contact.company_name.as_deref().filter(|n| !n.is_empty()) {
         trigger_company_research_if_idle(pool, company_name, &contact_id).await;
     }
-}
-
-/// Write the CRM deal into the KG as a context_injection source so all agents on this
-/// project automatically receive deal metadata (title, stage, contact, value) in their prompts.
-/// Public wrapper — called from crm_deals.rs on create/update
-pub async fn register_deal_in_kg_pub(pool: &sqlx::SqlitePool, deal_id: &DbUuid) {
-    register_deal_in_kg(pool, deal_id).await;
-}
-
-async fn register_deal_in_kg(pool: &sqlx::SqlitePool, deal_id: &DbUuid) {
-    #[derive(sqlx::FromRow)]
-    struct DealRow {
-        name: String,
-        stage: String,
-        contact_name: Option<String>,
-        amount: Option<f64>,
-        probability: Option<i64>,
-        expected_close_date: Option<String>,
-        description: Option<String>,
-        org_id: Option<DbUuid>,
-        project_id: Option<DbUuid>,
-    }
-
-    let row = sqlx::query_as::<_, DealRow>(
-        "SELECT
-           cd.name,
-           cd.stage,
-           cc.full_name AS contact_name,
-           cd.amount,
-           cd.probability,
-           cd.expected_close_date,
-           cd.description,
-           cp.organization_id AS org_id,
-           cd.project_id
-         FROM crm_deals cd
-         LEFT JOIN crm_contacts cc ON cc.id = cd.crm_contact_id
-         LEFT JOIN crm_pipelines cp ON cp.id = cd.crm_pipeline_id
-         WHERE cd.id = ?",
-    )
-    .bind(deal_id)
-    .fetch_optional(pool)
-    .await;
-
-    let Ok(Some(deal)) = row else { return };
-
-    let title = deal.name.as_str();
-    let stage = deal.stage.as_str();
-    let contact = deal.contact_name.as_deref().unwrap_or("Unknown Contact");
-
-    let summary = {
-        let mut parts = vec![format!("Stage: {}", stage), format!("Contact: {}", contact)];
-        if let Some(v) = deal.amount {
-            parts.push(format!("Value: ${:.0}", v));
-        }
-        if let Some(p) = deal.probability {
-            parts.push(format!("Probability: {}%", p));
-        }
-        if let Some(d) = &deal.expected_close_date {
-            parts.push(format!("Expected Close: {}", d));
-        }
-        if let Some(d) = &deal.description {
-            parts.push(format!("Notes: {}", &d[..d.len().min(200)]));
-        }
-        parts.join(" | ")
-    };
-
-    let coverage = deal.probability.map(|p| p as f64 / 100.0).unwrap_or(0.5);
-    let source_id = format!("deal_{}", deal_id);
-    let source_title = format!("Deal: {}", title);
-
-    // Project scope
-    if let Some(ref pid) = deal.project_id {
-        let pid_uuid = pid.to_uuid();
-        let _ = ProjectKnowledgeSource::upsert_scoped(
-            pool,
-            &KnowledgeOwnerScope::Project,
-            &pid_uuid.to_string(),
-            Some(pid_uuid),
-            &KnowledgeSourceType::ContextInjection,
-            &source_id,
-            &source_title,
-            Some(&summary),
-            coverage,
-        )
-        .await;
-    }
-
-    // Deal scope (deal's own KG — uses partial-index conflict target for null project_id)
-    let _ = ProjectKnowledgeSource::upsert_owner_scoped(
-        pool,
-        &KnowledgeOwnerScope::Deal,
-        &deal_id.to_string(),
-        &KnowledgeSourceType::ContextInjection,
-        &source_id,
-        &source_title,
-        Some(&summary),
-        coverage,
-    )
-    .await;
-
-    // Org scope
-    if let Some(org) = deal.org_id {
-        let _ = ProjectKnowledgeSource::upsert_owner_scoped(
-            pool,
-            &KnowledgeOwnerScope::Organization,
-            &org.to_string(),
-            &KnowledgeSourceType::ContextInjection,
-            &source_id,
-            &source_title,
-            Some(&summary),
-            coverage,
-        )
-        .await;
-    }
-
-    tracing::info!(
-        "[KG] Deal '{}' registered in knowledge graph (stage: {})",
-        title,
-        stage
-    );
 }
 
 /// Insert a Phase 1 research visibility task for a deal.

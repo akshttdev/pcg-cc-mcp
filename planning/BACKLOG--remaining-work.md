@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-31 (PR #62 + PR #63 regression fixes applied)
+**Last updated:** 2026-04-13 (demo-sprint merged; PR #62 + PR #63 regression fixes applied)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
 
@@ -12,8 +12,8 @@
 **Decision**: Keep `crm_contacts` as canonical. Merge `persons` intelligence fields into contacts. Retire `persons` table.
 **Why high priority**: Scout agent research is invisible in the Intel tab because intelligence lives on `persons` but the CRM pipeline operates through `crm_contacts`. Every new deal created via the CRM UI has no person record, so agent research has nowhere to land.
 
-### PC-1: Add intelligence fields to crm_contacts — ✅ DONE (Phase 1, migration 20260418000000)
-- Migration adds all intelligence fields + backfill from persons
+### PC-1: Add intelligence fields to crm_contacts — ✅ DONE (Phase 4, commit 46c958a13)
+- Migration `20260418000000_contacts_intelligence.sql` adds all fields + backfill from persons
 - Experience audit: 1 BLOCKER (review task links), 2 pain points, 4 friction items
 
 ### PC-1a: Review task links — ✅ FIXED

@@ -216,15 +216,9 @@ impl AgentFlowExecutor {
             WorkflowLLMService::user_message(&user_prompt),
         ];
 
-        // For task flows, use the agent's preferred model as hint
-        let agent_model = flow_config
-            .get("agent_model")
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
         // Call LLM with retry logic (pass flow.id for artifact saving in simulation)
         let result = self
-            .call_llm_with_retry_model(flow, messages, &tools, &flow.id, agent_model.as_deref())
+            .call_llm_with_retry(flow, messages, &tools, &flow.id)
             .await;
 
         match result {
@@ -547,14 +541,6 @@ impl AgentFlowExecutor {
     ) -> anyhow::Result<String> {
         let max_retries = 3;
         let models = [None, None, Some("claude-sonnet-4-6")]; // last attempt uses cheaper model
-
-        // Extract deal_id from flow config for simulated mode
-        let flow_deal_id = flow
-            .flow_config
-            .as_deref()
-            .and_then(|c| serde_json::from_str::<Value>(c).ok())
-            .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
-            .unwrap_or_default();
 
         // Extract deal_id from flow config for simulated mode
         let flow_deal_id = flow
@@ -1045,35 +1031,6 @@ impl AgentFlowExecutor {
                 tracing::error!("[AgentFlowEngine] Failed to mark flow {} as completed: {}", flow.id, e);
             }
             _ => {}
-        }
-
-        // Promote "waiting" review tasks to "todo" now that the agent is done
-        let deal_id = flow.crm_deal_id.as_deref().unwrap_or("");
-        if !deal_id.is_empty() {
-            let promoted = sqlx::query(
-                "UPDATE tasks SET status = 'todo', updated_at = datetime('now','subsec') WHERE crm_deal_id = ?1 AND status = 'waiting' AND deleted_at IS NULL",
-            )
-            .bind(deal_id)
-            .execute(&self.pool)
-            .await;
-
-            match promoted {
-                Ok(r) if r.rows_affected() > 0 => {
-                    tracing::info!(
-                        "[AgentFlowEngine] Promoted {} waiting review task(s) to todo for deal {}",
-                        r.rows_affected(),
-                        deal_id
-                    );
-                }
-                Err(e) => {
-                    tracing::error!(
-                        "[AgentFlowEngine] Failed to promote waiting tasks for deal {}: {}",
-                        deal_id,
-                        e
-                    );
-                }
-                _ => {}
-            }
         }
 
         // Promote "waiting" review tasks to "todo" now that the agent is done
