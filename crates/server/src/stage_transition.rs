@@ -52,6 +52,14 @@ pub struct StageConfig {
     /// Useful for optional stages (e.g., Lead) that some pipelines want to skip.
     #[serde(default)]
     pub auto_skip: bool,
+    /// If true, review tasks are auto-completed when agent succeeds (no human approval needed).
+    /// Enables fully autonomous progression for low-risk stages.
+    #[serde(default)]
+    pub auto_complete_review: bool,
+    /// Fallback agent to use if the primary agent fails after max retries.
+    /// Enables Level 3 error handling (agent reassignment).
+    #[serde(default)]
+    pub fallback_agent: Option<String>,
 }
 
 fn default_cancel_window() -> u32 {

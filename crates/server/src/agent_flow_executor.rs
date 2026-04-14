@@ -62,8 +62,67 @@ impl AgentFlowExecutor {
         }
     }
 
+    /// Level 4: Circuit breaker — returns true if we should pause processing.
+    /// Opens (pauses) after 5+ failures in 5 minutes across all flows.
+    /// Automatically closes after 2 minutes with no new failures.
+    async fn is_circuit_open(&self) -> bool {
+        // Count recent failures
+        let failure_count: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM agent_flows
+               WHERE status = 'failed'
+               AND updated_at > datetime('now', '-5 minutes')"#,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        if failure_count >= 5 {
+            // Check if we've been in circuit-open state long enough to close
+            let most_recent_failure: Option<String> = sqlx::query_scalar(
+                r#"SELECT MAX(updated_at) FROM agent_flows
+                   WHERE status = 'failed'
+                   AND updated_at > datetime('now', '-5 minutes')"#,
+            )
+            .fetch_optional(&self.pool)
+            .await
+            .ok()
+            .flatten();
+
+            // If most recent failure was over 2 minutes ago, allow retry (half-open)
+            if let Some(ts) = most_recent_failure {
+                // Simple check: if the timestamp is more than 2 minutes old
+                let two_min_ago: String =
+                    sqlx::query_scalar("SELECT datetime('now', '-2 minutes')")
+                        .fetch_one(&self.pool)
+                        .await
+                        .unwrap_or_default();
+
+                if ts < two_min_ago {
+                    tracing::info!(
+                        "[AgentFlowEngine] Circuit breaker HALF-OPEN — allowing retry after 2 min cooldown"
+                    );
+                    return false;
+                }
+            }
+
+            tracing::warn!(
+                "[AgentFlowEngine] Circuit breaker triggered: {} failures in 5 minutes",
+                failure_count
+            );
+            return true;
+        }
+
+        false
+    }
+
     /// Process one tick: find actionable flows and dispatch them.
     async fn tick(&self) {
+        // Level 4: Circuit breaker check — pause if too many recent failures
+        if self.is_circuit_open().await {
+            tracing::warn!("[AgentFlowEngine] Circuit breaker OPEN — skipping tick");
+            return;
+        }
+
         tracing::info!("[AgentFlowEngine] Tick — polling for pending flows...");
         // Use find_pending_flows which respects cancel_deadline
         let flows = match AgentFlow::find_pending_flows(
@@ -88,6 +147,7 @@ impl AgentFlowExecutor {
             match flow.status {
                 FlowStatus::Planning => self.handle_planning_flow(&flow).await,
                 FlowStatus::Executing => self.handle_executing_flow(&flow).await,
+                FlowStatus::Verifying => self.handle_verifying_flow(&flow).await,
                 _ => {}
             }
         }
@@ -229,6 +289,17 @@ impl AgentFlowExecutor {
 
         match result {
             Ok(output) => {
+                // Check for structured response (from submit_response tool)
+                if let Ok(structured) = serde_json::from_str::<Value>(&output) {
+                    if let Some(status) = structured.get("status").and_then(|s| s.as_str()) {
+                        if status == "needs_clarification" {
+                            // Handle clarification request
+                            self.request_clarification(flow, &structured).await;
+                            return;
+                        }
+                    }
+                }
+
                 // Save artifact with the output
                 let artifact_id = DbUuid::new();
                 if let Err(e) = AgentFlowEvent::emit_artifact_created(
@@ -298,14 +369,38 @@ impl AgentFlowExecutor {
                     }
                 }
 
-                // Complete the flow (single-phase: skip verification)
-                self.complete_flow(flow).await;
-
-                tracing::info!(
-                    "[AgentFlowEngine] Flow {} completed successfully (agent: {})",
-                    flow.id,
-                    agent_name
-                );
+                // Check if verification is needed (via env var or flow config)
+                if self.should_verify(flow) {
+                    // Transition to verification phase
+                    if let Err(e) = AgentFlow::transition_to_phase(
+                        &self.pool,
+                        &flow.id,
+                        AgentPhase::Verification,
+                        Some("executing"),
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            "[AgentFlowEngine] Failed to transition flow {} to verification: {}",
+                            flow.id,
+                            e
+                        );
+                        self.complete_flow(flow).await;
+                    } else {
+                        tracing::info!(
+                            "[AgentFlowEngine] Flow {} execution complete, transitioning to verification",
+                            flow.id
+                        );
+                    }
+                } else {
+                    // Skip verification (default for v1)
+                    self.complete_flow(flow).await;
+                    tracing::info!(
+                        "[AgentFlowEngine] Flow {} completed successfully (agent: {})",
+                        flow.id,
+                        agent_name
+                    );
+                }
 
                 // Post-completion actions
                 if is_task_flow {
@@ -672,10 +767,28 @@ impl AgentFlowExecutor {
                     // Add assistant tool-call message to conversation
                     messages.push(WorkflowLLMService::assistant_tool_calls_message(&calls));
 
-                    // Execute each tool call and add results
-                    for call in &calls {
-                        let result = self.execute_tool_call(call).await;
-                        messages.push(WorkflowLLMService::tool_result_message(&call.id, &result));
+                    // Execute tool calls — optionally batched for concurrency
+                    let results = if Self::is_batched_execution_enabled() && calls.len() > 1 {
+                        self.execute_tool_calls_batched(&calls).await
+                    } else {
+                        // Serial execution (original behavior)
+                        let mut results = Vec::with_capacity(calls.len());
+                        for call in &calls {
+                            let result = self.execute_tool_call(call).await;
+                            results.push((call.id.clone(), result));
+                        }
+                        results
+                    };
+
+                    // Process results and check for submit_response
+                    for (tool_id, result) in results {
+                        // Check for structured submit_response
+                        if result.starts_with("__SUBMIT_RESPONSE__:") {
+                            let response_json = &result["__SUBMIT_RESPONSE__:".len()..];
+                            return Ok(response_json.to_string());
+                        }
+
+                        messages.push(WorkflowLLMService::tool_result_message(&tool_id, &result));
                     }
                     // Continue loop for next LLM turn
                 }
@@ -762,10 +875,112 @@ impl AgentFlowExecutor {
                     .unwrap_or("");
                 self.save_artifact(flow_id, title, content).await
             }
+            "submit_response" => {
+                // Parse structured response from agent
+                let status = call
+                    .arguments
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("success");
+                let message = call
+                    .arguments
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let clarification_question = call
+                    .arguments
+                    .get("clarification_question")
+                    .and_then(|v| v.as_str());
+                let clarification_context = call
+                    .arguments
+                    .get("clarification_context")
+                    .and_then(|v| v.as_str());
+
+                // Build structured response JSON
+                let response = json!({
+                    "status": status,
+                    "message": message,
+                    "clarification": clarification_question.map(|q| json!({
+                        "question": q,
+                        "context": clarification_context,
+                        "required_fields": []
+                    }))
+                });
+
+                // Return special prefix for status detection in call_llm_once
+                format!("__SUBMIT_RESPONSE__:{}", response)
+            }
             _ => {
                 format!("Unknown tool: {}", call.name)
             }
         }
+    }
+
+    /// Execute tool calls with concurrency partitioning.
+    /// Safe tools run in parallel (max batch_size), unsafe tools run serially.
+    ///
+    /// Returns a list of (tool_use_id, result) pairs in the same order as input calls.
+    async fn execute_tool_calls_batched(&self, calls: &[ToolCallRequest]) -> Vec<(String, String)> {
+        use crate::tool_partitioner::{default_tool_metadata, partition_tool_calls, ToolCall};
+
+        if calls.is_empty() {
+            return Vec::new();
+        }
+
+        // Convert ToolCallRequest to partitioner's ToolCall
+        let tool_calls: Vec<ToolCall> = calls
+            .iter()
+            .map(|c| ToolCall::new(&c.id, &c.name, c.arguments.clone()))
+            .collect();
+
+        let metadata = default_tool_metadata();
+        let batches = partition_tool_calls(tool_calls, &metadata);
+
+        const MAX_CONCURRENT: usize = 5;
+        let mut results = Vec::with_capacity(calls.len());
+
+        for batch in batches {
+            if batch.is_concurrency_safe && batch.calls.len() > 1 {
+                // Run safe tools concurrently in chunks
+                for chunk in batch.calls.chunks(MAX_CONCURRENT) {
+                    let futures: Vec<_> = chunk
+                        .iter()
+                        .map(|call| async {
+                            // Find the original ToolCallRequest
+                            let original = calls.iter().find(|c| c.id == call.id);
+                            let result = match original {
+                                Some(orig) => self.execute_tool_call(orig).await,
+                                None => format!("Tool call {} not found", call.id),
+                            };
+                            (call.id.clone(), result)
+                        })
+                        .collect();
+
+                    let chunk_results = futures::future::join_all(futures).await;
+                    results.extend(chunk_results);
+                }
+            } else {
+                // Run unsafe tools (or single safe tool) serially
+                for call in &batch.calls {
+                    let original = calls.iter().find(|c| c.id == call.id);
+                    let result = match original {
+                        Some(orig) => self.execute_tool_call(orig).await,
+                        None => format!("Tool call {} not found", call.id),
+                    };
+                    results.push((call.id.clone(), result));
+                }
+            }
+        }
+
+        results
+    }
+
+    /// Check if batched execution is enabled (controlled by env var).
+    /// Returns true if BATCHED_TOOL_EXECUTION=1 or if unset (default on).
+    fn is_batched_execution_enabled() -> bool {
+        std::env::var("BATCHED_TOOL_EXECUTION")
+            .map(|v| v != "0")
+            .unwrap_or(true)
     }
 
     // ── Tool Implementations ────────────────────────────────────────────
@@ -997,6 +1212,83 @@ impl AgentFlowExecutor {
 
     // ── Flow Lifecycle ──────────────────────────────────────────────────
 
+    /// Load StageConfig for a deal's current stage (for auto_complete_review checks)
+    async fn load_stage_config_for_deal(
+        &self,
+        deal_id: &str,
+    ) -> Option<crate::stage_transition::StageConfig> {
+        let stage_config_json: Option<String> = sqlx::query_scalar(
+            r#"SELECT ps.stage_config FROM crm_deals d
+               JOIN crm_pipeline_stages ps ON d.crm_stage_id = ps.id
+               WHERE d.id = ?1"#,
+        )
+        .bind(deal_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+
+        stage_config_json.and_then(|json| serde_json::from_str(&json).ok())
+    }
+
+    /// Handle a clarification request from the agent.
+    /// Transitions the flow to NeedsClarification and stores the request.
+    async fn request_clarification(&self, flow: &AgentFlow, structured_response: &Value) {
+        let clarification = structured_response.get("clarification");
+        let message = structured_response
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("Clarification needed");
+
+        // Build clarification request JSON
+        let clarification_json = clarification
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| json!({"question": message}).to_string());
+
+        // Emit FlowPaused event
+        if let Err(e) = AgentFlowEvent::create(
+            &self.pool,
+            CreateFlowEvent {
+                agent_flow_id: flow.id.clone(),
+                event_type: FlowEventType::FlowPaused,
+                event_data: FlowEventPayload::FlowPaused {
+                    reason: Some("Clarification needed".to_string()),
+                    paused_by: Some("agent".to_string()),
+                },
+            },
+        )
+        .await
+        {
+            tracing::warn!(
+                "[AgentFlowEngine] Failed to emit FlowPaused for flow {}: {}",
+                flow.id,
+                e
+            );
+        }
+
+        // Update flow status to needs_clarification
+        if let Err(e) = sqlx::query(
+            "UPDATE agent_flows SET status = 'needs_clarification', clarification_request = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+        )
+        .bind(&clarification_json)
+        .bind(&flow.id)
+        .execute(&self.pool)
+        .await
+        {
+            tracing::error!(
+                "[AgentFlowEngine] Failed to transition flow {} to needs_clarification: {}",
+                flow.id,
+                e
+            );
+        } else {
+            tracing::info!(
+                "[AgentFlowEngine] Flow {} paused for clarification: {}",
+                flow.id,
+                message
+            );
+        }
+    }
+
     async fn complete_flow(&self, flow: &AgentFlow) {
         // Emit completion event
         if let Err(e) = AgentFlowEvent::create(
@@ -1039,37 +1331,111 @@ impl AgentFlowExecutor {
             _ => {}
         }
 
-        // Promote "waiting" review tasks to "todo" now that the agent is done
+        // Handle review tasks based on stage config
         let deal_id = flow.crm_deal_id.as_deref().unwrap_or("");
         if !deal_id.is_empty() {
-            let promoted = sqlx::query(
-                "UPDATE tasks SET status = 'todo', updated_at = datetime('now','subsec') WHERE crm_deal_id = ?1 AND status = 'waiting' AND deleted_at IS NULL",
-            )
-            .bind(deal_id)
-            .execute(&self.pool)
-            .await;
+            let stage_config = self.load_stage_config_for_deal(deal_id).await;
+            let auto_complete = stage_config
+                .map(|c| c.auto_complete_review)
+                .unwrap_or(false);
 
-            match promoted {
-                Ok(r) if r.rows_affected() > 0 => {
-                    tracing::info!(
-                        "[AgentFlowEngine] Promoted {} waiting review task(s) to todo for deal {}",
-                        r.rows_affected(),
-                        deal_id
-                    );
+            if auto_complete {
+                // Auto-complete review tasks (fully autonomous progression)
+                let completed = sqlx::query(
+                    "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec') WHERE crm_deal_id = ?1 AND status IN ('waiting', 'todo') AND deleted_at IS NULL",
+                )
+                .bind(deal_id)
+                .execute(&self.pool)
+                .await;
+
+                match completed {
+                    Ok(r) if r.rows_affected() > 0 => {
+                        tracing::info!(
+                            "[AgentFlowEngine] Auto-completed {} review task(s) for deal {} (auto_complete_review=true)",
+                            r.rows_affected(),
+                            deal_id
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "[AgentFlowEngine] Failed to auto-complete tasks for deal {}: {}",
+                            deal_id,
+                            e
+                        );
+                    }
+                    _ => {}
                 }
-                Err(e) => {
-                    tracing::error!(
-                        "[AgentFlowEngine] Failed to promote waiting tasks for deal {}: {}",
-                        deal_id,
-                        e
-                    );
+            } else {
+                // Default: promote "waiting" review tasks to "todo" for human review
+                let promoted = sqlx::query(
+                    "UPDATE tasks SET status = 'todo', updated_at = datetime('now','subsec') WHERE crm_deal_id = ?1 AND status = 'waiting' AND deleted_at IS NULL",
+                )
+                .bind(deal_id)
+                .execute(&self.pool)
+                .await;
+
+                match promoted {
+                    Ok(r) if r.rows_affected() > 0 => {
+                        tracing::info!(
+                            "[AgentFlowEngine] Promoted {} waiting review task(s) to todo for deal {}",
+                            r.rows_affected(),
+                            deal_id
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "[AgentFlowEngine] Failed to promote waiting tasks for deal {}: {}",
+                            deal_id,
+                            e
+                        );
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
     }
 
     async fn fail_flow(&self, flow: &AgentFlow, error: &str) {
+        let deal_id = flow.crm_deal_id.as_deref().unwrap_or("");
+
+        // Level 3: Try fallback agent if configured and not already a fallback attempt
+        let flow_config = self.parse_flow_config(flow);
+        let is_fallback_attempt = flow_config
+            .get("is_fallback_attempt")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        if !is_fallback_attempt && !deal_id.is_empty() {
+            if let Some(stage_config) = self.load_stage_config_for_deal(deal_id).await {
+                if let Some(ref fallback_agent) = stage_config.fallback_agent {
+                    tracing::info!(
+                        "[AgentFlowEngine] Flow {} failed, attempting fallback agent: {}",
+                        flow.id,
+                        fallback_agent
+                    );
+
+                    // Try to schedule fallback agent
+                    if self
+                        .try_schedule_fallback_agent(deal_id, fallback_agent, error)
+                        .await
+                    {
+                        // Mark original flow as failed but don't escalate
+                        if let Err(e) = sqlx::query(
+                            "UPDATE agent_flows SET status = 'failed', last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                        )
+                        .bind(format!("Failed, fallback scheduled: {}", error))
+                        .bind(&flow.id)
+                        .execute(&self.pool)
+                        .await
+                        {
+                            tracing::error!("[AgentFlowEngine] Failed to mark flow {} as failed: {}", flow.id, e);
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
         // Emit failure event
         if let Err(e) = AgentFlowEvent::create(
             &self.pool,
@@ -1102,6 +1468,127 @@ impl AgentFlowExecutor {
         {
             tracing::error!("[AgentFlowEngine] Failed to mark flow {} as failed: {}", flow.id, e);
         }
+
+        // Level 5: Human escalation for repeated failures
+        if !deal_id.is_empty() {
+            self.try_escalate_to_human(deal_id, flow, error).await;
+        }
+    }
+
+    /// Level 3: Try to schedule a fallback agent for failed flow
+    async fn try_schedule_fallback_agent(
+        &self,
+        deal_id: &str,
+        fallback_agent: &str,
+        original_error: &str,
+    ) -> bool {
+        let deal_uuid = DbUuid::from_string(deal_id.to_string());
+        let deal = match db::models::crm_deal::CrmDeal::find_by_id(&self.pool, &deal_uuid).await {
+            Ok(d) => d,
+            Err(_) => return false,
+        };
+
+        let flow_type = crate::stage_transition::agent_default_flow_type(fallback_agent);
+
+        match crate::stage_transition::schedule_agent_flow(
+            &self.pool,
+            &deal,
+            fallback_agent,
+            &flow_type,
+            0, // No cancel window for fallback
+        )
+        .await
+        {
+            Ok((new_flow_id, _)) => {
+                // Mark as fallback attempt so we don't infinite loop
+                if let Err(e) = sqlx::query(
+                    "UPDATE agent_flows SET flow_config = json_set(COALESCE(flow_config, '{}'), '$.is_fallback_attempt', true), \
+                     flow_config = json_set(flow_config, '$.original_error', ?1) WHERE id = ?2",
+                )
+                .bind(original_error)
+                .bind(&new_flow_id)
+                .execute(&self.pool)
+                .await
+                {
+                    tracing::error!(
+                        "[AgentFlowEngine] Failed to mark flow {} as fallback: {}",
+                        new_flow_id,
+                        e
+                    );
+                }
+
+                tracing::info!(
+                    "[AgentFlowEngine] Scheduled fallback agent {} for deal {} (flow {})",
+                    fallback_agent,
+                    deal_id,
+                    new_flow_id
+                );
+                true
+            }
+            Err(e) => {
+                tracing::error!("[AgentFlowEngine] Failed to schedule fallback agent: {}", e);
+                false
+            }
+        }
+    }
+
+    /// Level 5: Create escalation task for human intervention after repeated failures
+    async fn try_escalate_to_human(&self, deal_id: &str, flow: &AgentFlow, error: &str) {
+        // Count recent failures for this deal (last 10 minutes)
+        let failure_count: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM agent_flows
+               WHERE crm_deal_id = ?1
+               AND status = 'failed'
+               AND updated_at > datetime('now', '-10 minutes')"#,
+        )
+        .bind(deal_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        // Escalate after 3+ failures
+        if failure_count >= 3 {
+            tracing::warn!(
+                "[AgentFlowEngine] {} failures in 10 minutes for deal {} — escalating to human",
+                failure_count,
+                deal_id
+            );
+
+            let flow_config = self.parse_flow_config(flow);
+            let agent_name = flow_config
+                .get("agent_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("agent");
+
+            // Create escalation task
+            let task_id = DbUuid::new();
+            if let Err(e) = sqlx::query(
+                r#"INSERT INTO tasks (id, title, description, status, crm_deal_id, created_by, created_at, updated_at)
+                   VALUES (?1, ?2, ?3, 'todo', ?4, 'system', datetime('now','subsec'), datetime('now','subsec'))"#,
+            )
+            .bind(task_id.to_string())
+            .bind(format!("[ESCALATION] {} agent failed repeatedly", agent_name))
+            .bind(format!(
+                "The {} agent has failed {} times in the last 10 minutes.\n\nLatest error:\n{}\n\nManual intervention required.",
+                agent_name, failure_count, error
+            ))
+            .bind(deal_id)
+            .execute(&self.pool)
+            .await
+            {
+                tracing::error!(
+                    "[AgentFlowEngine] Failed to create escalation task for deal {}: {}",
+                    deal_id,
+                    e
+                );
+            } else {
+                tracing::info!(
+                    "[AgentFlowEngine] Created escalation task {} for deal {}",
+                    task_id,
+                    deal_id
+                );
+            }
+        }
     }
 
     /// Executing flows: check if already completed (legacy path)
@@ -1115,11 +1602,205 @@ impl AgentFlowExecutor {
         }
     }
 
+    /// Verifying flows: run verification agent to validate execution output
+    async fn handle_verifying_flow(&self, flow: &AgentFlow) {
+        tracing::info!(
+            "[AgentFlowEngine] Starting verification for flow {} (deal: {:?})",
+            flow.id,
+            flow.crm_deal_id
+        );
+
+        let flow_config = self.parse_flow_config(flow);
+        let execution_output = flow_config
+            .get("output")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let agent_name = flow_config
+            .get("agent_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("agent");
+
+        // Build verification prompt
+        let system_prompt = format!(
+            "You are a verification agent. Your job is to review the output from the {} agent \
+             and determine if it meets quality standards.\n\n\
+             Review the following output and use the submit_verification tool to provide your assessment.",
+            agent_name
+        );
+
+        let user_prompt = format!(
+            "Please verify this output:\n\n---\n{}\n---\n\n\
+             Evaluate: completeness, accuracy, relevance, and quality.\n\
+             Provide a score from 0.0 to 1.0 and decide if it passes (score >= 0.7) or needs retry.",
+            execution_output.chars().take(4000).collect::<String>()
+        );
+
+        let messages = vec![
+            WorkflowLLMService::system_message(&system_prompt),
+            WorkflowLLMService::user_message(&user_prompt),
+        ];
+
+        let tools = vec![ToolDefinition {
+            name: "submit_verification".to_string(),
+            description: "Submit verification result with score and pass/fail decision".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "score": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                        "description": "Quality score from 0.0 to 1.0"
+                    },
+                    "passed": {
+                        "type": "boolean",
+                        "description": "Whether the output passes verification"
+                    },
+                    "feedback": {
+                        "type": "string",
+                        "description": "Feedback for improvement if not passed"
+                    }
+                },
+                "required": ["score", "passed"]
+            }),
+        }];
+
+        // Call LLM for verification
+        match self
+            .call_llm_with_retry(flow, messages, &tools, &flow.id)
+            .await
+        {
+            Ok(output) => {
+                // Parse verification result
+                let (score, passed, feedback) = self.parse_verification_result(&output);
+
+                if passed {
+                    // Update verification score and complete
+                    if let Err(e) = sqlx::query(
+                        "UPDATE agent_flows SET verification_score = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                    )
+                    .bind(score)
+                    .bind(&flow.id)
+                    .execute(&self.pool)
+                    .await
+                    {
+                        tracing::error!(
+                            "[AgentFlowEngine] Failed to store verification score for flow {}: {}",
+                            flow.id,
+                            e
+                        );
+                    }
+
+                    self.complete_flow(flow).await;
+                    tracing::info!(
+                        "[AgentFlowEngine] Flow {} verified successfully (score: {:.2})",
+                        flow.id,
+                        score
+                    );
+                } else {
+                    // Retry if under max retries
+                    if flow.retry_count < 2 {
+                        tracing::info!(
+                            "[AgentFlowEngine] Flow {} failed verification (score: {:.2}), retry #{} with feedback",
+                            flow.id,
+                            score,
+                            flow.retry_count + 1
+                        );
+
+                        // Store feedback and transition back to executing
+                        if let Err(e) = sqlx::query(
+                            "UPDATE agent_flows SET status = 'executing', current_phase = 'execution', \
+                             retry_count = retry_count + 1, \
+                             flow_config = json_set(COALESCE(flow_config, '{}'), '$.verification_feedback', ?1), \
+                             updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                        )
+                        .bind(&feedback)
+                        .bind(&flow.id)
+                        .execute(&self.pool)
+                        .await
+                        {
+                            tracing::error!(
+                                "[AgentFlowEngine] Failed to transition flow {} back to executing: {}",
+                                flow.id,
+                                e
+                            );
+                        }
+                    } else {
+                        tracing::warn!(
+                            "[AgentFlowEngine] Flow {} failed verification after {} retries",
+                            flow.id,
+                            flow.retry_count
+                        );
+                        self.fail_flow(flow, &format!("Failed verification: {}", feedback))
+                            .await;
+                    }
+                }
+            }
+            Err(e) => {
+                // Verification LLM call failed — complete anyway (non-critical)
+                tracing::warn!(
+                    "[AgentFlowEngine] Verification LLM call failed for flow {}: {} — completing without verification",
+                    flow.id,
+                    e
+                );
+                self.complete_flow(flow).await;
+            }
+        }
+    }
+
+    /// Parse verification tool call result
+    fn parse_verification_result(&self, output: &str) -> (f64, bool, String) {
+        // Try to parse as JSON from submit_verification tool
+        if let Ok(parsed) = serde_json::from_str::<Value>(output) {
+            let score = parsed.get("score").and_then(|v| v.as_f64()).unwrap_or(0.5);
+            let passed = parsed
+                .get("passed")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(score >= 0.7);
+            let feedback = parsed
+                .get("feedback")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            return (score, passed, feedback);
+        }
+
+        // Default: pass with medium score
+        (0.75, true, String::new())
+    }
+
     fn parse_flow_config(&self, flow: &AgentFlow) -> Value {
         flow.flow_config
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_else(|| json!({}))
+    }
+
+    /// Determine if a flow should go through verification phase.
+    /// Enabled via:
+    /// - ENABLE_FLOW_VERIFICATION=1 env var (global)
+    /// - flow_config.require_verification: true (per-flow)
+    /// - verifier_agent_id being set (explicit verifier)
+    fn should_verify(&self, flow: &AgentFlow) -> bool {
+        // Check if verifier agent is explicitly assigned
+        if flow.verifier_agent_id.is_some() {
+            return true;
+        }
+
+        // Check flow config
+        let config = self.parse_flow_config(flow);
+        if config
+            .get("require_verification")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            return true;
+        }
+
+        // Check global env var
+        std::env::var("ENABLE_FLOW_VERIFICATION")
+            .map(|v| v == "1")
+            .unwrap_or(false)
     }
 
     /// Check if the completed flow has chained agent actions queued.
@@ -1700,6 +2381,35 @@ fn build_agent_tools(is_task_flow: bool) -> Vec<ToolDefinition> {
         }),
     };
 
+    // Structured response tool for all agents
+    let submit_response = ToolDefinition {
+        name: "submit_response".to_string(),
+        description: "Submit your final structured response. Use this to complete your task with a structured output.".to_string(),
+        parameters: json!({
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["success", "partial", "needs_clarification", "failed"],
+                    "description": "Status of your task completion"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Summary of what you accomplished or why clarification is needed"
+                },
+                "clarification_question": {
+                    "type": "string",
+                    "description": "If status is needs_clarification, the question to ask the user"
+                },
+                "clarification_context": {
+                    "type": "string",
+                    "description": "Additional context for the clarification request"
+                }
+            },
+            "required": ["status", "message"]
+        }),
+    };
+
     if is_task_flow {
         vec![
             ToolDefinition {
@@ -1737,6 +2447,7 @@ fn build_agent_tools(is_task_flow: bool) -> Vec<ToolDefinition> {
                 }),
             },
             save_artifact,
+            submit_response.clone(),
         ]
     } else {
         vec![
@@ -1778,6 +2489,7 @@ fn build_agent_tools(is_task_flow: bool) -> Vec<ToolDefinition> {
                 }),
             },
             save_artifact,
+            submit_response,
         ]
     }
 }

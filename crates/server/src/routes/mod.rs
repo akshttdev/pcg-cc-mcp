@@ -82,6 +82,7 @@ pub mod notifications;
 pub mod onboarding;
 pub mod operator_rates;
 pub mod orcha;
+pub mod orchestration;
 pub mod org_cloud;
 pub mod org_invitations;
 pub mod org_onboarding;
@@ -221,6 +222,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(feedback::router(&deployment))
         .merge(agent_flows::router(&deployment))
         .merge(agent_flow_events::router(&deployment))
+        .merge(orchestration::router(&deployment))
         .merge(video_gen::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),

@@ -229,6 +229,65 @@ pub struct UpdateAgentFlow {
     pub approved_by: Option<String>,
 }
 
+// ── Structured Response Protocol ─────────────────────────────────────────────
+
+/// Status of an agent's structured response
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum AgentResponseStatus {
+    /// Task completed successfully
+    Success,
+    /// Task partially completed, may need follow-up
+    Partial,
+    /// Agent needs clarification before proceeding
+    NeedsClarification,
+    /// Task failed
+    Failed,
+}
+
+impl std::fmt::Display for AgentResponseStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentResponseStatus::Success => write!(f, "success"),
+            AgentResponseStatus::Partial => write!(f, "partial"),
+            AgentResponseStatus::NeedsClarification => write!(f, "needs_clarification"),
+            AgentResponseStatus::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+/// An artifact produced by the agent
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AgentArtifact {
+    pub id: Uuid,
+    pub artifact_type: String,
+    pub title: String,
+    pub content: Option<String>,
+}
+
+/// Request for clarification from the user
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ClarificationRequest {
+    pub question: String,
+    pub context: Option<String>,
+    pub required_fields: Vec<String>,
+}
+
+/// Structured response envelope from agent execution.
+/// Agents should use the `submit_response` tool to return this format.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AgentResponse {
+    pub status: AgentResponseStatus,
+    pub message: String,
+    #[serde(default)]
+    pub artifacts: Vec<AgentArtifact>,
+    pub clarification: Option<ClarificationRequest>,
+}
+
 impl AgentFlow {
     /// Create a new agent flow
     pub async fn create(pool: &SqlitePool, data: CreateAgentFlow) -> Result<Self, AgentFlowError> {
@@ -364,7 +423,7 @@ impl AgentFlow {
         let flows = sqlx::query_as::<_, AgentFlow>(
             r#"
             SELECT * FROM agent_flows
-            WHERE status IN ('planning', 'executing')
+            WHERE status IN ('planning', 'executing', 'verifying')
               AND (cancel_deadline IS NULL
                    OR REPLACE(REPLACE(cancel_deadline, 'T', ' '), '+00:00', '') < datetime('now', 'subsec'))
             ORDER BY created_at ASC

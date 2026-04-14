@@ -59,6 +59,7 @@ pub mod model_pricing;
 pub mod nora_config;
 pub mod notification;
 pub mod orchestration_context;
+pub mod orchestration_task;
 pub mod org_brand_profile;
 pub mod org_onboarding;
 pub mod peer_node;

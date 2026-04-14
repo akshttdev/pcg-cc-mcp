@@ -315,12 +315,30 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Create shutdown registry (must be before workers that use it)
     let registry = server::workers::ShutdownRegistry::new();
 
-    // Spawn Agent Flow Orchestration Engine (disabled by default)
-    if std::env::var("ENABLE_AGENT_FLOW_ENGINE").unwrap_or_default() == "1" {
+    // Spawn Agent Flow Orchestration Engine
+    // Enabled by default in dev mode, disabled in prod unless ENABLE_AGENT_FLOW_ENGINE=1
+    let enable_agent_flow_engine = std::env::var("ENABLE_AGENT_FLOW_ENGINE")
+        .map(|v| v == "1")
+        .unwrap_or_else(|_| cfg!(debug_assertions)); // Default: enabled in dev, disabled in prod
+
+    if enable_agent_flow_engine {
         let executor =
             server::agent_flow_executor::AgentFlowExecutor::new(deployment.db().pool.clone());
         registry.spawn_worker(executor).await;
-        tracing::info!("[AgentFlowEngine] Enabled via ENABLE_AGENT_FLOW_ENGINE=1");
+
+        // Also spawn OrchestrationCoordinator for multi-task orchestration
+        let orchestrator = server::orchestration_engine::OrchestrationCoordinator::new(
+            deployment.db().pool.clone(),
+        );
+        registry.spawn_worker(orchestrator).await;
+
+        if cfg!(debug_assertions) {
+            tracing::info!("[AgentFlowEngine] Enabled (dev mode default)");
+            tracing::info!("[OrchestrationCoordinator] Enabled (dev mode default)");
+        } else {
+            tracing::info!("[AgentFlowEngine] Enabled via ENABLE_AGENT_FLOW_ENGINE=1");
+            tracing::info!("[OrchestrationCoordinator] Enabled via ENABLE_AGENT_FLOW_ENGINE=1");
+        }
     }
 
     // Spawn OSS Library Listener (polls GitHub releases hourly)
