@@ -40,9 +40,11 @@ pub struct Organization {
     pub pending_owner_email: Option<String>,
     pub created_by_org_id: Option<String>,
     pub address: Option<String>,
+    #[sqlx(default)]
     pub wallet_address: Option<String>,
     #[sqlx(default)]
     pub vibe_balance: f64,
+    #[sqlx(default)]
     pub vibe_budget_total: Option<f64>,
 }
 
