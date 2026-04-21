@@ -337,10 +337,19 @@ pub async fn receive_audio(
     let whisper_url =
         std::env::var("WHISPER_URL").unwrap_or_else(|_| "http://localhost:8101".to_string());
 
+    let turn_t0 = std::time::Instant::now();
+    let stt_t0 = std::time::Instant::now();
     let transcript = call_whisper(&whisper_url, &body).await;
+    let stt_secs = stt_t0.elapsed().as_secs_f64();
     let transcript = match transcript {
-        Some(t) if !t.trim().is_empty() => t.trim().to_string(),
-        _ => return Json(json!({ "transcript": null })).into_response(),
+        Some(t) if !t.trim().is_empty() => {
+            crate::nora_metrics::record_voice_stage("meet", "stt", stt_secs);
+            t.trim().to_string()
+        }
+        _ => {
+            crate::nora_metrics::record_voice_stage("meet", "stt_empty", stt_secs);
+            return Json(json!({ "transcript": null })).into_response();
+        }
     };
 
     info!(
@@ -421,9 +430,16 @@ pub async fn receive_audio(
                 priority: RequestPriority::Normal,
                 timestamp: Utc::now(),
             };
-            match nora.process_request(req).await {
-                Ok(resp) => Some(resp.content),
+            let llm_t0 = std::time::Instant::now();
+            let result = nora.process_request(req).await;
+            let llm_secs = llm_t0.elapsed().as_secs_f64();
+            match result {
+                Ok(resp) => {
+                    crate::nora_metrics::record_voice_stage("meet", "llm", llm_secs);
+                    Some(resp.content)
+                }
                 Err(e) => {
+                    crate::nora_metrics::record_voice_stage("meet", "llm_error", llm_secs);
                     warn!("[MEET] Nora error: {}", e);
                     None
                 }
@@ -485,13 +501,20 @@ pub async fn receive_audio(
     .await;
 
     // Synthesize TTS and queue
-    if let Some(audio) = synthesize_tts(&nora_text).await {
+    let tts_t0 = std::time::Instant::now();
+    let tts_audio = synthesize_tts(&nora_text).await;
+    let tts_secs = tts_t0.elapsed().as_secs_f64();
+    if let Some(audio) = tts_audio {
+        crate::nora_metrics::record_voice_stage("meet", "tts", tts_secs);
         let mut sessions = ACTIVE_MEETS.lock().await;
         if let Some(sess) = sessions.get_mut(&session_id) {
             sess.tts_queue.push(audio);
         }
+    } else {
+        crate::nora_metrics::record_voice_stage("meet", "tts_error", tts_secs);
     }
 
+    crate::nora_metrics::record_voice_stage("meet", "turn", turn_t0.elapsed().as_secs_f64());
     Json(json!({ "transcript": transcript, "nora_response": nora_text })).into_response()
 }
 
@@ -1148,13 +1171,20 @@ async fn get_zoho_token(pool: &sqlx::SqlitePool) -> Option<String> {
         }
     }
 
-    // Fetch credentials from DB
-    let row = sqlx::query!(
-        "SELECT access_token, refresh_token FROM email_accounts WHERE email_address = 'nora@powerclubglobal.com' LIMIT 1"
+    // Fetch credentials from DB — ORDER BY updated_at DESC so we pick the
+    // newest row (Zoho rotates refresh_tokens; stale rows carry dead tokens).
+    // Runtime-checked query so SQLX_OFFLINE builds don't require metadata refresh.
+    let row: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT access_token, refresh_token FROM email_accounts \
+         WHERE email_address = 'nora@powerclubglobal.com' \
+         ORDER BY updated_at DESC LIMIT 1",
     )
-    .fetch_optional(pool).await.ok()??;
-
-    let refresh_token = row.refresh_token?;
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    let (_, refresh_token) = row?;
+    let refresh_token = refresh_token?;
     let client_id = std::env::var("ZOHO_CLIENT_ID").ok()?;
     let client_secret = std::env::var("ZOHO_CLIENT_SECRET").ok()?;
 
@@ -1185,11 +1215,33 @@ async fn get_zoho_token(pool: &sqlx::SqlitePool) -> Option<String> {
     let body: serde_json::Value = resp.json().await.ok()?;
     let token = body.get("access_token")?.as_str()?.to_string();
 
-    // Persist to DB
-    let _ = sqlx::query!(
-        "UPDATE email_accounts SET access_token = ? WHERE email_address = 'nora@powerclubglobal.com'",
-        token
-    ).execute(pool).await;
+    // Zoho rotates refresh_tokens on every refresh. Persist the new one if
+    // returned so the next cycle doesn't fall back to a dead token.
+    let new_refresh = body
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    if let Some(nr) = new_refresh {
+        let _ = sqlx::query(
+            "UPDATE email_accounts SET access_token = ?, refresh_token = ?, \
+             updated_at = datetime('now','subsec') \
+             WHERE email_address = 'nora@powerclubglobal.com'",
+        )
+        .bind(&token)
+        .bind(&nr)
+        .execute(pool)
+        .await;
+    } else {
+        let _ = sqlx::query(
+            "UPDATE email_accounts SET access_token = ?, \
+             updated_at = datetime('now','subsec') \
+             WHERE email_address = 'nora@powerclubglobal.com'",
+        )
+        .bind(&token)
+        .execute(pool)
+        .await;
+    }
 
     // Update cache
     *ZOHO_TOKEN_CACHE.lock().await = (token.clone(), Instant::now());
@@ -1345,12 +1397,17 @@ pub async fn start_meet_watcher(deployment: DeploymentImpl) {
 }
 
 async fn get_zoho_account_id(pool: &sqlx::SqlitePool) -> Option<String> {
-    let row = sqlx::query!(
-        "SELECT metadata FROM email_accounts WHERE email_address = 'nora@powerclubglobal.com' LIMIT 1"
+    let row: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT metadata FROM email_accounts \
+         WHERE email_address = 'nora@powerclubglobal.com' \
+         ORDER BY updated_at DESC LIMIT 1",
     )
-    .fetch_optional(pool).await.ok()??;
-    let meta: serde_json::Value =
-        serde_json::from_str(row.metadata.as_deref().unwrap_or("{}")).ok()?;
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    let (metadata,) = row?;
+    let meta: serde_json::Value = serde_json::from_str(metadata.as_deref().unwrap_or("{}")).ok()?;
     meta.get("zoho_account_id")?.as_str().map(str::to_string)
 }
 
