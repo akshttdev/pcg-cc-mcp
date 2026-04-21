@@ -6,3 +6,4 @@ export const callScheduling = {} as Record<string, string>;
 export const deck = {} as Record<string, string>;
 export const discovery = {} as Record<string, string>;
 export const review = {} as Record<string, string>;
+export const pipelineSettings = {} as Record<string, string>;
