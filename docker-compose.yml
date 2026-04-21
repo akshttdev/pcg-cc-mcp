@@ -4,10 +4,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.release
-      args:
-        - RELEASE_VERSION=${RELEASE_VERSION:-latest}
-        - GITHUB_REPO=${GITHUB_REPO:-powerclubglobal/pcg-cc-mcp}
-        - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     container_name: pcg-cc-mcp
     restart: always
     logging:

@@ -1,5 +1,4 @@
-# Dockerfile.release - Uses pre-compiled binaries from GitHub Releases
-# Much faster than Dockerfile (no Rust compilation needed)
+# Dockerfile.release - Builds frontend from source, compiles Rust server locally
 
 # ============================================================================
 # Stage 1: Frontend Builder
@@ -18,13 +17,39 @@ RUN npm install -g pnpm && pnpm install
 # Copy frontend source
 COPY frontend ./frontend
 COPY shared ./shared
-COPY tsconfig.json ./
 
 # Build frontend
 RUN cd frontend && npm install --ignore-scripts --legacy-peer-deps && npx vite build --mode production
 
 # ============================================================================
-# Stage 2: Documentation Builder
+# Stage 2: Rust Builder
+# ============================================================================
+FROM node:24-bookworm AS rust-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    perl \
+    python3 \
+    cmake \
+    pkg-config \
+    libssl-dev \
+    libopus-dev \
+    libsodium-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly-2025-05-18
+ENV PATH="/root/.cargo/bin:${PATH}"
+ENV RUSTC_WRAPPER=""
+
+WORKDIR /app
+COPY . .
+ENV SQLX_OFFLINE=true
+RUN sed -i '/rustc-wrapper/d' .cargo/config.toml || true
+RUN cargo build --release --bin server
+
+# ============================================================================
+# Stage 3: Documentation Builder
 # ============================================================================
 FROM node:24-bookworm AS docs-builder
 
@@ -42,11 +67,6 @@ RUN mkdir -p /app/.docs-output && \
 # Stage 3: Runtime
 # ============================================================================
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS runtime
-
-# Build arguments for release version
-ARG RELEASE_VERSION=latest
-ARG GITHUB_REPO=powerclubglobal/pcg-cc-mcp
-ARG GITHUB_TOKEN=""
 
 # Set timezone non-interactively to avoid tzdata prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -89,27 +109,9 @@ RUN python3.11 -m pip install --upgrade pip setuptools wheel
 # Install Chatterbox TTS via pip (simpler and more reliable)
 RUN python3.11 -m pip install --no-cache-dir chatterbox-tts
 
-# Download pre-compiled server binary from GitHub Releases
-RUN set -e && \
-    echo "Downloading server binary for version: ${RELEASE_VERSION}" && \
-    if [ "${RELEASE_VERSION}" = "latest" ]; then \
-        echo "Fetching latest release version..." && \
-        RELEASE_VERSION=$(curl -sS \
-            ${GITHUB_TOKEN:+-H "Authorization: token ${GITHUB_TOKEN}"} \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
-            jq -r '.tag_name' | tr -d 'v'); \
-        echo "Latest version: ${RELEASE_VERSION}"; \
-    fi && \
-    DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/v${RELEASE_VERSION}/server-linux-x86_64" && \
-    echo "Downloading from: ${DOWNLOAD_URL}" && \
-    curl -L -f \
-        ${GITHUB_TOKEN:+-H "Authorization: token ${GITHUB_TOKEN}"} \
-        -o /usr/local/bin/server \
-        "${DOWNLOAD_URL}" && \
-    chmod +x /usr/local/bin/server && \
-    echo "${RELEASE_VERSION}" > /app/VERSION && \
-    echo "Server binary installed successfully"
+# Copy locally-compiled server binary
+COPY --from=rust-builder /app/target/release/server /usr/local/bin/server
+RUN chmod +x /usr/local/bin/server && echo "Server binary installed successfully"
 
 # Copy frontend assets from builder
 COPY --from=frontend-builder /app/frontend/dist /app/frontend-build
@@ -158,10 +160,6 @@ EXPOSE 3001 11434 8100
 
 # Set working directory
 WORKDIR /app
-
-# Add version label
-LABEL org.opencontainers.image.version="${RELEASE_VERSION}"
-LABEL org.opencontainers.image.source="https://github.com/${GITHUB_REPO}"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
