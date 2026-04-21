@@ -15,6 +15,22 @@ pub struct ParallelDispatch {
     pub inputs: HashMap<String, serde_json::Value>,
 }
 
+/// Input for creating an orchestration task
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct OrchestrationTaskInput {
+    /// Task type: local_bash, local_agent, remote_agent, in_process_teammate,
+    /// local_workflow, monitor_mcp, dream
+    pub task_type: String,
+    /// Description of what this task should do. For local_bash, this is the command.
+    pub description: String,
+    /// Whether this task can run concurrently with other safe tasks
+    #[serde(default)]
+    pub is_concurrency_safe: bool,
+    /// Optional tool_use_id to link back to a tool call
+    pub tool_use_id: Option<String>,
+}
+
 /// Definition of an executive tool
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -145,6 +161,15 @@ pub enum NoraExecutiveTool {
     DispatchAgentsParallel {
         dispatches: Vec<ParallelDispatch>,
         project_id: Option<String>,
+    },
+    /// Create orchestration tasks for parallel execution within an agent flow.
+    /// Use this to dispatch multiple concurrent sub-tasks that the orchestration
+    /// engine will execute according to their concurrency settings.
+    CreateOrchestrationTasks {
+        /// The agent flow ID to attach tasks to
+        agent_flow_id: String,
+        /// List of tasks to create
+        tasks: Vec<OrchestrationTaskInput>,
     },
     /// Cancel a running workflow
     CancelWorkflow {

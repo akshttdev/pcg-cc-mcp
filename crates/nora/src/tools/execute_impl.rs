@@ -649,6 +649,109 @@ impl ExecutiveTools {
                 }
             }
 
+            NoraExecutiveTool::CreateOrchestrationTasks {
+                agent_flow_id,
+                tasks,
+            } => {
+                use db::models::orchestration_task::{
+                    CreateOrchestrationTask, OrchestrationTask, OrchestrationTaskType,
+                };
+
+                // Try to get the database pool from the execution engine
+                let pool = if let Some(engine) = &self.execution_engine {
+                    engine.db().await
+                } else {
+                    None
+                };
+
+                let Some(pool) = pool else {
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Database not available. Nora must be initialized with ExecutionEngine to create orchestration tasks.",
+                    }));
+                };
+
+                // Get current task count for positioning
+                let existing_tasks =
+                    OrchestrationTask::find_by_flow_id(&pool, &agent_flow_id).await;
+                let start_position = existing_tasks.map(|t| t.len() as i32).unwrap_or(0);
+
+                let mut created_tasks = Vec::new();
+                let mut errors = Vec::new();
+
+                for (idx, task_input) in tasks.into_iter().enumerate() {
+                    // Parse task type
+                    let task_type = match task_input.task_type.to_lowercase().as_str() {
+                        "local_bash" => OrchestrationTaskType::LocalBash,
+                        "local_agent" => OrchestrationTaskType::LocalAgent,
+                        "remote_agent" => OrchestrationTaskType::RemoteAgent,
+                        "in_process_teammate" => OrchestrationTaskType::InProcessTeammate,
+                        "local_workflow" => OrchestrationTaskType::LocalWorkflow,
+                        "monitor_mcp" => OrchestrationTaskType::MonitorMcp,
+                        "dream" => OrchestrationTaskType::Dream,
+                        other => {
+                            errors.push(serde_json::json!({
+                                "index": idx,
+                                "error": format!("Invalid task_type: '{}'. Valid types: local_bash, local_agent, remote_agent, in_process_teammate, local_workflow, monitor_mcp, dream", other)
+                            }));
+                            continue;
+                        }
+                    };
+
+                    // Create the task
+                    let create_params = CreateOrchestrationTask {
+                        agent_flow_id: agent_flow_id.clone(),
+                        task_type,
+                        description: task_input.description.clone(),
+                        tool_use_id: task_input.tool_use_id.clone(),
+                        is_concurrency_safe: task_input.is_concurrency_safe,
+                        position: start_position + idx as i32,
+                    };
+
+                    match OrchestrationTask::create(&pool, create_params).await {
+                        Ok(task) => {
+                            created_tasks.push(serde_json::json!({
+                                "id": task.id.to_string(),
+                                "task_type": task.task_type.to_string(),
+                                "description": task.description,
+                                "status": "pending",
+                                "position": task.position,
+                                "is_concurrency_safe": task.is_concurrency_safe,
+                            }));
+                        }
+                        Err(e) => {
+                            errors.push(serde_json::json!({
+                                "index": idx,
+                                "description": task_input.description,
+                                "error": format!("Failed to create task: {}", e)
+                            }));
+                        }
+                    }
+                }
+
+                let success = errors.is_empty();
+                let message = if success {
+                    format!(
+                        "Created {} orchestration tasks. The OrchestrationCoordinator will automatically pick them up and execute them.",
+                        created_tasks.len()
+                    )
+                } else {
+                    format!(
+                        "Created {} tasks with {} errors",
+                        created_tasks.len(),
+                        errors.len()
+                    )
+                };
+
+                Ok(serde_json::json!({
+                    "success": success,
+                    "message": message,
+                    "agent_flow_id": agent_flow_id,
+                    "created_tasks": created_tasks,
+                    "errors": errors,
+                }))
+            }
+
             NoraExecutiveTool::CancelWorkflow {
                 workflow_instance_id,
             } => {

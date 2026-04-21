@@ -241,6 +241,50 @@ impl ExecutiveTools {
             serde_json::json!({
                 "type": "function",
                 "function": {
+                    "name": "create_orchestration_tasks",
+                    "description": "Create orchestration tasks for parallel execution within an agent flow. Use this to dispatch multiple concurrent sub-tasks (bash commands, agent calls, workflows) that run in parallel when safe, or serially when not. The orchestration engine automatically executes these tasks and tracks their progress. Task types: local_bash (run shell commands), local_agent (delegate to Claude Code), remote_agent (call external APIs), local_workflow (run predefined workflows).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "agent_flow_id": {
+                                "type": "string",
+                                "description": "The UUID of the agent flow to attach orchestration tasks to"
+                            },
+                            "tasks": {
+                                "type": "array",
+                                "description": "List of tasks to create and execute",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "task_type": {
+                                            "type": "string",
+                                            "enum": ["local_bash", "local_agent", "remote_agent", "in_process_teammate", "local_workflow", "monitor_mcp", "dream"],
+                                            "description": "Type of task: local_bash (shell command), local_agent (AI agent), remote_agent (external API), local_workflow (predefined workflow)"
+                                        },
+                                        "description": {
+                                            "type": "string",
+                                            "description": "What the task should do. For local_bash, this is the shell command to execute."
+                                        },
+                                        "is_concurrency_safe": {
+                                            "type": "boolean",
+                                            "description": "Whether this task can run in parallel with other safe tasks. Set false for tasks that modify shared state."
+                                        },
+                                        "tool_use_id": {
+                                            "type": "string",
+                                            "description": "Optional: link to the originating tool call ID for tracing"
+                                        }
+                                    },
+                                    "required": ["task_type", "description"]
+                                }
+                            }
+                        },
+                        "required": ["agent_flow_id", "tasks"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
                     "name": "cancel_workflow",
                     "description": "Cancel a running workflow execution. Use this when a workflow is stuck, failing repeatedly, or needs to be stopped.",
                     "parameters": {

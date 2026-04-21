@@ -205,6 +205,31 @@ impl ExecutiveTools {
             estimated_duration: Some("1-5 seconds to start, execution time varies".to_string()),
         });
 
+        // Orchestration tasks - create parallel sub-tasks within an agent flow
+        self.add_tool_definition(ToolDefinition {
+            name: "create_orchestration_tasks".to_string(),
+            description: "Create orchestration tasks for parallel execution within an agent flow. Use this to dispatch multiple concurrent sub-tasks (bash commands, agent calls, workflows) that run in parallel when safe, or serially when not. The orchestration engine automatically picks up and executes these tasks.".to_string(),
+            category: ToolCategory::Coordination,
+            parameters: vec![
+                ToolParameter {
+                    name: "agent_flow_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "The UUID of the agent flow to attach tasks to".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "tasks".to_string(),
+                    parameter_type: ParameterType::Array,
+                    description: "Array of task definitions, each with: task_type (local_bash, local_agent, remote_agent, local_workflow), description (the command or instruction), is_concurrency_safe (whether it can run in parallel)".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+            ],
+            required_permissions: vec![Permission::Write, Permission::Execute],
+            estimated_duration: Some("1-2 seconds to create, execution time varies by task type".to_string()),
+        });
+
         // Analysis tools
         self.add_tool_definition(ToolDefinition {
             name: "generate_kpi_dashboard".to_string(),
@@ -854,6 +879,9 @@ impl ExecutiveTools {
             NoraExecutiveTool::ExecuteWorkflow { .. } => "execute_workflow".to_string(),
             NoraExecutiveTool::DispatchAgentsParallel { .. } => {
                 "dispatch_agents_parallel".to_string()
+            }
+            NoraExecutiveTool::CreateOrchestrationTasks { .. } => {
+                "create_orchestration_tasks".to_string()
             }
             NoraExecutiveTool::CancelWorkflow { .. } => "cancel_workflow".to_string(),
             NoraExecutiveTool::ListActiveWorkflows => "list_active_workflows".to_string(),
