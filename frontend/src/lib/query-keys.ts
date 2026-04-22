@@ -13,6 +13,18 @@ import type { PipelineType } from '@/types/crm';
 
 // ── Tasks ──────────────────────────────────────────────────────────────────
 
+// ── Topology (entity graph) ────────────────────────────────────────────────
+
+export const topologyKeys = {
+  all: ['topology'] as const,
+  global: () => ['topology', 'global'] as const,
+  org: (orgId: string) => ['topology', 'org', orgId] as const,
+  focused: (focusType: string, focusId: string, depth: number) =>
+    ['topology', 'subgraph', focusType, focusId, depth] as const,
+  actions: (nodeType: string | undefined) =>
+    ['topology', 'actions', nodeType] as const,
+};
+
 export const taskKeys = {
   all: ['tasks'] as const,
   list: (projectId: string) => ['tasks', projectId] as const,
