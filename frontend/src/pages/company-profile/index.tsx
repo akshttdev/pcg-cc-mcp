@@ -19,6 +19,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { ViewInTopologyButton } from '@/components/topology';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { companiesApi } from '@/lib/api';
@@ -338,14 +339,23 @@ export function CompanyProfilePage() {
                   </>
                 )}
                 {company.organization_id && (
-                  <button
-                    onClick={() =>
-                      navigate(`/organizations/${company.organization_id}`)
-                    }
-                    className="text-xs px-2 py-0.5 rounded-full bg-indigo-100/10 text-indigo-400 hover:bg-indigo-100/20 transition-colors font-medium border border-indigo-500/30"
-                  >
-                    View Org →
-                  </button>
+                  <>
+                    <button
+                      onClick={() =>
+                        navigate(`/organizations/${company.organization_id}`)
+                      }
+                      className="text-xs px-2 py-0.5 rounded-full bg-indigo-100/10 text-indigo-400 hover:bg-indigo-100/20 transition-colors font-medium border border-indigo-500/30"
+                    >
+                      View Org →
+                    </button>
+                    <ViewInTopologyButton
+                      orgId={company.organization_id}
+                      focusType="company"
+                      focusId={company.id}
+                      size="sm"
+                      variant="ghost"
+                    />
+                  </>
                 )}
               </div>
             </div>

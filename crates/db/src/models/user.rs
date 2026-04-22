@@ -242,7 +242,7 @@ impl Organization {
             .ok()
             .map(|u| u.into_bytes().to_vec());
         sqlx::query_as::<_, Organization>(
-            "SELECT CASE WHEN typeof(id)='blob' THEN lower(substr(hex(id),1,8)||'-'||substr(hex(id),9,4)||'-'||substr(hex(id),13,4)||'-'||substr(hex(id),17,4)||'-'||substr(hex(id),21,12)) ELSE id END as id, name, slug, description, avatar_url, CASE WHEN typeof(owner_id)='blob' THEN lower(substr(hex(owner_id),1,8)||'-'||substr(hex(owner_id),9,4)||'-'||substr(hex(owner_id),13,4)||'-'||substr(hex(owner_id),17,4)||'-'||substr(hex(owner_id),21,12)) ELSE owner_id END as owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address FROM organizations WHERE id = ? OR id = ?"
+            "SELECT CASE WHEN typeof(id)='blob' THEN lower(substr(hex(id),1,8)||'-'||substr(hex(id),9,4)||'-'||substr(hex(id),13,4)||'-'||substr(hex(id),17,4)||'-'||substr(hex(id),21,12)) ELSE id END as id, name, slug, description, avatar_url, CASE WHEN typeof(owner_id)='blob' THEN lower(substr(hex(owner_id),1,8)||'-'||substr(hex(owner_id),9,4)||'-'||substr(hex(owner_id),13,4)||'-'||substr(hex(owner_id),17,4)||'-'||substr(hex(owner_id),21,12)) ELSE owner_id END as owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address, wallet_address, vibe_budget_total FROM organizations WHERE id = ? OR id = ?"
         )
         .bind(id)
         .bind(uuid_bytes)
@@ -252,7 +252,7 @@ impl Organization {
 
     pub async fn find_by_slug(pool: &SqlitePool, slug: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address FROM organizations WHERE slug = ?"
+            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address, wallet_address, vibe_budget_total FROM organizations WHERE slug = ?"
         )
         .bind(slug)
         .fetch_optional(pool)
@@ -261,7 +261,7 @@ impl Organization {
 
     pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address FROM organizations ORDER BY name ASC"
+            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address, wallet_address, vibe_budget_total FROM organizations ORDER BY name ASC"
         )
         .fetch_all(pool)
         .await
@@ -269,7 +269,7 @@ impl Organization {
 
     pub async fn find_all_active(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address FROM organizations WHERE is_active = 1 ORDER BY name ASC"
+            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address, wallet_address, vibe_budget_total FROM organizations WHERE is_active = 1 ORDER BY name ASC"
         )
         .fetch_all(pool)
         .await
