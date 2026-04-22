@@ -273,6 +273,11 @@ fn generate_types_content() -> String {
         db::models::project_knowledge_source::ProjectKnowledgeCompleteness::decl(),
         db::models::project_knowledge_source::HealthStatus::decl(),
         db::models::project_knowledge_source::ProjectHealthSummary::decl(),
+        // Entity graph types (Phase 0/1 of graph-viz-enhancement)
+        db::models::entity_graph::EntityGraphNode::decl(),
+        db::models::entity_graph::EntityGraphEdge::decl(),
+        db::models::entity_graph::EntitySubgraph::decl(),
+        db::models::entity_graph::SyncGlobalStats::decl(),
         server::routes::knowledge::ProjectKnowledgeResponse::decl(),
         // Sidebar types (health-enriched)
         server::routes::sidebar::SidebarTree::decl(),
