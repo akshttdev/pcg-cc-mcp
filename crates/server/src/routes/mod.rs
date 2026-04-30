@@ -64,6 +64,7 @@ pub mod graph;
 pub mod health;
 pub mod images;
 pub mod intake;
+pub mod integrations;
 pub mod intelligence;
 pub mod invitations;
 pub mod invite_dispatch;
@@ -162,6 +163,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(social_accounts::router(&deployment))
         .merge(social_posts::router(&deployment))
         .merge(social_inbox::router(&deployment))
+        .merge(integrations::router(&deployment))
         .merge(email_accounts::router(&deployment))
         .merge(crm_contacts::router(&deployment))
         .merge(crm_pipelines::router(&deployment))

@@ -98,7 +98,14 @@ pub struct SocialAccount {
     pub display_name: Option<String>,
     pub profile_url: Option<String>,
     pub avatar_url: Option<String>,
+    // Legacy plaintext tokens — populated only for accounts created before
+    // the OAuth Token Manager migration (20260428). New accounts leave these
+    // NULL and read tokens via `integration_connection_id`.
+    #[serde(skip_serializing)]
+    #[ts(skip)]
     pub access_token: Option<String>,
+    #[serde(skip_serializing)]
+    #[ts(skip)]
     pub refresh_token: Option<String>,
     pub token_expires_at: Option<DateTime<Utc>>,
     pub follower_count: Option<i64>,
@@ -110,6 +117,11 @@ pub struct SocialAccount {
     pub last_error: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// FK into `integration_connections` for OAuth-managed tokens.
+    /// When set, callers should use `oauth_token_manager::get_access_token`
+    /// to obtain a fresh, decrypted token rather than reading `access_token`.
+    #[ts(optional)]
+    pub integration_connection_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]

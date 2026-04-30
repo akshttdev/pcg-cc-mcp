@@ -312,6 +312,12 @@ async fn main() -> Result<(), VibeKanbanError> {
         schedule_shutdown.clone(),
     );
 
+    // Spawn OAuth token refresh worker (every 15 min, refreshes tokens expiring < 1hr)
+    routes::integrations::spawn_token_refresh_loop(deployment.db().pool.clone());
+
+    // Spawn social publisher worker (every 5 min, publishes due scheduled posts)
+    services::services::social::publisher::spawn_publisher_loop(deployment.db().pool.clone());
+
     // Create shutdown registry (must be before workers that use it)
     let registry = server::workers::ShutdownRegistry::new();
 

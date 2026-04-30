@@ -91,6 +91,7 @@ async fn bootstrap_schema(pool: &SqlitePool) {
             status TEXT NOT NULL DEFAULT 'active',
             last_sync_at TEXT,
             last_error TEXT,
+            integration_connection_id TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec'))
         );

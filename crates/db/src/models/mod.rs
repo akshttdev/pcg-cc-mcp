@@ -50,6 +50,7 @@ pub mod executor_session;
 pub mod follow_up_draft;
 pub mod gateway_request;
 pub mod image;
+pub mod integration_connection;
 pub mod marketplace_listing;
 pub mod marketplace_subscription;
 pub mod media_batch;

@@ -137,6 +137,7 @@ impl PlatformConnector for InstagramConnector {
         &self,
         code: &str,
         redirect_uri: &str,
+        _code_verifier: Option<&str>,
     ) -> Result<OAuthTokens, SocialError> {
         // Exchange code for short-lived token
         let url = format!(

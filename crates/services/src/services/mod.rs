@@ -26,6 +26,8 @@ pub mod github_service;
 pub mod image;
 pub mod media_pipeline;
 pub mod notification;
+pub mod oauth_crypto;
+pub mod oauth_token_manager;
 pub mod pcg_policy;
 pub mod pr_monitor;
 pub mod qa_review;

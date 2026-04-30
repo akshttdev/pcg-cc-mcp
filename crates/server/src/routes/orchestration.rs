@@ -58,15 +58,15 @@ pub struct OrchestrationTasksResponse {
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route(
-            "/orchestration/:flow_id/tasks",
+            "/orchestration/{flow_id}/tasks",
             get(list_tasks).post(create_task),
         )
-        .route("/orchestration/:flow_id/tasks/:task_id", get(get_task))
+        .route("/orchestration/{flow_id}/tasks/{task_id}", get(get_task))
         .route(
-            "/orchestration/:flow_id/tasks/:task_id/kill",
+            "/orchestration/{flow_id}/tasks/{task_id}/kill",
             post(kill_task),
         )
-        .route("/orchestration/:flow_id/stream", get(task_stream))
+        .route("/orchestration/{flow_id}/stream", get(task_stream))
         .with_state(deployment.clone())
 }
 
