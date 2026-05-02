@@ -4,6 +4,7 @@ import {
   Bot,
   Boxes,
   Building2,
+  Cloud,
   Code2,
   Cpu,
   CreditCard,
@@ -168,6 +169,13 @@ const settingsNavigation: SettingsNavItem[] = [
     description:
       'Mount media files in Finder — open XML sequences directly in Premiere',
     scopes: ['user', 'org', 'system'],
+  },
+  {
+    path: 'storage',
+    icon: Cloud,
+    label: 'Cloud Storage',
+    description: 'OneDrive, Dropbox, and Google Drive sync',
+    scopes: ['org', 'system'],
   },
   // ─── Client scope ────────────────────────────────────────────
   {

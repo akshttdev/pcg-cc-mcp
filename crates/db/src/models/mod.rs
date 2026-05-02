@@ -105,6 +105,7 @@ pub mod wide_research;
 pub mod business_report;
 pub mod call_intake_item;
 pub mod cloud_file;
+pub mod cloud_storage_account;
 pub mod company;
 pub mod contact_association;
 pub mod contact_note;

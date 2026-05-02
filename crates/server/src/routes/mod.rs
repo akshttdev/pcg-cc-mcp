@@ -111,6 +111,7 @@ pub mod sidebar;
 pub mod social_accounts;
 pub mod social_inbox;
 pub mod social_posts;
+pub mod storage;
 pub mod system_metrics;
 pub mod tags;
 pub mod task_artifacts;
@@ -164,6 +165,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(social_posts::router(&deployment))
         .merge(social_inbox::router(&deployment))
         .merge(integrations::router(&deployment))
+        .merge(storage::router(&deployment))
         .merge(email_accounts::router(&deployment))
         .merge(crm_contacts::router(&deployment))
         .merge(crm_pipelines::router(&deployment))

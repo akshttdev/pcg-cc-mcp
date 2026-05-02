@@ -315,6 +315,9 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn OAuth token refresh worker (every 15 min, refreshes tokens expiring < 1hr)
     routes::integrations::spawn_token_refresh_loop(deployment.db().pool.clone());
 
+    // Spawn cloud storage sync worker (every 15 min, runs OneDrive/Dropbox/GDrive deltas)
+    services::services::storage::sync_worker::spawn_sync_loop(deployment.db().pool.clone());
+
     // Spawn social publisher worker (every 5 min, publishes due scheduled posts)
     services::services::social::publisher::spawn_publisher_loop(deployment.db().pool.clone());
 

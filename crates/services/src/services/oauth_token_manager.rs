@@ -19,7 +19,7 @@ use sqlx::SqlitePool;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::services::{oauth_crypto, social};
+use crate::services::{oauth_crypto, social, storage};
 
 #[derive(Debug, Error)]
 pub enum TokenManagerError {
@@ -187,6 +187,22 @@ async fn dispatch_refresh(
     // Social platforms route through the existing PlatformConnector trait.
     if let Ok(platform) = provider.parse::<db::models::social_account::SocialPlatform>() {
         let connector = social::get_connector(platform)
+            .map_err(|e| TokenManagerError::UnsupportedProvider(e.to_string()))?;
+        let tokens = connector
+            .refresh_token(refresh_token)
+            .await
+            .map_err(|e| TokenManagerError::RefreshFailed(e.to_string()))?;
+        return Ok(PlainTokens {
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            expires_at: tokens.expires_at,
+            scopes: tokens.scope,
+        });
+    }
+
+    // Cloud storage providers (onedrive / dropbox / gdrive) route through StorageConnector.
+    if matches!(provider, "onedrive" | "dropbox" | "gdrive") {
+        let connector = storage::get_connector(provider)
             .map_err(|e| TokenManagerError::UnsupportedProvider(e.to_string()))?;
         let tokens = connector
             .refresh_token(refresh_token)

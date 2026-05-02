@@ -36,6 +36,7 @@ pub mod scene_analysis;
 pub mod sentry;
 pub mod slot_manager;
 pub mod social;
+pub mod storage;
 pub mod topos_scanner;
 pub mod user_onboarding;
 pub mod vibe_pricing;
