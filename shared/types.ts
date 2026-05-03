@@ -762,7 +762,7 @@ description_field: string | null, };
 
 export type AirtableConnectionWithBase = { connection: AirtableBase, base_info: AirtableBaseInfo | null, };
 
-export type FlowType = "content_creation" | "research" | "engagement" | "scheduling" | "campaign" | "analysis" | "monitoring" | "custom";
+export type FlowType = "content_creation" | "research" | "engagement" | "scheduling" | "campaign" | "analysis" | "monitoring" | "custom" | "task_execution";
 
 export type FlowStatus = "planning" | "executing" | "verifying" | "completed" | "failed" | "paused" | "awaiting_approval" | "needs_clarification";
 
@@ -777,6 +777,10 @@ clarification_request: string | null,
  * Link to CRM deal (for pipeline-triggered agent flows)
  */
 crm_deal_id: string | null, 
+/**
+ * Link to project (for task-execution flows)
+ */
+project_id: string | null, 
 /**
  * Agent auto-start can be cancelled before this deadline
  */
