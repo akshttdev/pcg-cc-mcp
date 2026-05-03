@@ -13,20 +13,17 @@
 //! - `PATCH  /storage/accounts/:id`              Update auto_sync / interval / root_path
 
 use axum::{
+    Extension, Json, Router,
     extract::{Path, Query, State},
     response::Redirect,
     routing::{delete, get, post},
-    Json, Router,
 };
 use chrono::Duration;
-use db::{
-    db_uuid::DbUuid,
-    models::{
-        cloud_storage_account::{
-            CloudStorageAccount, CreateCloudStorageAccount, UpdateCloudStorageAccount,
-        },
-        integration_connection::OAuthPendingState,
+use db::models::{
+    cloud_storage_account::{
+        CloudStorageAccount, CreateCloudStorageAccount, UpdateCloudStorageAccount,
     },
+    integration_connection::OAuthPendingState,
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -38,7 +35,10 @@ use tracing::warn;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext,
+};
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
@@ -134,16 +134,39 @@ pub struct SyncResult {
     pub folders_seen: i64,
 }
 
+// ─── Access control helpers ────────────────────────────────────────────────
+
+/// Load a cloud storage account and verify the caller belongs to its org.
+/// Mirrors the `require_pipeline_org_access` pattern in `crm_pipelines.rs`.
+async fn require_account_org_access(
+    access: &AccessContext,
+    pool: &sqlx::SqlitePool,
+    id: Uuid,
+) -> Result<CloudStorageAccount, ApiError> {
+    let account = CloudStorageAccount::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Storage account not found".into()))?;
+    access
+        .require_org_membership(pool, &account.organization_id.to_string())
+        .await?;
+    Ok(account)
+}
+
 // ─── Route handlers ────────────────────────────────────────────────────────
 
 /// `GET /storage/connect/:provider?organization_id=...`
 async fn connect(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(provider): Path<String>,
     Query(query): Query<ConnectQuery>,
 ) -> Result<Redirect, ApiError> {
     validate_provider(&provider)?;
     let pool = &deployment.db().pool;
+
+    access_context
+        .require_org_membership(pool, &query.organization_id.to_string())
+        .await?;
 
     let connector = storage::get_connector(&provider)
         .map_err(|e| ApiError::BadRequest(format!("Connector unavailable: {e}")))?;
@@ -179,6 +202,7 @@ async fn connect(
 
 /// `GET /storage/callback/:provider?code=...&state=...`
 async fn callback(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(provider): Path<String>,
     Query(query): Query<CallbackQuery>,
@@ -216,6 +240,12 @@ async fn callback(
             "State token does not match callback provider".into(),
         ));
     }
+
+    // Defence-in-depth: even though the state token was minted by `connect`
+    // (which already gated the org), re-verify the caller is still a member.
+    access_context
+        .require_org_membership(pool, &pending.organization_id.to_string())
+        .await?;
 
     let connector = storage::get_connector(&provider)
         .map_err(|e| ApiError::BadRequest(format!("Connector unavailable: {e}")))?;
@@ -288,10 +318,14 @@ async fn callback(
 
 /// `GET /storage/accounts?organization_id=...`
 async fn list_accounts(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<ListAccountsQuery>,
 ) -> Result<Json<ApiResponse<Vec<AccountView>>>, ApiError> {
     let pool = &deployment.db().pool;
+    access_context
+        .require_org_membership(pool, &query.organization_id.to_string())
+        .await?;
     let accounts = CloudStorageAccount::find_by_org(pool, query.organization_id).await?;
     Ok(Json(ApiResponse::success(
         accounts.into_iter().map(AccountView::from).collect(),
@@ -300,17 +334,14 @@ async fn list_accounts(
 
 /// `DELETE /storage/accounts/:id`
 async fn disconnect(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid account ID".into()))?
-        .to_uuid();
+    let id = parse_db_uuid_param(&id, "account ID")?.to_uuid();
 
-    let Some(account) = CloudStorageAccount::find_by_id(pool, id).await? else {
-        return Err(ApiError::NotFound("Storage account not found".into()));
-    };
+    let account = require_account_org_access(&access_context, pool, id).await?;
 
     // Revoke the underlying integration_connection if linked, then delete the
     // storage account row. We keep cloud_files / cloud_storage_files (audit trail).
@@ -325,13 +356,14 @@ async fn disconnect(
 
 /// `POST /storage/accounts/:id/sync`
 async fn sync_now(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SyncResult>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid account ID".into()))?
-        .to_uuid();
+    let id = parse_db_uuid_param(&id, "account ID")?.to_uuid();
+
+    require_account_org_access(&access_context, pool, id).await?;
 
     let stats = sync_worker::sync_account(pool, id)
         .await
@@ -347,14 +379,15 @@ async fn sync_now(
 
 /// `PATCH /storage/accounts/:id`
 async fn update_account(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateCloudStorageAccount>,
 ) -> Result<Json<ApiResponse<AccountView>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid account ID".into()))?
-        .to_uuid();
+    let id = parse_db_uuid_param(&id, "account ID")?.to_uuid();
+
+    require_account_org_access(&access_context, pool, id).await?;
 
     let updated = CloudStorageAccount::update(pool, id, payload)
         .await?
