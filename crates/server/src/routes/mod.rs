@@ -118,6 +118,7 @@ pub mod social_inbox;
 pub mod social_media_upload;
 pub mod social_posts;
 pub mod storage;
+pub mod social_publisher;
 pub mod system_metrics;
 pub mod tags;
 pub mod task_artifacts;

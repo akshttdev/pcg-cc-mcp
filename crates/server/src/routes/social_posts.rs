@@ -36,31 +36,24 @@ async fn list_posts(
 ) -> Result<Json<ApiResponse<Vec<SocialPost>>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let posts = SocialPost::find_scheduled(pool, query.project_id).await?;
-
-    // Apply status filter
-    let posts = if let Some(status) = &query.status {
-        posts.into_iter().filter(|p| p.status == *status).collect()
+    // Fetch all posts for the project (or all projects), then filter in-process
+    let all_posts = if let Some(pid) = query.project_id {
+        SocialPost::find_all_for_project(pool, pid).await?
     } else {
-        posts
+        SocialPost::find_all(pool).await?
     };
 
-    // Apply category filter
-    let posts = if let Some(category) = &query.category {
-        posts
-            .into_iter()
-            .filter(|p| p.category.as_deref() == Some(category.as_str()))
-            .collect()
-    } else {
-        posts
-    };
-
-    // Apply limit
-    let posts = if let Some(limit) = query.limit {
-        posts.into_iter().take(limit as usize).collect()
-    } else {
-        posts
-    };
+    let posts: Vec<SocialPost> = all_posts
+        .into_iter()
+        .filter(|p| query.status.as_deref().map_or(true, |s| p.status == s))
+        .filter(|p| {
+            query
+                .category
+                .as_deref()
+                .map_or(true, |c| p.category.as_deref() == Some(c))
+        })
+        .take(query.limit.unwrap_or(500) as usize)
+        .collect();
 
     Ok(Json(ApiResponse::success(posts)))
 }
