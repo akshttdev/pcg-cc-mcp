@@ -256,6 +256,7 @@ impl SocialPost {
             SELECT * FROM social_posts
             WHERE status = 'scheduled'
             AND datetime(scheduled_for) <= datetime('now')
+            AND publish_attempt < 3
             ORDER BY scheduled_for ASC
             "#,
         )
@@ -263,6 +264,28 @@ impl SocialPost {
         .await?;
 
         Ok(posts)
+    }
+
+    pub async fn find_all_for_project(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Vec<Self>, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"SELECT * FROM social_posts WHERE project_id = ?1 ORDER BY COALESCE(scheduled_for, created_at) ASC"#,
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"SELECT * FROM social_posts ORDER BY COALESCE(scheduled_for, created_at) ASC"#,
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(Into::into)
     }
 
     pub async fn find_by_category(

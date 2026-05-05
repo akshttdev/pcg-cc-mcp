@@ -1,14 +1,14 @@
 use anyhow::{self, Error as AnyhowError};
 use deployment::{Deployment, DeploymentError};
-use server::{DeploymentImpl, routes};
+use server::{routes, DeploymentImpl};
 use sqlx::Error as SqlxError;
 use strip_ansi_escapes::strip;
 use thiserror::Error;
-use tracing_subscriber::{EnvFilter, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter};
 use utils::{
     assets::asset_dir,
     browser::open_browser,
-    external_services::{ExternalServicesConfig, initialize_external_services},
+    external_services::{initialize_external_services, ExternalServicesConfig},
     port_file::write_port_file,
     sentry::sentry_layer,
 };
@@ -308,6 +308,9 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
 
+    // Spawn social post publish loop (checks every 15 minutes)
+    routes::social_publisher::spawn_social_publish_loop(deployment.db().pool.clone());
+
     // Spawn workflow schedule trigger loop (checks every 5 minutes)
     let schedule_shutdown = tokio_util::sync::CancellationToken::new();
     routes::data_source_workflows::spawn_workflow_schedule_loop(
@@ -363,11 +366,9 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     // Nora inbox poller — monitors nora@powerclubglobal.com, routes to intake pipeline
     registry
-        .spawn_worker(
-            server::workers::background_tasks::NoraInboxPoller::new(
-                deployment.db().pool.clone(),
-            ),
-        )
+        .spawn_worker(server::workers::background_tasks::NoraInboxPoller::new(
+            deployment.db().pool.clone(),
+        ))
         .await;
 
     let app_router = routes::router(deployment);
