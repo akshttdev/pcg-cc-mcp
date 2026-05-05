@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::multipart::MultipartError,
     http::StatusCode,
     response::{IntoResponse, Response},
+    Json,
 };
 use db::models::{
     agent_flow::AgentFlowError, agent_flow_event::AgentFlowEventError,
@@ -206,6 +206,9 @@ impl From<SocialPostError> for ApiError {
         match err {
             SocialPostError::Database(e) => ApiError::Database(e),
             SocialPostError::NotFound => ApiError::NotFound("Social post not found".into()),
+            SocialPostError::InvalidTransition(from, to) => {
+                ApiError::BadRequest(format!("Cannot transition from {} to {}", from, to))
+            }
         }
     }
 }

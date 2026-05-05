@@ -1,7 +1,7 @@
 use axum::{
-    Json, Router,
     extract::{Path, State},
     routing::{get, patch},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -9,12 +9,13 @@ use db::{
         deliverable::{CreateDeliverable, Deliverable, UpdateDeliverable},
         project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
         review_token::ReviewToken,
+        social_post::SocialPost,
     },
 };
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -122,6 +123,31 @@ async fn move_deliverable_status(
             "Deliverable {} registered in knowledge graph as artifact",
             id
         );
+
+        // Auto-advance linked social post draft → pending_review
+        if let Ok(Some(linked_post)) = SocialPost::find_by_deliverable(pool, id).await {
+            if linked_post.status == "draft" {
+                match SocialPost::advance_to_review(pool, linked_post.id, "", &[]).await {
+                    Ok(updated) => {
+                        let app_base = std::env::var("APP_BASE_URL")
+                            .unwrap_or_else(|_| "http://localhost:3001".into());
+                        let review_url = updated
+                            .review_token
+                            .as_deref()
+                            .map(|t| format!("{}/api/social/review/{}", app_base, t))
+                            .unwrap_or_default();
+                        tracing::info!(
+                            "Social post {} advanced to pending_review. Review: {}",
+                            linked_post.id,
+                            review_url
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!("Could not advance social post {}: {}", linked_post.id, e)
+                    }
+                }
+            }
+        }
     }
 
     Ok(Json(ApiResponse::success(deliverable)))
