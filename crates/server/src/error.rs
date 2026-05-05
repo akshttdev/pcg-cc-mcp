@@ -206,6 +206,9 @@ impl From<SocialPostError> for ApiError {
         match err {
             SocialPostError::Database(e) => ApiError::Database(e),
             SocialPostError::NotFound => ApiError::NotFound("Social post not found".into()),
+            SocialPostError::InvalidTransition(from, to) => {
+                ApiError::BadRequest(format!("Cannot transition from {} to {}", from, to))
+            }
         }
     }
 }

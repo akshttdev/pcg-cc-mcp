@@ -1,6 +1,7 @@
 use axum::{
     extract::{Path, State},
     routing::{get, patch, post},
+    routing::{get, patch},
     Json, Router,
 };
 use cinematics::{CinematicsConfig, CinematicsService, Cinematographer};
@@ -12,6 +13,7 @@ use db::{
         project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
         review_comment::ReviewComment,
         review_token::ReviewToken,
+        social_post::SocialPost,
     },
 };
 use deployment::Deployment;
@@ -125,6 +127,31 @@ async fn move_deliverable_status(
             "Deliverable {} registered in knowledge graph as artifact",
             id
         );
+
+        // Auto-advance linked social post draft → pending_review
+        if let Ok(Some(linked_post)) = SocialPost::find_by_deliverable(pool, id).await {
+            if linked_post.status == "draft" {
+                match SocialPost::advance_to_review(pool, linked_post.id, "", &[]).await {
+                    Ok(updated) => {
+                        let app_base = std::env::var("APP_BASE_URL")
+                            .unwrap_or_else(|_| "http://localhost:3001".into());
+                        let review_url = updated
+                            .review_token
+                            .as_deref()
+                            .map(|t| format!("{}/api/social/review/{}", app_base, t))
+                            .unwrap_or_default();
+                        tracing::info!(
+                            "Social post {} advanced to pending_review. Review: {}",
+                            linked_post.id,
+                            review_url
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!("Could not advance social post {}: {}", linked_post.id, e)
+                    }
+                }
+            }
+        }
     }
 
     Ok(Json(ApiResponse::success(deliverable)))
