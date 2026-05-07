@@ -5,7 +5,7 @@
  * - AR (Accounts Receivable): a client owes PCG money for services delivered
  * - AP (Accounts Payable):    PCG owes a contractor money for work performed
  */
-export type Invoice = { id: string, invoice_number: string, person_id: string | null, organization_id: string | null, project_id: string | null, 
+export type Invoice = { id: string, invoice_number: string, person_id: string | null, crm_contact_id: string | null, organization_id: string | null, project_id: string | null, 
 /**
  * 'ar' | 'ap'
  */

@@ -9,13 +9,16 @@ use axum::{
     Json,
 };
 use deployment::Deployment;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param};
-use db::models::email_message::{
-    EmailMessage, EmailMessageFilter, UpdateEmailMessage, EmailInboxStats
+use db::models::{
+    email_account::EmailAccount,
+    email_message::{
+        EmailInboxStats, EmailMessage, EmailMessageFilter, UpdateEmailMessage,
+    },
 };
 
 #[derive(Debug, Deserialize)]
@@ -135,6 +138,72 @@ async fn toggle_star(
     Ok(Json(ApiResponse::success(message)))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SendEmailRequest {
+    /// id of the email_account to send from.
+    pub from_account_id: String,
+    pub to: Vec<String>,
+    pub subject: String,
+    pub body: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SendEmailResponse {
+    pub provider_message_id: String,
+}
+
+/// POST /email/send — send an email from a connected account.
+/// Dispatches to Gmail or Zoho based on the account's provider.
+async fn send_email(
+    State(deployment): State<DeploymentImpl>,
+    Json(req): Json<SendEmailRequest>,
+) -> Result<Json<ApiResponse<SendEmailResponse>>, ApiError> {
+    use services::services::agent_channels::{AgentChannelService, ChannelOwner};
+
+    if req.to.is_empty() {
+        return Err(ApiError::BadRequest("`to` must contain at least one address".into()));
+    }
+    if req.subject.trim().is_empty() {
+        return Err(ApiError::BadRequest("`subject` is required".into()));
+    }
+
+    let pool = &deployment.db().pool;
+    let account_id = parse_db_uuid_param(&req.from_account_id, "from_account_id")?.to_uuid();
+    let account = EmailAccount::find_by_id(pool, account_id).await?;
+
+    let owner = parse_owner(&account.owner_type, &account.owner_id).ok_or_else(|| {
+        ApiError::InternalError(format!(
+            "email account {} has unparseable owner ({}/{})",
+            account.id, account.owner_type, account.owner_id
+        ))
+    })?;
+
+    let svc = AgentChannelService::new(pool.clone());
+    let provider_message_id = svc
+        .send_email(&owner, &req.to, &req.subject, &req.body)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("send failed: {e}")))?;
+
+    Ok(Json(ApiResponse::success(SendEmailResponse {
+        provider_message_id,
+    })))
+}
+
+fn parse_owner(
+    owner_type: &str,
+    owner_id: &str,
+) -> Option<services::services::agent_channels::ChannelOwner> {
+    use services::services::agent_channels::ChannelOwner;
+    let id = Uuid::parse_str(owner_id).ok()?;
+    Some(match owner_type {
+        "agent" => ChannelOwner::Agent(id),
+        "user" => ChannelOwner::User(id),
+        "organization" => ChannelOwner::Organization(id),
+        "project" => ChannelOwner::Project(id),
+        _ => return None,
+    })
+}
+
 /// POST /email/messages/:id/trash - Move to trash
 async fn move_to_trash(
     State(deployment): State<DeploymentImpl>,
@@ -157,4 +226,5 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/email/messages/{id}/unread", post(mark_as_unread))
         .route("/email/messages/{id}/star", post(toggle_star))
         .route("/email/messages/{id}/trash", post(move_to_trash))
+        .route("/email/send", post(send_email))
 }

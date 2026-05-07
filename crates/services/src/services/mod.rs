@@ -13,6 +13,7 @@ pub mod bowser;
 pub mod config;
 pub mod container;
 pub mod editron;
+pub mod email_providers;
 pub mod events;
 pub mod execution_control;
 pub mod execution_summary;

@@ -156,18 +156,22 @@ async fn trigger_sync(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<EmailAccount>>, ApiError> {
-    let pool = &deployment.db().pool;
+    let pool = deployment.db().pool.clone();
     let id_uuid = DbUuid::parse(&id)
         .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
         .to_uuid();
 
-    // Update sync status to indicate sync is starting
-    EmailAccount::update_sync_status(pool, id_uuid, "active", None).await?;
+    // Verify the account exists before kicking off the async sync.
+    let account = EmailAccount::find_by_id(&pool, id_uuid).await?;
 
-    // TODO: Trigger actual email sync background job here
-    // For now, just return the updated account
+    // Run the sync in the background so the route returns immediately.
+    // Status, cursor, and last_error are persisted by sync_account_now.
+    tokio::spawn(async move {
+        if let Err(e) = crate::workers::background_tasks::sync_account_now(pool, id_uuid).await {
+            tracing::warn!("[email_accounts] manual sync failed for {id_uuid}: {e}");
+        }
+    });
 
-    let account = EmailAccount::find_by_id(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(account)))
 }
 

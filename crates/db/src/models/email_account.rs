@@ -106,6 +106,10 @@ pub struct EmailAccount {
     // Polymorphic ownership (added migration 20260306300000)
     pub owner_type: String,
     pub owner_id: String,
+    // Sync cursors (migration 20260503000000)
+    pub gmail_history_id: Option<String>,
+    pub sync_cursor: Option<String>,
+    pub sync_in_progress: i32,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -486,6 +490,54 @@ impl EmailAccount {
             return Err(EmailAccountError::NotFound);
         }
 
+        Ok(())
+    }
+
+    /// Atomically claim an account for syncing. Returns true if the caller
+    /// won the race (account is now marked in_progress) or false if another
+    /// worker already claimed it.
+    pub async fn try_claim_for_sync(
+        pool: &SqlitePool,
+        id: Uuid,
+    ) -> Result<bool, EmailAccountError> {
+        let result = sqlx::query(
+            r#"UPDATE email_accounts
+               SET sync_in_progress = 1, updated_at = datetime('now', 'subsec')
+               WHERE id = ?1 AND sync_in_progress = 0"#,
+        )
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Release a sync claim and persist the new cursor + last_sync_at.
+    pub async fn finish_sync(
+        pool: &SqlitePool,
+        id: Uuid,
+        gmail_history_id: Option<&str>,
+        sync_cursor: Option<&str>,
+        last_error: Option<&str>,
+    ) -> Result<(), EmailAccountError> {
+        let status = if last_error.is_some() { "error" } else { "active" };
+        sqlx::query(
+            r#"UPDATE email_accounts SET
+                sync_in_progress = 0,
+                last_sync_at = datetime('now', 'subsec'),
+                gmail_history_id = COALESCE(?2, gmail_history_id),
+                sync_cursor = COALESCE(?3, sync_cursor),
+                last_error = ?4,
+                status = ?5,
+                updated_at = datetime('now', 'subsec')
+               WHERE id = ?1"#,
+        )
+        .bind(id)
+        .bind(gmail_history_id)
+        .bind(sync_cursor)
+        .bind(last_error)
+        .bind(status)
+        .execute(pool)
+        .await?;
         Ok(())
     }
 

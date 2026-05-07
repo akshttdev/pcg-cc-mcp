@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use crate::services::email_providers::{GmailClient, GmailError};
+
 #[derive(Debug, Clone)]
 pub enum ChannelOwner {
     Agent(Uuid),
@@ -138,8 +140,7 @@ impl AgentChannelService {
             .ok_or(ChannelError::NoAccountConfigured)
     }
 
-    /// Send an email as the given owner using their connected Zoho account.
-    /// Falls back to logging if no account is connected.
+    /// Send an email as the given owner using their connected Gmail or Zoho account.
     pub async fn send_email(
         &self,
         owner: &ChannelOwner,
@@ -149,16 +150,25 @@ impl AgentChannelService {
     ) -> Result<String, ChannelError> {
         let account = self.get_email_account(owner).await?;
 
-        if account.provider != "zoho" {
-            return Err(ChannelError::Api(format!(
-                "Provider '{}' send via REST not yet implemented",
-                account.provider
-            )));
+        match account.provider.as_str() {
+            "gmail" => self.send_email_gmail(&account, to, subject, body).await,
+            "zoho" => self.send_email_zoho(&account, to, subject, body).await,
+            other => Err(ChannelError::Api(format!(
+                "Provider '{other}' send via REST not yet implemented"
+            ))),
         }
+    }
 
-        let token = self.valid_access_token(&account).await?;
-        let zoho_domain = self.zoho_domain_from_account(&account);
-        let account_id = self.zoho_account_id_from_account(&account)?;
+    async fn send_email_zoho(
+        &self,
+        account: &EmailAccount,
+        to: &[String],
+        subject: &str,
+        body: &str,
+    ) -> Result<String, ChannelError> {
+        let token = self.valid_access_token(account).await?;
+        let zoho_domain = self.zoho_domain_from_account(account);
+        let account_id = self.zoho_account_id_from_account(account)?;
 
         let to_str = to.join(", ");
         let payload = serde_json::json!({
@@ -204,6 +214,29 @@ impl AgentChannelService {
             message_id
         );
 
+        Ok(message_id)
+    }
+
+    async fn send_email_gmail(
+        &self,
+        account: &EmailAccount,
+        to: &[String],
+        subject: &str,
+        body: &str,
+    ) -> Result<String, ChannelError> {
+        let token = self.valid_gmail_token(account).await?;
+        let mime = build_rfc2822(&account.email_address, to, subject, body);
+        let message_id = GmailClient::new(token)
+            .send_message(&mime)
+            .await
+            .map_err(|e| ChannelError::Api(format!("Gmail send: {e}")))?;
+
+        tracing::info!(
+            "[AgentChannelService] Gmail send from {} to {:?} (id={})",
+            account.email_address,
+            to,
+            message_id
+        );
         Ok(message_id)
     }
 
@@ -436,6 +469,46 @@ impl AgentChannelService {
 
     // ── Internal helpers ────────────────────────────────────────────────────
 
+    /// Return a valid Gmail access token, refreshing via Google OAuth if needed.
+    pub async fn valid_gmail_token(
+        &self,
+        account: &EmailAccount,
+    ) -> Result<String, ChannelError> {
+        // Still inside expiry window? Reuse.
+        if let (Some(token), Some(expires_at)) =
+            (account.access_token.as_ref(), account.token_expires_at)
+        {
+            if chrono::Utc::now() + chrono::Duration::seconds(60) < expires_at {
+                return Ok(token.clone());
+            }
+        }
+
+        let refresh_token = account
+            .refresh_token
+            .as_deref()
+            .ok_or_else(|| ChannelError::TokenRefresh("Gmail account has no refresh token".into()))?;
+
+        let refreshed = GmailClient::refresh_access_token(refresh_token)
+            .await
+            .map_err(|e: GmailError| ChannelError::TokenRefresh(e.to_string()))?;
+
+        sqlx::query(
+            "UPDATE email_accounts SET access_token = ?, token_expires_at = ?, status = 'active', last_error = NULL, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(&refreshed.access_token)
+        .bind(refreshed.expires_at.map(|t| t.to_rfc3339()))
+        .bind(account.id)
+        .execute(&self.pool)
+        .await
+        .map_err(ChannelError::Database)?;
+
+        tracing::info!(
+            "[AgentChannelService] Gmail token refreshed for {}",
+            account.email_address
+        );
+        Ok(refreshed.access_token)
+    }
+
     /// Return a valid access token, refreshing if expired or missing.
     async fn valid_access_token(&self, account: &EmailAccount) -> Result<String, ChannelError> {
         // Check if token is still valid (with 60s buffer)
@@ -538,6 +611,25 @@ impl AgentChannelService {
                 ChannelError::Api("zoho_account_id not found in account metadata".into())
             })
     }
+}
+
+/// Assemble a minimal RFC-2822 message string suitable for Gmail's `users.messages.send`.
+/// Plaintext only; the caller has already validated `to`/`subject`/`body`.
+pub fn build_rfc2822(from: &str, to: &[String], subject: &str, body: &str) -> String {
+    let to_header = to.join(", ");
+    // Subject containing non-ASCII gets base64'd (RFC 2047 encoded-word).
+    let subject_encoded = if subject.is_ascii() {
+        subject.to_string()
+    } else {
+        use base64::Engine;
+        format!(
+            "=?UTF-8?B?{}?=",
+            base64::engine::general_purpose::STANDARD.encode(subject.as_bytes())
+        )
+    };
+    format!(
+        "From: {from}\r\nTo: {to_header}\r\nSubject: {subject_encoded}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\nContent-Transfer-Encoding: 7bit\r\n\r\n{body}"
+    )
 }
 
 /// Strip HTML tags and decode entities to plain text.

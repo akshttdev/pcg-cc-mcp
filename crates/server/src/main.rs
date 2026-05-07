@@ -392,6 +392,13 @@ async fn main() -> Result<(), VibeKanbanError> {
         ))
         .await;
 
+    // Email sync worker — pulls Gmail (and future Zoho/IMAP) accounts on cadence
+    registry
+        .spawn_worker(server::workers::background_tasks::EmailSyncWorker::new(
+            deployment.db().pool.clone(),
+        ))
+        .await;
+
     let app_router = routes::router(deployment);
 
     let port = std::env::var("BACKEND_PORT")

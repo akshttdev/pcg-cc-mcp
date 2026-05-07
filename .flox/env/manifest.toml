@@ -6,7 +6,7 @@
 ##
 ## -------------------------------------------------------------------
 # Flox manifest version managed by Flox CLI
-version = 1
+schema-version = "1.11.0"
 
 
 ## Install Packages --------------------------------------------------
@@ -16,15 +16,19 @@ version = 1
 ## -------------------------------------------------------------------
 [install]
 nodejs.pkg-path = "nodejs"
+nodejs.outputs = "all"
 pnpm.pkg-path = "pnpm"
 rustup.pkg-path = "rustup"
 cargo-watch.pkg-path = "cargo-watch"
 sqlx-cli.pkg-path = "sqlx-cli"
 cmake.pkg-path = "cmake"
 libopus.pkg-path = "libopus"
+libopus.outputs = "all"
 pkg-config.pkg-path = "pkg-config"
+pkg-config.outputs = "all"
 sccache.pkg-path = "sccache"
 lld.pkg-path = "lld"
+lld.outputs = "all"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 

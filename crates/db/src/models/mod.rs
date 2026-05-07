@@ -38,6 +38,7 @@ pub mod crm_pipeline;
 pub mod custom_field_definition;
 pub mod dropbox_source;
 pub mod email_account;
+pub mod email_message;
 pub mod execution_artifact;
 pub mod execution_checkpoint;
 pub mod execution_handoff;

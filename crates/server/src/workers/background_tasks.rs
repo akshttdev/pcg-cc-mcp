@@ -382,16 +382,12 @@ impl BackgroundWorker for NoraInboxPoller {
                                 let msg_id = msg.message_id.clone();
 
                                 // Only process emails from trusted intake senders.
-                                // Currently: sirakstudios.com — Sirak shares discovery calls with Nora
-                                // as a PCG client service. Other senders (marketing, notifications)
-                                // are not discovery leads.
-                                let sender_domain = msg.from_address
-                                    .split('@')
-                                    .nth(1)
-                                    .unwrap_or("")
-                                    .to_lowercase();
-                                let is_trusted = sender_domain == "sirakstudios.com";
-                                if !is_trusted {
+                                // Configured via EMAIL_TRUSTED_SENDERS env var:
+                                //   comma-separated list of full addresses (alice@x.com)
+                                //   or domains (sirakstudios.com).
+                                // Default if unset: "sirakstudios.com" (preserves Nora's
+                                // PCG-client behavior pre-env-var).
+                                if !is_trusted_sender(&msg.from_address) {
                                     continue;
                                 }
 
@@ -506,6 +502,390 @@ impl BackgroundWorker for NoraInboxPoller {
             }
         }
     }
+}
+
+/// EmailSyncWorker — pulls new messages from every active email account on a
+/// short cadence and writes them into `email_messages`. Trusted-sender mail
+/// is also handed off to the call-intake pipeline.
+///
+/// Today this implements Gmail (history-API delta, falling back to a 50-message
+/// bootstrap on first run). Zoho accounts are skipped — `NoraInboxPoller`
+/// covers the one Zoho address we care about; a full Zoho sync can layer on
+/// later via the same dispatch shape.
+pub struct EmailSyncWorker {
+    pool: sqlx::SqlitePool,
+}
+
+impl EmailSyncWorker {
+    pub fn new(pool: sqlx::SqlitePool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait::async_trait]
+impl BackgroundWorker for EmailSyncWorker {
+    fn name(&self) -> &str {
+        "email_sync_worker"
+    }
+
+    async fn run(&self, shutdown: CancellationToken) {
+        // Tick every 60s; per-account `sync_frequency_minutes` decides whether
+        // a given account is actually due.
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        tracing::info!("[EMAIL_SYNC] Worker started — 60s tick, gates on per-account sync_frequency_minutes");
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    if let Err(e) = self.sync_due_accounts().await {
+                        tracing::error!("[EMAIL_SYNC] tick failed: {e}");
+                    }
+                }
+                _ = shutdown.cancelled() => {
+                    tracing::info!("[EMAIL_SYNC] Worker shutting down");
+                    break;
+                }
+            }
+        }
+    }
+}
+
+impl EmailSyncWorker {
+    async fn sync_due_accounts(&self) -> Result<(), sqlx::Error> {
+        use db::models::email_account::EmailAccount;
+
+        let accounts = match EmailAccount::find_needs_sync(&self.pool).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::error!("[EMAIL_SYNC] find_needs_sync: {e}");
+                return Ok(());
+            }
+        };
+
+        for account in accounts {
+            sync_account_with_claim(self.pool.clone(), account).await;
+        }
+
+        Ok(())
+    }
+}
+
+/// Run one full sync pass for a specific account, claiming the row first so
+/// concurrent ticks/manual triggers don't double-sync. Used by both the
+/// background ticker and the manual `POST /email/accounts/:id/sync` route.
+pub async fn sync_account_now(
+    pool: sqlx::SqlitePool,
+    account_id: uuid::Uuid,
+) -> Result<(), String> {
+    use db::models::email_account::EmailAccount;
+    let account = EmailAccount::find_by_id(&pool, account_id)
+        .await
+        .map_err(|e| format!("account lookup: {e}"))?;
+    sync_account_with_claim(pool, account).await;
+    Ok(())
+}
+
+async fn sync_account_with_claim(
+    pool: sqlx::SqlitePool,
+    account: db::models::email_account::EmailAccount,
+) {
+    use db::models::email_account::EmailAccount;
+    let claimed = EmailAccount::try_claim_for_sync(&pool, account.id)
+        .await
+        .unwrap_or(false);
+    if !claimed {
+        return;
+    }
+
+    let result = match account.provider.as_str() {
+        "gmail" => sync_gmail_account(pool.clone(), &account).await,
+        "zoho" => Ok(SyncOutcome::default()), // covered by NoraInboxPoller; full sync TBD
+        other => Err(format!("provider '{other}' sync not yet implemented")),
+    };
+
+    match result {
+        Ok(outcome) => {
+            tracing::info!(
+                "[EMAIL_SYNC] {} ({}): synced {} new, {} routed to intake",
+                account.email_address,
+                account.provider,
+                outcome.imported,
+                outcome.intake_routed,
+            );
+            let _ = EmailAccount::finish_sync(
+                &pool,
+                account.id,
+                outcome.gmail_history_id.as_deref(),
+                outcome.sync_cursor.as_deref(),
+                None,
+            )
+            .await;
+        }
+        Err(err) => {
+            tracing::warn!(
+                "[EMAIL_SYNC] {} ({}) sync failed: {err}",
+                account.email_address,
+                account.provider
+            );
+            let _ = EmailAccount::finish_sync(&pool, account.id, None, None, Some(&err)).await;
+        }
+    }
+}
+
+#[derive(Default)]
+struct SyncOutcome {
+    imported: usize,
+    intake_routed: usize,
+    gmail_history_id: Option<String>,
+    sync_cursor: Option<String>,
+}
+
+async fn sync_gmail_account(
+    pool: sqlx::SqlitePool,
+    account: &db::models::email_account::EmailAccount,
+) -> Result<SyncOutcome, String> {
+    use services::services::agent_channels::AgentChannelService;
+    use services::services::email_providers::GmailClient;
+
+    let svc = AgentChannelService::new(pool.clone());
+
+    // Refresh-or-reuse token; persists any new value.
+    let token = svc
+        .valid_gmail_token(account)
+        .await
+        .map_err(|e| format!("gmail token: {e}"))?;
+    let client = GmailClient::new(token);
+
+    let (message_ids, latest_history): (Vec<String>, Option<String>) =
+        match account.gmail_history_id.as_deref() {
+            Some(cursor) => match client.list_history_since(cursor).await {
+                Ok((ids, latest)) => (ids, latest),
+                Err(e) => {
+                    // History cursor older than ~7 days returns 404; bootstrap fresh.
+                    tracing::warn!(
+                        "[EMAIL_SYNC] history-since failed for {} ({}); bootstrapping. err={e}",
+                        account.email_address,
+                        cursor,
+                    );
+                    bootstrap_gmail(&client).await?
+                }
+            },
+            None => bootstrap_gmail(&client).await?,
+        };
+
+    let mut imported = 0usize;
+    let mut intake_routed = 0usize;
+
+    for mid in message_ids {
+        match client.get_message(&mid).await {
+            Err(e) => tracing::warn!("[EMAIL_SYNC] get_message {mid} failed: {e}"),
+            Ok(msg) => {
+                let from_address = msg.from_address.clone();
+                let subject = msg.subject.clone().unwrap_or_default();
+                let body_for_intake =
+                    msg.body_text.clone().or_else(|| msg.body_html.clone());
+
+                if let Some(stored) = persist_normalized(&pool, account, &msg).await? {
+                    imported += 1;
+                    if is_trusted_sender(&from_address) {
+                        let body = body_for_intake.unwrap_or_default();
+                        if !body.trim().is_empty() {
+                            route_to_intake(
+                                pool.clone(),
+                                stored.provider_message_id.clone(),
+                                from_address,
+                                subject,
+                                body,
+                            )
+                            .await;
+                            intake_routed += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(SyncOutcome {
+        imported,
+        intake_routed,
+        gmail_history_id: latest_history,
+        sync_cursor: None,
+    })
+}
+
+async fn bootstrap_gmail(
+    client: &services::services::email_providers::GmailClient,
+) -> Result<(Vec<String>, Option<String>), String> {
+    let ids = client
+        .list_inbox_ids(50)
+        .await
+        .map_err(|e| format!("gmail bootstrap list: {e}"))?;
+    let history_id = client
+        .get_history_id()
+        .await
+        .map_err(|e| format!("gmail profile: {e}"))?;
+    Ok((ids, Some(history_id)))
+}
+
+async fn persist_normalized(
+    pool: &sqlx::SqlitePool,
+    account: &db::models::email_account::EmailAccount,
+    msg: &services::services::email_providers::NormalizedMessage,
+) -> Result<Option<db::models::email_message::EmailMessage>, String> {
+    use db::models::email_message::{CreateEmailMessage, EmailMessage};
+
+    let project_id = match account.project_id {
+        Some(p) => p,
+        None => {
+            // Owner-scoped accounts (agent/user) don't carry a project_id in the
+            // email_messages schema. Fall back to the nil UUID — those rows
+            // surface via owner-scoped queries, not project-scoped ones.
+            uuid::Uuid::nil()
+        }
+    };
+
+    let attachments_json = if msg.attachments.is_empty() {
+        None
+    } else {
+        Some(serde_json::json!(msg
+            .attachments
+            .iter()
+            .map(|a| serde_json::json!({
+                "provider_attachment_id": a.provider_attachment_id,
+                "filename": a.filename,
+                "content_type": a.content_type,
+                "size_bytes": a.size_bytes,
+                "content_id": a.content_id,
+            }))
+            .collect::<Vec<_>>()))
+    };
+
+    let row = EmailMessage::insert_if_absent(
+        pool,
+        CreateEmailMessage {
+            email_account_id: account.id,
+            project_id,
+            provider_message_id: msg.provider_message_id.clone(),
+            thread_id: msg.thread_id.clone(),
+            from_address: msg.from_address.clone(),
+            from_name: msg.from_name.clone(),
+            to_addresses: msg.to_addresses.clone(),
+            cc_addresses: Some(msg.cc_addresses.clone()).filter(|v| !v.is_empty()),
+            bcc_addresses: Some(msg.bcc_addresses.clone()).filter(|v| !v.is_empty()),
+            reply_to: msg.reply_to.clone(),
+            subject: msg.subject.clone(),
+            body_text: msg.body_text.clone(),
+            body_html: msg.body_html.clone(),
+            snippet: msg.snippet.clone(),
+            has_attachments: !msg.attachments.is_empty(),
+            attachments: attachments_json,
+            labels: Some(msg.labels.clone()).filter(|v| !v.is_empty()),
+            is_read: msg.is_read,
+            is_starred: msg.is_starred,
+            is_draft: msg.is_draft,
+            is_sent: msg.is_sent,
+            received_at: msg.received_at,
+            sent_at: msg.sent_at,
+        },
+    )
+    .await
+    .map_err(|e| format!("persist email_message: {e}"))?;
+
+    Ok(row)
+}
+
+async fn route_to_intake(
+    pool: sqlx::SqlitePool,
+    message_id: String,
+    from_address: String,
+    subject: String,
+    body: String,
+) {
+    use db::models::call_intake_item::{CallIntakeItem, CreateCallIntakeItem};
+
+    // Skip if we've already ingested this provider message_id.
+    let already: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM call_intake_items WHERE source_ref = ?",
+    )
+    .bind(&message_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+    if already {
+        return;
+    }
+
+    let (org_id, assigned) = crate::routes::intake::resolve_org_and_assignee(
+        &pool,
+        Some(&from_address),
+        None,
+        None,
+    )
+    .await;
+
+    let item = CallIntakeItem::create(
+        &pool,
+        CreateCallIntakeItem {
+            source_type: "email".into(),
+            source_ref: Some(message_id.clone()),
+            subject: Some(subject),
+            from_email: Some(from_address),
+            from_name: None,
+            call_date: None,
+            duration_seconds: None,
+            metadata: Some(
+                serde_json::json!({
+                    "message_id": message_id,
+                    "ingested_by": "email_sync_worker",
+                    "organization_id": org_id.map(|id| id.to_string()),
+                    "source_links": extract_source_links(&body),
+                })
+                .to_string(),
+            ),
+            raw_content: Some(body),
+        },
+    )
+    .await;
+
+    match item {
+        Err(e) => tracing::error!("[EMAIL_SYNC] failed to create intake item: {e}"),
+        Ok(item) => {
+            let pool2 = pool;
+            tokio::spawn(async move {
+                if let Err(e) =
+                    crate::routes::intake::pipeline::run_intake_pipeline(pool2, item.id, org_id, assigned)
+                        .await
+                {
+                    tracing::error!("[EMAIL_SYNC] pipeline failed for {}: {e}", item.id);
+                }
+            });
+        }
+    }
+}
+
+/// Returns true if the sender is in the EMAIL_TRUSTED_SENDERS allowlist.
+/// Allowlist accepts either full email addresses (`alice@x.com`) or bare
+/// domains (`sirakstudios.com`); matching is case-insensitive.
+/// Defaults to `sirakstudios.com` when the env var is unset (preserves
+/// the original hardcoded Nora behavior).
+pub fn is_trusted_sender(from_address: &str) -> bool {
+    let allowlist = std::env::var("EMAIL_TRUSTED_SENDERS")
+        .unwrap_or_else(|_| "sirakstudios.com".to_string());
+    let from_lower = from_address.to_lowercase();
+    let domain = from_lower.split('@').nth(1).unwrap_or("");
+
+    allowlist
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .any(|entry| {
+            if entry.contains('@') {
+                from_lower == entry
+            } else {
+                domain == entry
+            }
+        })
 }
 
 /// Extract known transcript/document source links from email body.

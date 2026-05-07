@@ -1,7 +1,7 @@
 {
   "lockfile-version": 1,
   "manifest": {
-    "version": 1,
+    "schema-version": "1.11.0",
     "install": {
       "cargo-watch": {
         "pkg-path": "cargo-watch"
@@ -10,16 +10,20 @@
         "pkg-path": "cmake"
       },
       "libopus": {
-        "pkg-path": "libopus"
+        "pkg-path": "libopus",
+        "outputs": "all"
       },
       "lld": {
-        "pkg-path": "lld"
+        "pkg-path": "lld",
+        "outputs": "all"
       },
       "nodejs": {
-        "pkg-path": "nodejs"
+        "pkg-path": "nodejs",
+        "outputs": "all"
       },
       "pkg-config": {
-        "pkg-path": "pkg-config"
+        "pkg-path": "pkg-config",
+        "outputs": "all"
       },
       "pnpm": {
         "pkg-path": "pnpm"

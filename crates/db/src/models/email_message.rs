@@ -213,6 +213,28 @@ impl EmailMessage {
         Ok(message)
     }
 
+    /// Insert a message if no row exists for `(email_account_id, provider_message_id)`.
+    /// Returns Ok(Some(row)) on insert, Ok(None) when the message was already stored.
+    /// Used by the sync worker to dedupe across polling cycles.
+    pub async fn insert_if_absent(
+        pool: &SqlitePool,
+        data: CreateEmailMessage,
+    ) -> Result<Option<Self>, EmailMessageError> {
+        let exists: Option<Uuid> = sqlx::query_scalar(
+            r#"SELECT id FROM email_messages
+               WHERE email_account_id = ?1 AND provider_message_id = ?2"#,
+        )
+        .bind(data.email_account_id)
+        .bind(&data.provider_message_id)
+        .fetch_optional(pool)
+        .await?;
+
+        if exists.is_some() {
+            return Ok(None);
+        }
+        Self::create(pool, data).await.map(Some)
+    }
+
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, EmailMessageError> {
         sqlx::query_as::<_, EmailMessage>(
             r#"SELECT * FROM email_messages WHERE id = ?1"#,
