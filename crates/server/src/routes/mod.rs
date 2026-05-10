@@ -34,6 +34,7 @@ pub mod agent_wallets;
 pub mod agents;
 pub mod automations;
 pub mod autonomy;
+pub mod billing;
 pub mod board_shares;
 pub mod bot_bridge;
 pub mod calendar;
@@ -109,6 +110,7 @@ pub mod review;
 pub mod scratch;
 pub mod sessions;
 pub mod sidebar;
+pub mod slack;
 pub mod social_accounts;
 pub mod social_inbox;
 pub mod social_posts;
@@ -175,6 +177,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(dropbox::router())
         .merge(quickbooks::router(&deployment))
         .merge(calendar::router(&deployment))
+        .merge(billing::router(&deployment))
+        .merge(slack::router(&deployment))
         .merge(agents::routes())
         .merge(agent_chat::routes())
         .merge(comments::router())
@@ -257,6 +261,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(activity::router())
         .merge(aptos::router(&deployment))
         .merge(webhooks::router())
+        .merge(billing::webhook_router(&deployment))
         .merge(mission_control::router(&deployment))
         .merge(bowser::router(&deployment))
         .merge(collaboration::router(&deployment))

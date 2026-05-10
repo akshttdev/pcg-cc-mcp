@@ -6,7 +6,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use chrono::Utc;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
 
 use super::types::*;

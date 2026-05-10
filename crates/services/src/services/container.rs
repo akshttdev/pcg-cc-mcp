@@ -4,11 +4,10 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{Error as AnyhowError, anyhow};
+use anyhow::{anyhow, Error as AnyhowError};
 use async_trait::async_trait;
 use axum::response::sse::Event;
 use db::{
-    DBService,
     models::{
         execution_process::{
             CreateExecutionProcess, ExecutionContext, ExecutionProcess, ExecutionProcessRunReason,
@@ -20,18 +19,19 @@ use db::{
         task::{Task, TaskStatus},
         task_attempt::{TaskAttempt, TaskAttemptError},
     },
+    DBService,
 };
 use executors::{
     actions::{
-        ExecutorAction, ExecutorActionType,
         coding_agent_follow_up::CodingAgentFollowUpRequest,
         coding_agent_initial::CodingAgentInitialRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
+        ExecutorAction, ExecutorActionType,
     },
     executors::{ExecutorError, StandardCodingAgentExecutor},
-    profile::{ExecutorConfigs, ExecutorProfileId, to_default_variant},
+    profile::{to_default_variant, ExecutorConfigs, ExecutorProfileId},
 };
-use futures::{StreamExt, future};
+use futures::{future, StreamExt};
 use sqlx::Error as SqlxError;
 use thiserror::Error;
 use tokio::{sync::RwLock, task::JoinHandle};

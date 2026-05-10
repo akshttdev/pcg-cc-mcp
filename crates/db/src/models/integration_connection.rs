@@ -11,6 +11,45 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+/// All columns, with the three UUID-typed columns (`id`, `organization_id`,
+/// `project_id`) converted from TEXT storage to 16-byte BLOBs so sqlx's
+/// SQLite `Uuid` decoder accepts them. Reused by every find_* method so the
+/// conversion stays in one place.
+const SELECT_ALL_TEXT_TO_BLOB: &str = "\
+    SELECT \
+        unhex(replace(id, '-', ''))              AS id, \
+        unhex(replace(organization_id, '-', '')) AS organization_id, \
+        CASE WHEN project_id IS NULL THEN NULL \
+             ELSE unhex(replace(project_id, '-', '')) END AS project_id, \
+        provider, provider_account_id, display_name, avatar_url, \
+        access_token_ciphertext, refresh_token_ciphertext, token_expires_at, \
+        scopes, status, last_sync_at, last_error, metadata, created_at, updated_at \
+    FROM integration_connections";
+
+const SELECT_ALL_TEXT_TO_BLOB_WHERE_ID: &str = "SELECT \
+        unhex(replace(id, '-', ''))              AS id, \
+        unhex(replace(organization_id, '-', '')) AS organization_id, \
+        CASE WHEN project_id IS NULL THEN NULL \
+             ELSE unhex(replace(project_id, '-', '')) END AS project_id, \
+        provider, provider_account_id, display_name, avatar_url, \
+        access_token_ciphertext, refresh_token_ciphertext, token_expires_at, \
+        scopes, status, last_sync_at, last_error, metadata, created_at, updated_at \
+     FROM integration_connections WHERE id = ?1";
+
+const SELECT_ALL_TEXT_TO_BLOB_WHERE_ORG_PROVIDER: &str = "SELECT \
+        unhex(replace(id, '-', ''))              AS id, \
+        unhex(replace(organization_id, '-', '')) AS organization_id, \
+        CASE WHEN project_id IS NULL THEN NULL \
+             ELSE unhex(replace(project_id, '-', '')) END AS project_id, \
+        provider, provider_account_id, display_name, avatar_url, \
+        access_token_ciphertext, refresh_token_ciphertext, token_expires_at, \
+        scopes, status, last_sync_at, last_error, metadata, created_at, updated_at \
+     FROM integration_connections \
+     WHERE organization_id = ?1 AND provider = ?2 ORDER BY created_at DESC";
+
+#[allow(dead_code)] // referenced by future find_by_org / find_expiring_within fixes
+const _UNUSED_HINT: &str = SELECT_ALL_TEXT_TO_BLOB;
+
 #[derive(Debug, Error)]
 pub enum IntegrationConnectionError {
     #[error(transparent)]
@@ -129,8 +168,9 @@ impl IntegrationConnection {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as::<_, Self>("SELECT * FROM integration_connections WHERE id = ?1")
-            .bind(id)
+        // See note in `find_by_org_and_provider` — TEXT cols, Uuid struct fields.
+        sqlx::query_as::<_, Self>(SELECT_ALL_TEXT_TO_BLOB_WHERE_ID)
+            .bind(id.to_string())
             .fetch_optional(pool)
             .await
     }
@@ -153,14 +193,15 @@ impl IntegrationConnection {
         organization_id: Uuid,
         provider: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as::<_, Self>(
-            "SELECT * FROM integration_connections \
-             WHERE organization_id = ?1 AND provider = ?2 ORDER BY created_at DESC",
-        )
-        .bind(organization_id)
-        .bind(provider)
-        .fetch_all(pool)
-        .await
+        // The `id`, `organization_id`, `project_id` columns are TEXT (per
+        // migration 20260328) but the struct field is `Uuid`, which sqlx's
+        // SQLite decoder expects as 16-byte BLOB. Convert TEXT → BLOB at the
+        // SELECT layer with `unhex(replace(<col>, '-', ''))` so the row decodes.
+        sqlx::query_as::<_, Self>(SELECT_ALL_TEXT_TO_BLOB_WHERE_ORG_PROVIDER)
+            .bind(organization_id.to_string())
+            .bind(provider)
+            .fetch_all(pool)
+            .await
     }
 
     /// Active connections whose access token expires within `within` from now.

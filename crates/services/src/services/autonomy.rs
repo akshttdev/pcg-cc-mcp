@@ -4,7 +4,6 @@
 //! human-agent collaboration levels.
 
 use db::{
-    DBService,
     models::{
         approval_gate::{
             ApprovalDecision, ApprovalGate, ApprovalGateError, CreateApprovalGate,
@@ -19,6 +18,7 @@ use db::{
             ReviewCheckpoint,
         },
     },
+    DBService,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

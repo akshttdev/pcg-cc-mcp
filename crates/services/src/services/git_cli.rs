@@ -21,7 +21,7 @@ use std::{
     process::Command,
 };
 
-use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use thiserror::Error;
 use utils::shell::resolve_executable_path;
 

@@ -13,10 +13,10 @@
 //! - `PATCH  /storage/accounts/:id`              Update auto_sync / interval / root_path
 
 use axum::{
-    Extension, Json, Router,
     extract::{Path, Query, State},
     response::Redirect,
     routing::{delete, get, post},
+    Extension, Json, Router,
 };
 use chrono::Duration;
 use db::models::{
@@ -36,8 +36,8 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext,
+    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext, DeploymentImpl,
 };
 
 // ─── Configuration ─────────────────────────────────────────────────────────

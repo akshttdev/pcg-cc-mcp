@@ -282,10 +282,18 @@ impl BeatAnalysisEngine {
         // Clamp: if < 75 BPM, try doubling; if > 160, try halving
         if best_bpm < 75.0 {
             let doubled = best_bpm * 2.0;
-            if doubled <= 200.0 { doubled } else { best_bpm }
+            if doubled <= 200.0 {
+                doubled
+            } else {
+                best_bpm
+            }
         } else if best_bpm > 160.0 {
             let halved = best_bpm / 2.0;
-            if halved >= 60.0 { halved } else { best_bpm }
+            if halved >= 60.0 {
+                halved
+            } else {
+                best_bpm
+            }
         } else {
             best_bpm
         }

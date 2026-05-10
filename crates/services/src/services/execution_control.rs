@@ -4,7 +4,6 @@
 //! Enables true human-agent collaboration during task execution.
 
 use db::{
-    DBService,
     models::{
         context_injection::{
             ContextInjection, ContextInjectionError, CreateContextInjection, InjectionType,
@@ -14,6 +13,7 @@ use db::{
         },
         execution_pause_history::{ExecutionPauseHistory, ExecutionPauseHistoryError},
     },
+    DBService,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

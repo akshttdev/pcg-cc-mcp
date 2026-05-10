@@ -17,7 +17,7 @@ use std::sync::Arc;
 pub use execution_relay::ExecutionRelay;
 pub use resource_accounting::ResourceAccounting;
 pub use task_distributor::TaskDistributor;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{broadcast, RwLock};
 pub use types::*;
 use uuid::Uuid;
 

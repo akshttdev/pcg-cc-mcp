@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use backon::{ExponentialBuilder, Retryable};
 use db::models::merge::{MergeStatus, PullRequestInfo};
-use octocrab::{Octocrab, OctocrabBuilder, models::IssueState};
+use octocrab::{models::IssueState, Octocrab, OctocrabBuilder};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

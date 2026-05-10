@@ -1,6 +1,6 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use db::models::{
-    model_pricing::{CostEstimate, ModelPricing, VIBE_USD_VALUE, estimate_cost, infer_provider},
+    model_pricing::{estimate_cost, infer_provider, CostEstimate, ModelPricing, VIBE_USD_VALUE},
     vibe_transaction::{
         CreateVibeTransaction, VibeSourceType, VibeTransaction, VibeTransactionSummary,
     },
