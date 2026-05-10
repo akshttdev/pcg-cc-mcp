@@ -10,6 +10,7 @@ pub mod auth;
 pub mod autonomy;
 pub mod beat_analysis;
 pub mod bowser;
+pub mod calendar;
 pub mod config;
 pub mod container;
 pub mod editron;

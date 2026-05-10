@@ -18,6 +18,7 @@ pub mod browser_action;
 pub mod browser_allowlist;
 pub mod browser_screenshot;
 pub mod browser_session;
+pub mod calendar_event;
 pub mod call_log;
 pub mod checkpoint_definition;
 pub mod cinematic_brief;

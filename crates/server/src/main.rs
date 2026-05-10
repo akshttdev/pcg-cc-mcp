@@ -318,6 +318,10 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn cloud storage sync worker (every 15 min, runs OneDrive/Dropbox/GDrive deltas)
     services::services::storage::sync_worker::spawn_sync_loop(deployment.db().pool.clone());
 
+    // Spawn calendar sync worker (every 15 min, runs Google + Outlook delta syncs
+    // and creates CRM activities for any matched attendees)
+    services::services::calendar::spawn_sync_loop(deployment.db().pool.clone());
+
     // Spawn social publisher worker (every 5 min, publishes due scheduled posts)
     services::services::social::publisher::spawn_publisher_loop(deployment.db().pool.clone());
 

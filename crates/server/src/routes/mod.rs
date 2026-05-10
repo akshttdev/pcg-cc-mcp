@@ -36,6 +36,7 @@ pub mod automations;
 pub mod autonomy;
 pub mod board_shares;
 pub mod bot_bridge;
+pub mod calendar;
 pub mod cinematics;
 pub mod clients;
 pub mod command_center;
@@ -173,6 +174,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(crm_activities::router(&deployment))
         .merge(dropbox::router())
         .merge(quickbooks::router(&deployment))
+        .merge(calendar::router(&deployment))
         .merge(agents::routes())
         .merge(agent_chat::routes())
         .merge(comments::router())
