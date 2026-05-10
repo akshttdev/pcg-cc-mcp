@@ -470,10 +470,7 @@ impl AgentChannelService {
     // ── Internal helpers ────────────────────────────────────────────────────
 
     /// Return a valid Gmail access token, refreshing via Google OAuth if needed.
-    pub async fn valid_gmail_token(
-        &self,
-        account: &EmailAccount,
-    ) -> Result<String, ChannelError> {
+    pub async fn valid_gmail_token(&self, account: &EmailAccount) -> Result<String, ChannelError> {
         // Still inside expiry window? Reuse.
         if let (Some(token), Some(expires_at)) =
             (account.access_token.as_ref(), account.token_expires_at)
@@ -483,10 +480,9 @@ impl AgentChannelService {
             }
         }
 
-        let refresh_token = account
-            .refresh_token
-            .as_deref()
-            .ok_or_else(|| ChannelError::TokenRefresh("Gmail account has no refresh token".into()))?;
+        let refresh_token = account.refresh_token.as_deref().ok_or_else(|| {
+            ChannelError::TokenRefresh("Gmail account has no refresh token".into())
+        })?;
 
         let refreshed = GmailClient::refresh_access_token(refresh_token)
             .await

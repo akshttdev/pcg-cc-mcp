@@ -66,8 +66,8 @@ impl GmailClient {
     /// Pulls `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` from env (same vars
     /// used by the OAuth callback in `routes/email_accounts.rs`).
     pub async fn refresh_access_token(refresh_token: &str) -> Result<RefreshedToken, GmailError> {
-        let client_id =
-            std::env::var("GOOGLE_CLIENT_ID").map_err(|_| GmailError::MissingEnv("GOOGLE_CLIENT_ID"))?;
+        let client_id = std::env::var("GOOGLE_CLIENT_ID")
+            .map_err(|_| GmailError::MissingEnv("GOOGLE_CLIENT_ID"))?;
         let client_secret = std::env::var("GOOGLE_CLIENT_SECRET")
             .map_err(|_| GmailError::MissingEnv("GOOGLE_CLIENT_SECRET"))?;
 
@@ -385,9 +385,7 @@ fn walk_parts(
         if let Some(data) = body.data.as_ref() {
             let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
                 .decode(data.as_bytes())
-                .or_else(|_| {
-                    base64::engine::general_purpose::URL_SAFE.decode(data.as_bytes())
-                })
+                .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(data.as_bytes()))
                 .ok()
                 .and_then(|b| String::from_utf8(b).ok());
             if let Some(content) = decoded {
@@ -412,10 +410,7 @@ fn parse_addr(raw: &str) -> (Option<String>, String) {
         if open < close {
             let addr = raw[open + 1..close].trim().to_string();
             let name = raw[..open].trim().trim_matches('"').to_string();
-            return (
-                if name.is_empty() { None } else { Some(name) },
-                addr,
-            );
+            return (if name.is_empty() { None } else { Some(name) }, addr);
         }
     }
     (None, raw.to_string())

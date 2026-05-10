@@ -519,7 +519,11 @@ impl EmailAccount {
         sync_cursor: Option<&str>,
         last_error: Option<&str>,
     ) -> Result<(), EmailAccountError> {
-        let status = if last_error.is_some() { "error" } else { "active" };
+        let status = if last_error.is_some() {
+            "error"
+        } else {
+            "active"
+        };
         sqlx::query(
             r#"UPDATE email_accounts SET
                 sync_in_progress = 0,

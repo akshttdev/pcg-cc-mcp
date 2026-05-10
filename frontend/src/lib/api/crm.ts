@@ -173,6 +173,31 @@ export interface QBConnectionStatus {
   needs_reauth: boolean;
 }
 
+export interface QBSyncStats {
+  customers_seen: number;
+  customers_upserted: number;
+  invoices_seen: number;
+  invoices_upserted: number;
+  payments_seen: number;
+  invoices_marked_paid: number;
+}
+
+export interface QBFinancialSummary {
+  ar_outstanding_usd: number;
+  ar_overdue_usd: number;
+  ap_outstanding_usd: number;
+  revenue_30d_usd: number;
+  revenue_60d_usd: number;
+  revenue_90d_usd: number;
+  open_invoice_count: number;
+  overdue_invoice_count: number;
+}
+
+export interface QBPushInvoiceResponse {
+  qbo_doc_number: string;
+  invoice_id: string;
+}
+
 export const quickbooksApi = {
   getStatus: async (organizationId: string): Promise<QBConnectionStatus> => {
     const response = await makeRequest(
@@ -201,7 +226,7 @@ export const quickbooksApi = {
     return handleApiResponse<void>(response);
   },
 
-  triggerSync: async (accountId: string): Promise<void> => {
+  triggerSync: async (accountId: string): Promise<QBSyncStats> => {
     const response = await makeRequest(
       `/api/quickbooks/accounts/${accountId}/sync`,
       {
@@ -209,7 +234,30 @@ export const quickbooksApi = {
         body: JSON.stringify({}),
       }
     );
-    return handleApiResponse<void>(response);
+    return handleApiResponse<QBSyncStats>(response);
+  },
+
+  pushInvoice: async (
+    accountId: string,
+    invoiceId: string
+  ): Promise<QBPushInvoiceResponse> => {
+    const response = await makeRequest(
+      `/api/quickbooks/accounts/${accountId}/push-invoice`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ invoice_id: invoiceId }),
+      }
+    );
+    return handleApiResponse<QBPushInvoiceResponse>(response);
+  },
+
+  getFinancialSummary: async (
+    organizationId: string
+  ): Promise<QBFinancialSummary> => {
+    const response = await makeRequest(
+      `/api/quickbooks/summary?organization_id=${organizationId}`
+    );
+    return handleApiResponse<QBFinancialSummary>(response);
   },
 };
 

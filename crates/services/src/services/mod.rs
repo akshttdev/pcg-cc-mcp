@@ -32,6 +32,7 @@ pub mod oauth_token_manager;
 pub mod pcg_policy;
 pub mod pr_monitor;
 pub mod qa_review;
+pub mod quickbooks;
 pub mod recap_assembly;
 pub mod scene_analysis;
 pub mod sentry;

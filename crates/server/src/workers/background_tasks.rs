@@ -532,7 +532,9 @@ impl BackgroundWorker for EmailSyncWorker {
         // Tick every 60s; per-account `sync_frequency_minutes` decides whether
         // a given account is actually due.
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
-        tracing::info!("[EMAIL_SYNC] Worker started — 60s tick, gates on per-account sync_frequency_minutes");
+        tracing::info!(
+            "[EMAIL_SYNC] Worker started — 60s tick, gates on per-account sync_frequency_minutes"
+        );
 
         loop {
             tokio::select! {
@@ -644,8 +646,7 @@ async fn sync_gmail_account(
     pool: sqlx::SqlitePool,
     account: &db::models::email_account::EmailAccount,
 ) -> Result<SyncOutcome, String> {
-    use services::services::agent_channels::AgentChannelService;
-    use services::services::email_providers::GmailClient;
+    use services::services::{agent_channels::AgentChannelService, email_providers::GmailClient};
 
     let svc = AgentChannelService::new(pool.clone());
 
@@ -682,8 +683,7 @@ async fn sync_gmail_account(
             Ok(msg) => {
                 let from_address = msg.from_address.clone();
                 let subject = msg.subject.clone().unwrap_or_default();
-                let body_for_intake =
-                    msg.body_text.clone().or_else(|| msg.body_html.clone());
+                let body_for_intake = msg.body_text.clone().or_else(|| msg.body_html.clone());
 
                 if let Some(stored) = persist_normalized(&pool, account, &msg).await? {
                     imported += 1;
@@ -805,24 +805,19 @@ async fn route_to_intake(
     use db::models::call_intake_item::{CallIntakeItem, CreateCallIntakeItem};
 
     // Skip if we've already ingested this provider message_id.
-    let already: bool = sqlx::query_scalar(
-        "SELECT COUNT(*) > 0 FROM call_intake_items WHERE source_ref = ?",
-    )
-    .bind(&message_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(false);
+    let already: bool =
+        sqlx::query_scalar("SELECT COUNT(*) > 0 FROM call_intake_items WHERE source_ref = ?")
+            .bind(&message_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(false);
     if already {
         return;
     }
 
-    let (org_id, assigned) = crate::routes::intake::resolve_org_and_assignee(
-        &pool,
-        Some(&from_address),
-        None,
-        None,
-    )
-    .await;
+    let (org_id, assigned) =
+        crate::routes::intake::resolve_org_and_assignee(&pool, Some(&from_address), None, None)
+            .await;
 
     let item = CallIntakeItem::create(
         &pool,
@@ -853,9 +848,10 @@ async fn route_to_intake(
         Ok(item) => {
             let pool2 = pool;
             tokio::spawn(async move {
-                if let Err(e) =
-                    crate::routes::intake::pipeline::run_intake_pipeline(pool2, item.id, org_id, assigned)
-                        .await
+                if let Err(e) = crate::routes::intake::pipeline::run_intake_pipeline(
+                    pool2, item.id, org_id, assigned,
+                )
+                .await
                 {
                     tracing::error!("[EMAIL_SYNC] pipeline failed for {}: {e}", item.id);
                 }
@@ -870,8 +866,8 @@ async fn route_to_intake(
 /// Defaults to `sirakstudios.com` when the env var is unset (preserves
 /// the original hardcoded Nora behavior).
 pub fn is_trusted_sender(from_address: &str) -> bool {
-    let allowlist = std::env::var("EMAIL_TRUSTED_SENDERS")
-        .unwrap_or_else(|_| "sirakstudios.com".to_string());
+    let allowlist =
+        std::env::var("EMAIL_TRUSTED_SENDERS").unwrap_or_else(|_| "sirakstudios.com".to_string());
     let from_lower = from_address.to_lowercase();
     let domain = from_lower.split('@').nth(1).unwrap_or("");
 

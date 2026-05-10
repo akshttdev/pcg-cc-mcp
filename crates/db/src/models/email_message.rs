@@ -53,7 +53,7 @@ pub struct EmailMessage {
     pub snippet: Option<String>,
     pub has_attachments: i32,
     pub attachments: Option<String>, // JSON array
-    pub labels: Option<String>, // JSON array
+    pub labels: Option<String>,      // JSON array
     pub is_read: i32,
     pub is_starred: i32,
     pub is_draft: i32,
@@ -165,10 +165,16 @@ impl EmailMessage {
     ) -> Result<Self, EmailMessageError> {
         let id = Uuid::new_v4();
         let to_addresses = serde_json::to_string(&data.to_addresses).unwrap_or_default();
-        let cc_addresses = data.cc_addresses.map(|v| serde_json::to_string(&v).unwrap_or_default());
-        let bcc_addresses = data.bcc_addresses.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let cc_addresses = data
+            .cc_addresses
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let bcc_addresses = data
+            .bcc_addresses
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let attachments = data.attachments.map(|v| v.to_string());
-        let labels = data.labels.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let labels = data
+            .labels
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
 
         let message = sqlx::query_as::<_, EmailMessage>(
             r#"
@@ -236,13 +242,11 @@ impl EmailMessage {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, EmailMessageError> {
-        sqlx::query_as::<_, EmailMessage>(
-            r#"SELECT * FROM email_messages WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(EmailMessageError::NotFound)
+        sqlx::query_as::<_, EmailMessage>(r#"SELECT * FROM email_messages WHERE id = ?1"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(EmailMessageError::NotFound)
     }
 
     pub async fn find_by_filter(
@@ -277,19 +281,24 @@ impl EmailMessage {
             conditions.push(format!("is_trash = {}", if is_trash { 1 } else { 0 }));
         }
         if let Some(needs_response) = filter.needs_response {
-            conditions.push(format!("needs_response = {}", if needs_response { 1 } else { 0 }));
+            conditions.push(format!(
+                "needs_response = {}",
+                if needs_response { 1 } else { 0 }
+            ));
         }
         if filter.crm_contact_id.is_some() {
             conditions.push("crm_contact_id = ?".to_string());
         }
         if filter.search.is_some() {
-            conditions.push("(subject LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR snippet LIKE ?)".to_string());
+            conditions.push(
+                "(subject LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR snippet LIKE ?)"
+                    .to_string(),
+            );
         }
 
         // For simplicity, using a more straightforward query approach
-        let messages = sqlx::query_as::<_, EmailMessage>(
-            &format!(
-                r#"
+        let messages = sqlx::query_as::<_, EmailMessage>(&format!(
+            r#"
                 SELECT * FROM email_messages
                 WHERE is_trash = 0 AND is_spam = 0
                 AND project_id = COALESCE(?1, project_id)
@@ -297,8 +306,7 @@ impl EmailMessage {
                 ORDER BY received_at DESC
                 LIMIT ?3 OFFSET ?4
                 "#
-            ),
-        )
+        ))
         .bind(filter.project_id)
         .bind(filter.email_account_id)
         .bind(limit)
@@ -376,7 +384,9 @@ impl EmailMessage {
         id: Uuid,
         data: UpdateEmailMessage,
     ) -> Result<Self, EmailMessageError> {
-        let labels = data.labels.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let labels = data
+            .labels
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let sentiment = data.sentiment.map(|s| format!("{:?}", s).to_lowercase());
         let priority = data.priority.map(|p| format!("{:?}", p).to_lowercase());
 
@@ -523,12 +533,15 @@ impl EmailMessage {
             unread: stats.unread,
             starred: stats.starred,
             needs_response: stats.needs_response,
-            by_account: by_account.into_iter().map(|r| AccountStats {
-                account_id: r.account_id,
-                email_address: r.email_address,
-                total: r.total,
-                unread: r.unread,
-            }).collect(),
+            by_account: by_account
+                .into_iter()
+                .map(|r| AccountStats {
+                    account_id: r.account_id,
+                    email_address: r.email_address,
+                    total: r.total,
+                    unread: r.unread,
+                })
+                .collect(),
         })
     }
 
