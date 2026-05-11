@@ -735,14 +735,12 @@ async fn persist_normalized(
 ) -> Result<Option<db::models::email_message::EmailMessage>, String> {
     use db::models::email_message::{CreateEmailMessage, EmailMessage};
 
-    let project_id = match account.project_id {
-        Some(p) => p,
-        None => {
-            // Owner-scoped accounts (agent/user) don't carry a project_id in the
-            // email_messages schema. Fall back to the nil UUID — those rows
-            // surface via owner-scoped queries, not project-scoped ones.
-            uuid::Uuid::nil()
-        }
+    let Some(project_id) = account.project_id else {
+        // Org/agent/user-scoped accounts have no project context — the
+        // email_messages table requires a project_id FK, so skip body persistence
+        // for now. The OAuth account row + token still exist; per-account
+        // message storage for these scopes is a separate feature.
+        return Ok(None);
     };
 
     let attachments_json = if msg.attachments.is_empty() {
