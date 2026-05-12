@@ -43,36 +43,14 @@ struct LinkedInTokenResponse {
     scope: Option<String>,
 }
 
+/// OpenID Connect userinfo response — `GET /v2/userinfo` returns this when the
+/// app uses the "Sign In with LinkedIn using OpenID Connect" product. The
+/// legacy `/v2/me` shape is no longer available to new apps.
 #[derive(Debug, Deserialize)]
-struct LinkedInProfile {
-    id: String,
-    #[serde(rename = "localizedFirstName")]
-    first_name: Option<String>,
-    #[serde(rename = "localizedLastName")]
-    last_name: Option<String>,
-    #[serde(rename = "profilePicture")]
-    profile_picture: Option<LinkedInProfilePicture>,
-}
-
-#[derive(Debug, Deserialize)]
-struct LinkedInProfilePicture {
-    #[serde(rename = "displayImage~")]
-    display_image: Option<LinkedInDisplayImage>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct LinkedInDisplayImage {
-    elements: Vec<LinkedInImageElement>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct LinkedInImageElement {
-    identifiers: Vec<LinkedInImageIdentifier>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct LinkedInImageIdentifier {
-    identifier: String,
+struct LinkedInUserInfo {
+    sub: String,
+    name: Option<String>,
+    picture: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,7 +110,7 @@ impl PlatformConnector for LinkedInConnector {
     }
 
     async fn get_auth_url(&self, redirect_uri: &str, state: &str) -> Result<String, SocialError> {
-        let scopes = "r_liteprofile w_member_social";
+        let scopes = "openid profile email w_member_social";
 
         let url = format!(
             "{}?response_type=code&client_id={}&redirect_uri={}&state={}&scope={}",
@@ -231,9 +209,8 @@ impl PlatformConnector for LinkedInConnector {
     async fn get_profile(&self, access_token: &str) -> Result<ProfileInfo, SocialError> {
         let response = self
             .client
-            .get(format!("{}/me", LINKEDIN_API_BASE))
+            .get(format!("{}/userinfo", LINKEDIN_API_BASE))
             .bearer_auth(access_token)
-            .header("X-Restli-Protocol-Version", "2.0.0")
             .send()
             .await
             .map_err(|e| SocialError::NetworkError(e.to_string()))?;
@@ -244,31 +221,17 @@ impl PlatformConnector for LinkedInConnector {
             ));
         }
 
-        let profile: LinkedInProfile = response
+        let info: LinkedInUserInfo = response
             .json()
             .await
             .map_err(|e| SocialError::PlatformError(e.to_string()))?;
 
-        let display_name = match (&profile.first_name, &profile.last_name) {
-            (Some(first), Some(last)) => Some(format!("{} {}", first, last)),
-            (Some(first), None) => Some(first.clone()),
-            (None, Some(last)) => Some(last.clone()),
-            _ => None,
-        };
-
-        let avatar_url = profile
-            .profile_picture
-            .and_then(|pp| pp.display_image)
-            .and_then(|di| di.elements.first().cloned())
-            .and_then(|e| e.identifiers.first().cloned())
-            .map(|i| i.identifier);
-
         Ok(ProfileInfo {
-            platform_account_id: profile.id.clone(),
-            username: profile.id,
-            display_name,
+            platform_account_id: info.sub.clone(),
+            username: info.sub,
+            display_name: info.name,
             profile_url: None,
-            avatar_url,
+            avatar_url: info.picture,
             follower_count: None,
             following_count: None,
             post_count: None,
