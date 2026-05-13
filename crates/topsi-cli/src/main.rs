@@ -1,7 +1,7 @@
 #![allow(clippy::uninlined_format_args)]
-//! PCG CLI - Interactive Development Session Management
+//! Topsi CLI - Interactive Development Session Management
 //!
-//! Provides a Claude Code-like terminal experience integrated with PCG Dashboard
+//! Provides a Claude Code-like terminal experience integrated with the PCG Dashboard
 //! for task tracking, agent coordination, and VIBE cost management.
 
 mod api;
@@ -17,16 +17,16 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-/// ORCHA CLI - AI-Native Development Assistant
+/// Topsi CLI - AI-Native Development Assistant
 #[derive(Parser)]
-#[command(name = "orcha")]
+#[command(name = "topsi")]
 #[command(author = "PCG Team")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(
-    about = "ORCHA CLI - Interactive development session with task tracking and agent coordination"
+    about = "Topsi CLI - Interactive development session with task tracking and agent coordination"
 )]
 #[command(long_about = r#"
-ORCHA CLI provides a Claude Code-like terminal experience integrated with the ORCHA Dashboard.
+Topsi CLI provides a Claude Code-like terminal experience integrated with the PCG Dashboard.
 
 Features:
   - Interactive REPL for AI-assisted development
@@ -36,26 +36,30 @@ Features:
   - Session history and reports
 
 Examples:
-  orcha                          # Start session in current directory
-  orcha --project "My Project"   # Start with specific project
-  orcha status                   # Show current session status
-  orcha tasks                    # List tasks in current project
+  topsi                          # Start session in current directory
+  topsi --project "My Project"   # Start with specific project
+  topsi status                   # Show current session status
+  topsi tasks                    # List tasks in current project
 "#)]
 struct Cli {
     /// Project name or ID to work with
-    #[arg(short, long, env = "PCG_PROJECT")]
+    #[arg(short, long, env = "TOPSI_PROJECT")]
     project: Option<String>,
 
     /// Server URL
-    #[arg(long, env = "PCG_SERVER_URL", default_value = "http://localhost:3000")]
+    #[arg(
+        long,
+        env = "TOPSI_SERVER_URL",
+        default_value = "http://localhost:3000"
+    )]
     server: String,
 
     /// Username for authentication
-    #[arg(short, long, env = "ORCHA_USERNAME")]
+    #[arg(short, long, env = "TOPSI_USERNAME")]
     username: Option<String>,
 
     /// Password for authentication
-    #[arg(long, env = "ORCHA_PASSWORD")]
+    #[arg(long, env = "TOPSI_PASSWORD")]
     password: Option<String>,
 
     /// Working directory (defaults to current directory)
@@ -123,6 +127,13 @@ enum Commands {
         #[arg(long)]
         set: Option<String>,
     },
+
+    /// List PCG Router-registered models
+    Models {
+        /// Filter by substring of model_id or name (case-insensitive)
+        #[arg(short, long)]
+        filter: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -135,7 +146,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| format!("pcg_cli={},warn", log_level).into()),
+                .unwrap_or_else(|_| format!("topsi_cli={},warn", log_level).into()),
         )
         .with(tracing_subscriber::fmt::layer().with_target(false))
         .init();
@@ -197,9 +208,12 @@ async fn main() -> Result<()> {
                 commands::show_config(&config)?;
             }
         }
+        Some(Commands::Models { filter }) => {
+            commands::list_models(&api, filter.as_deref()).await?;
+        }
         None => {
             // Start interactive REPL
-            let mut repl = repl::PcgRepl::new(api, config, work_dir, cli.project, cli.resume)?;
+            let mut repl = repl::TopsiRepl::new(api, config, work_dir, cli.project, cli.resume)?;
             repl.run().await?;
         }
     }

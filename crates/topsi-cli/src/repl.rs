@@ -1,4 +1,4 @@
-//! Interactive REPL for ORCHA CLI
+//! Interactive REPL for Topsi CLI
 //!
 //! Provides the Claude Code-like interactive terminal experience.
 
@@ -10,7 +10,7 @@ use rustyline::{error::ReadlineError, history::DefaultHistory, Editor};
 use uuid::Uuid;
 
 use crate::{
-    api::{ApiClient, CreateTaskRequest, UpdateTaskRequest},
+    api::{ApiClient, CreateTaskRequest, RouterModel, UpdateTaskRequest},
     config::Config,
     output::OutputHandler,
     session::{ConversationLog, DevSession},
@@ -30,8 +30,8 @@ fn format_num(n: i64) -> String {
     result
 }
 
-/// Interactive REPL for ORCHA CLI
-pub struct PcgRepl {
+/// Interactive REPL for Topsi CLI
+pub struct TopsiRepl {
     api: ApiClient,
     config: Config,
     work_dir: PathBuf,
@@ -48,7 +48,7 @@ pub struct PcgRepl {
     conversation_log: ConversationLog,
 }
 
-impl PcgRepl {
+impl TopsiRepl {
     pub fn new(
         api: ApiClient,
         config: Config,
@@ -168,7 +168,7 @@ impl PcgRepl {
         if !self.conversation_log.is_empty() {
             match self.conversation_log.save() {
                 Ok(()) => self.output.print_info(&format!(
-                    "Session saved ({} messages). View with: orcha history",
+                    "Session saved ({} messages). View with: topsi history",
                     self.conversation_log.len()
                 )),
                 Err(e) => self
@@ -267,7 +267,7 @@ impl PcgRepl {
 
         format!(
             "\n{} [{}{}{}] {} ",
-            "orcha".bright_green().bold(),
+            "topsi".bright_green().bold(),
             project_part,
             session_part,
             model_part,
@@ -343,7 +343,7 @@ impl PcgRepl {
     /// Print help information
     fn print_help(&self) {
         println!();
-        println!("{}", "ORCHA CLI Commands".bright_white().bold());
+        println!("{}", "Topsi CLI Commands".bright_white().bold());
         println!("{}", "─".repeat(50).dimmed());
         println!();
 
@@ -394,24 +394,16 @@ impl PcgRepl {
 
         println!("{}", "Model Commands:".bright_cyan());
         println!(
-            "  {}            Show current model/provider",
+            "  {}                  List PCG Router models",
             "/model".bright_yellow()
         );
         println!(
-            "  {}   Switch to local Ollama LLM",
-            "/model ollama".bright_yellow()
+            "  {}   Pick a model (substring matches model_id or name)",
+            "/model <query>".bright_yellow()
         );
         println!(
-            "  {}  Switch to OpenAI GPT-4o",
-            "/model openai".bright_yellow()
-        );
-        println!(
-            "  {} Switch to Anthropic Claude",
-            "/model anthropic".bright_yellow()
-        );
-        println!(
-            "  {}  Use a specific model",
-            "/model set <model>".bright_yellow()
+            "  {}          Clear override; use Topsi's configured default",
+            "/model default".bright_yellow()
         );
         println!();
 
@@ -477,7 +469,7 @@ impl PcgRepl {
                     let request = CreateTaskRequest {
                         title: title.clone(),
                         description: None,
-                        created_by: "orcha-cli".to_string(),
+                        created_by: "topsi-cli".to_string(),
                     };
 
                     match self.api.create_task(project_id, None, &request).await {
@@ -638,96 +630,183 @@ impl PcgRepl {
     }
 
     /// Handle model subcommands
+    /// `/model` slash-command handler — surfaces PCG Router-registered models.
+    ///
+    /// Usage:
+    ///   `/model`            — list available models with the current override
+    ///                         highlighted, then return
+    ///   `/model <query>`    — set override; query is matched as a substring of
+    ///                         `model_id` (case-insensitive). Exact match wins;
+    ///                         otherwise a single substring hit is accepted.
+    ///                         Multiple matches print the disambiguation list
+    ///   `/model default`    — clear the override (Topsi uses its configured
+    ///   `/model reset`        default LLM)
     async fn handle_model_command(&mut self, args: &[&str]) -> Result<()> {
-        if args.is_empty() {
-            // Show current model info
-            let model = self.current_model.as_deref().unwrap_or("(agent default)");
-            let provider = self
-                .current_provider
-                .as_deref()
-                .unwrap_or("(agent default)");
+        if args.is_empty() || args[0] == "list" {
+            return self.render_model_list().await;
+        }
 
-            self.output.print_header("Model Configuration");
-            println!();
-            println!("  {} {}", "Provider:".dimmed(), provider.bright_cyan());
-            println!("  {} {}", "Model:".dimmed(), model.bright_cyan());
-            println!();
-            println!("{}", "Available Providers:".bright_white());
-            println!(
-                "  {} - Local LLM via Ollama (free, private)",
-                "ollama".bright_green()
-            );
-            println!(
-                "  {} - OpenAI GPT models (requires API key)",
-                "openai".bright_yellow()
-            );
-            println!(
-                "  {} - Anthropic Claude models (requires API key)",
-                "anthropic".bright_yellow()
-            );
-            println!();
-            println!("{}", "Usage:".dimmed());
-            println!("  /model ollama              Switch to local Ollama");
-            println!("  /model openai              Switch to OpenAI");
-            println!("  /model anthropic           Switch to Anthropic");
-            println!("  /model set llama3.2:3b     Use a specific model");
-            println!("  /model reset               Reset to agent defaults");
+        if matches!(args[0], "default" | "reset" | "clear") {
+            self.current_model = None;
+            self.current_provider = None;
+            self.output
+                .print_success("Model override cleared. Topsi will use its configured default.");
             return Ok(());
         }
 
-        match args[0] {
-            "ollama" | "local" => {
-                self.current_provider = Some("ollama".to_string());
-                self.current_model = Some("llama3.2:3b".to_string());
+        let query = args[0];
+        let models = match self.api.list_router_models().await {
+            Ok(m) => m,
+            Err(e) => {
                 self.output
-                    .print_success("Switched to Ollama (local) with llama3.2:3b");
+                    .print_error(&format!("Could not fetch router models: {}", e));
+                return Ok(());
             }
-            "openai" | "gpt" => {
-                self.current_provider = Some("openai".to_string());
-                self.current_model = Some("gpt-4o".to_string());
-                self.output.print_success("Switched to OpenAI with gpt-4o");
-            }
-            "anthropic" | "claude" => {
-                self.current_provider = Some("anthropic".to_string());
-                self.current_model = Some("claude-sonnet-4".to_string());
-                self.output
-                    .print_success("Switched to Anthropic with claude-sonnet-4");
-            }
-            "set" => {
-                if args.len() < 2 {
-                    self.output.print_error("Usage: /model set <model-name>");
+        };
+
+        let enabled: Vec<&RouterModel> = models.iter().filter(|m| m.is_enabled).collect();
+        let lower = query.to_lowercase();
+
+        // Exact match on model_id wins
+        let exact: Vec<&&RouterModel> = enabled
+            .iter()
+            .filter(|m| m.model_id.eq_ignore_ascii_case(query))
+            .collect();
+
+        let chosen: Option<&RouterModel> = if let Some(&m) = exact.first() {
+            Some(*m)
+        } else {
+            let matches: Vec<&&RouterModel> = enabled
+                .iter()
+                .filter(|m| {
+                    m.model_id.to_lowercase().contains(&lower)
+                        || m.name.to_lowercase().contains(&lower)
+                })
+                .collect();
+
+            match matches.len() {
+                0 => {
+                    self.output
+                        .print_error(&format!("No router model matches '{}'", query));
+                    self.output
+                        .print_info("Run `/model` with no args to list available models.");
                     return Ok(());
                 }
-                let model = args[1];
-                // Infer provider from model name
-                let provider = if model.starts_with("claude") {
-                    "anthropic"
-                } else if model.starts_with("gpt-4")
-                    || model.starts_with("gpt-3")
-                    || model.starts_with("o1")
-                {
-                    "openai"
-                } else {
-                    "ollama"
-                };
-                self.current_model = Some(model.to_string());
-                self.current_provider = Some(provider.to_string());
-                self.output
-                    .print_success(&format!("Model set to {} ({})", model, provider));
+                1 => Some(*matches[0]),
+                _ => {
+                    self.output.print_warning(&format!(
+                        "'{}' matched {} models — be more specific:",
+                        query,
+                        matches.len()
+                    ));
+                    for m in matches {
+                        println!(
+                            "  {} {}  ({})",
+                            "•".dimmed(),
+                            m.model_id.bright_cyan(),
+                            m.provider.dimmed()
+                        );
+                    }
+                    return Ok(());
+                }
             }
-            "reset" => {
-                self.current_model = None;
-                self.current_provider = None;
+        };
+
+        if let Some(m) = chosen {
+            self.current_model = Some(m.model_id.clone());
+            self.current_provider = Some(m.provider.clone());
+            self.output.print_success(&format!(
+                "Model override set: {} ({})",
+                m.model_id.bright_cyan(),
+                m.provider.dimmed()
+            ));
+        }
+        Ok(())
+    }
+
+    /// Fetch and render the PCG Router model list. Marks the current override.
+    async fn render_model_list(&self) -> Result<()> {
+        self.output.print_header("PCG Router Models");
+
+        let models = match self.api.list_router_models().await {
+            Ok(m) => m,
+            Err(e) => {
                 self.output
-                    .print_success("Reset to agent default model/provider");
-            }
-            _ => {
-                self.output.print_error(
-                    "Unknown model command. Use: ollama, openai, anthropic, set <model>, reset",
+                    .print_error(&format!("Could not fetch router models: {}", e));
+                self.output.print_info(
+                    "Check that the PCG backend is reachable and that you are authenticated.",
                 );
+                return Ok(());
             }
+        };
+
+        if models.is_empty() {
+            self.output
+                .print_warning("No models registered in PCG Router.");
+            return Ok(());
         }
 
+        let current = self.current_model.as_deref();
+        println!();
+        println!(
+            "  {:>3}  {:<32} {:<12} {:>10}  {:>12}  flags",
+            "#".dimmed(),
+            "model_id".bright_white(),
+            "provider".bright_white(),
+            "ctx".bright_white(),
+            "$/M in→out".bright_white(),
+        );
+        for (idx, m) in models.iter().enumerate() {
+            let marker = if Some(m.model_id.as_str()) == current {
+                "▶".bright_green().to_string()
+            } else {
+                " ".to_string()
+            };
+            let ctx = m
+                .context_window
+                .map(|n| format_num(n))
+                .unwrap_or_else(|| "—".to_string());
+            let cost = format!(
+                "{}→{}",
+                format_num(m.cost_per_million_input),
+                format_num(m.cost_per_million_output)
+            );
+            let mut flags = Vec::new();
+            if !m.is_enabled {
+                flags.push("disabled".dimmed().to_string());
+            }
+            if m.supports_tools {
+                flags.push("tools".bright_blue().to_string());
+            }
+            if m.supports_vision {
+                flags.push("vision".bright_magenta().to_string());
+            }
+
+            let name = if m.model_id == m.name {
+                String::new()
+            } else {
+                format!("  {}", m.name.dimmed())
+            };
+
+            println!(
+                "  {} {:>2}  {:<32} {:<12} {:>10}  {:>12}  {}{}",
+                marker,
+                idx + 1,
+                m.model_id.bright_cyan(),
+                m.provider,
+                ctx,
+                cost,
+                flags.join(" "),
+                name,
+            );
+        }
+        println!();
+        println!(
+            "{}  {}  {}",
+            "Pick:".dimmed(),
+            "/model <id-or-substring>".bright_yellow(),
+            "or /model default to clear".dimmed()
+        );
         Ok(())
     }
 
@@ -841,7 +920,7 @@ impl PcgRepl {
 
             "pause" => {
                 self.output
-                    .print_info("Session paused. Resume later with: orcha --resume <session-id>");
+                    .print_info("Session paused. Resume later with: topsi --resume <session-id>");
             }
 
             _ => {
@@ -1124,7 +1203,7 @@ impl PcgRepl {
 
         if sessions.is_empty() {
             self.output
-                .print_info("No sessions saved yet. Sessions are saved when you exit orcha.");
+                .print_info("No sessions saved yet. Sessions are saved when you exit topsi.");
             return Ok(());
         }
 
@@ -1197,7 +1276,7 @@ impl PcgRepl {
                     let request = CreateTaskRequest {
                         title: input.to_string(),
                         description: None,
-                        created_by: "orcha-cli".to_string(),
+                        created_by: "topsi-cli".to_string(),
                     };
 
                     if let Ok(task) = self.api.create_task(project_id, None, &request).await {
@@ -1238,7 +1317,13 @@ impl PcgRepl {
             // Topsi has a dedicated high-level endpoint
             match self
                 .api
-                .chat_with_topsi(input, &session_id, self.project_id, Some(dir_context))
+                .chat_with_topsi(
+                    input,
+                    &session_id,
+                    self.project_id,
+                    Some(dir_context),
+                    self.current_model.as_deref(),
+                )
                 .await
             {
                 Ok(response) => {
@@ -1281,7 +1366,7 @@ impl PcgRepl {
                 Err(e) => {
                     self.output.print_error(&format!("Topsi error: {}", e));
                     self.output.print_info(
-                        "Note: Make sure the ORCHA backend is running and Topsi is initialized.",
+                        "Note: Make sure the PCG backend is running and Topsi is initialized.",
                     );
                 }
             }
@@ -1324,7 +1409,7 @@ impl PcgRepl {
                 Err(e) => {
                     self.output.print_error(&format!("Agent error: {}", e));
                     self.output.print_info(
-                        "Note: Make sure the ORCHA backend server is running on the configured URL.",
+                        "Note: Make sure the PCG backend server is running on the configured URL.",
                     );
                 }
             }
@@ -1335,7 +1420,7 @@ impl PcgRepl {
             ));
             self.output.print_info(&format!("Your request: {}", input));
             self.output.print_info(
-                "To enable agent chat, ensure the ORCHA backend is running: pnpm run dev",
+                "To enable agent chat, ensure the PCG backend is running: pnpm run dev",
             );
         }
 

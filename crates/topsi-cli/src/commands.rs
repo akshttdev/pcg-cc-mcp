@@ -6,7 +6,7 @@ use anyhow::Result;
 use colored::Colorize;
 
 use crate::{
-    api::{ApiClient, CreateTaskRequest},
+    api::{ApiClient, CreateTaskRequest, RouterModel},
     config::Config,
     output::OutputHandler,
 };
@@ -32,7 +32,7 @@ pub async fn status(api: &ApiClient) -> Result<()> {
     // Check server health
     let healthy = api.health_check().await?;
 
-    output.print_header("ORCHA CLI Status");
+    output.print_header("Topsi CLI Status");
 
     if healthy {
         output.print_success("Server: Connected");
@@ -180,7 +180,7 @@ pub async fn create_task(
     let request = CreateTaskRequest {
         title: title.to_string(),
         description: description.map(|s| s.to_string()),
-        created_by: "pcg-cli".to_string(),
+        created_by: "topsi-cli".to_string(),
     };
 
     match api.create_task(project_id, None, &request).await {
@@ -207,7 +207,7 @@ pub async fn session_history(_api: &ApiClient, limit: usize) -> Result<()> {
     let sessions = ConversationLog::list_saved(limit);
 
     if sessions.is_empty() {
-        output.print_info("No sessions saved yet. Sessions are saved when you exit orcha.");
+        output.print_info("No sessions saved yet. Sessions are saved when you exit topsi.");
         return Ok(());
     }
 
@@ -363,5 +363,74 @@ pub fn set_config(kv: &str) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// List PCG Router-registered models. Optional substring filter on `model_id`
+/// or `name`. Renders a compact table with provider, context window, cost and
+/// capability flags.
+pub async fn list_models(api: &ApiClient, filter: Option<&str>) -> Result<()> {
+    let output = OutputHandler::new(false, false);
+    output.print_header("PCG Router Models");
+
+    let models = api.list_router_models().await?;
+
+    let needle = filter.map(|s| s.to_lowercase());
+    let view: Vec<&RouterModel> = models
+        .iter()
+        .filter(|m| {
+            needle.as_deref().is_none_or(|n| {
+                m.model_id.to_lowercase().contains(n) || m.name.to_lowercase().contains(n)
+            })
+        })
+        .collect();
+
+    if view.is_empty() {
+        let msg = match filter {
+            Some(f) => format!("No models match '{}'.", f),
+            None => "No models registered in PCG Router.".to_string(),
+        };
+        output.print_warning(&msg);
+        return Ok(());
+    }
+
+    println!();
+    println!(
+        "  {:<32} {:<12} {:>10}  {:>14}  flags",
+        "model_id".bright_white(),
+        "provider".bright_white(),
+        "ctx".bright_white(),
+        "$/M in→out".bright_white(),
+    );
+    for m in view {
+        let ctx = m
+            .context_window
+            .map(format_num)
+            .unwrap_or_else(|| "—".to_string());
+        let cost = format!(
+            "{}→{}",
+            format_num(m.cost_per_million_input),
+            format_num(m.cost_per_million_output)
+        );
+        let mut flags = Vec::new();
+        if !m.is_enabled {
+            flags.push("disabled".dimmed().to_string());
+        }
+        if m.supports_tools {
+            flags.push("tools".bright_blue().to_string());
+        }
+        if m.supports_vision {
+            flags.push("vision".bright_magenta().to_string());
+        }
+        println!(
+            "  {:<32} {:<12} {:>10}  {:>14}  {}",
+            m.model_id.bright_cyan(),
+            m.provider,
+            ctx,
+            cost,
+            flags.join(" "),
+        );
+    }
+    println!();
     Ok(())
 }

@@ -1,12 +1,12 @@
 [package]
-name = "pcg-cli"
+name = "topsi-cli"
 version = "0.1.0"
 edition = "2021"
-description = "PCG Dashboard CLI - Interactive development session management"
+description = "Topsi CLI - Interactive development session for the PCG Dashboard"
 authors = ["PCG Team"]
 
 [[bin]]
-name = "orcha"
+name = "topsi"
 path = "src/main.rs"
 
 [dependencies]

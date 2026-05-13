@@ -88,8 +88,8 @@ common = '''
   export RUSTUP_HOME="${FLOX_ENV_CACHE}/rustup"
   export CARGO_HOME="${FLOX_ENV_CACHE}/cargo"
   export PATH="$CARGO_HOME/bin:$FLOX_ENV_PROJECT/target/release:$PATH"
-  alias orcha="$FLOX_ENV_PROJECT/target/release/orcha"
-  echo "ORCHA CLI available — run: orcha status"
+  alias topsi="$FLOX_ENV_PROJECT/target/release/topsi"
+  echo "Topsi CLI available — run: topsi status"
 '''
 
 

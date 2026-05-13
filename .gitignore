@@ -185,3 +185,8 @@ demo_impl/
 # Python virtualenvs
 .venv/
 **/.venv*/
+
+# Python virtual environments
+**/.venv-*/
+**/.venv/
+**/venv/
