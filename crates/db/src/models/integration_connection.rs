@@ -168,9 +168,13 @@ impl IntegrationConnection {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        // See note in `find_by_org_and_provider` — TEXT cols, Uuid struct fields.
-        sqlx::query_as::<_, Self>(SELECT_ALL_TEXT_TO_BLOB_WHERE_ID)
-            .bind(id.to_string())
+        // Schema declares `id` as TEXT but every existing row was inserted via
+        // `upsert` (line ~154) binding `Uuid` as 16-byte BLOB. SQLite's flexible
+        // type affinity stored them as BLOB. The old TEXT_TO_BLOB query above
+        // ran `unhex(replace(...))` assuming TEXT storage — it never matched a
+        // real row. Plain SELECT + BLOB bind matches what's actually stored.
+        sqlx::query_as::<_, Self>("SELECT * FROM integration_connections WHERE id = ?1")
+            .bind(id)
             .fetch_optional(pool)
             .await
     }

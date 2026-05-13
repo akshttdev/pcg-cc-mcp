@@ -5,6 +5,8 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::db_uuid::DbUuid;
+
 #[derive(Debug, Error)]
 pub enum EmailMessageError {
     #[error(transparent)]
@@ -38,7 +40,9 @@ pub enum EmailPriority {
 pub struct EmailMessage {
     pub id: Uuid,
     pub email_account_id: Uuid,
-    pub project_id: Uuid,
+    // DbUuid because this column stores TEXT (matching the projects.id FK target).
+    // Plain Uuid only decodes 16-byte BLOB cells; DbUuid handles both formats.
+    pub project_id: DbUuid,
     pub provider_message_id: String,
     pub thread_id: Option<String>,
     pub from_address: String,
@@ -191,7 +195,12 @@ impl EmailMessage {
         )
         .bind(id)
         .bind(data.email_account_id)
-        .bind(data.project_id)
+        // `email_messages.project_id` is a legacy BLOB column whose FK
+        // targets `projects.id` (TEXT, 36-char UUID string). SQLite compares
+        // FKs byte-for-byte, so we must store the UTF-8 of the hyphenated
+        // form to match. Binding `Uuid` directly serialises as 16 raw bytes
+        // and fails the FK with code 787.
+        .bind(data.project_id.to_string())
         .bind(&data.provider_message_id)
         .bind(&data.thread_id)
         .bind(&data.from_address)
@@ -307,7 +316,7 @@ impl EmailMessage {
                 LIMIT ?3 OFFSET ?4
                 "#
         ))
-        .bind(filter.project_id)
+        .bind(filter.project_id.map(|u| u.to_string()))
         .bind(filter.email_account_id)
         .bind(limit)
         .bind(offset)
@@ -331,7 +340,7 @@ impl EmailMessage {
             LIMIT ?2 OFFSET ?3
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(limit)
         .bind(offset)
         .fetch_all(pool)
@@ -353,7 +362,7 @@ impl EmailMessage {
             LIMIT ?2
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(limit)
         .fetch_all(pool)
         .await?;
@@ -499,7 +508,8 @@ impl EmailMessage {
             WHERE project_id = ?1 AND is_trash = 0 AND is_spam = 0
             "#,
         )
-        .bind(project_id)
+        // email_messages.project_id stores TEXT to match projects.id FK
+        .bind(project_id.to_string())
         .fetch_one(pool)
         .await?;
 

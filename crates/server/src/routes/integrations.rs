@@ -263,7 +263,8 @@ async fn upsert_social_account_link(
          WHERE project_id = ?1 AND platform = ?2 AND platform_account_id = ?3 \
          LIMIT 1",
     )
-    .bind(project_id)
+    // project_id stored as TEXT to match projects.id FK target (see social_account.rs)
+    .bind(project_id.to_string())
     .bind(platform.to_string())
     .bind(&profile.platform_account_id)
     .fetch_optional(pool)
