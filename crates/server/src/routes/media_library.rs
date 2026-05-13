@@ -12,7 +12,10 @@
 use std::path::PathBuf;
 
 use axum::{
+    body::Body,
     extract::{Multipart, Path, Query, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -24,6 +27,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use services::services::editron::asset_intelligence;
 use tokio::io::AsyncWriteExt;
+use tokio_util::io::ReaderStream;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
@@ -166,6 +170,52 @@ async fn upload_asset(
     );
 
     Ok(Json(ApiResponse::success(asset)))
+}
+
+/// GET /media/{id}/serve
+///
+/// Stream the raw file bytes for an asset. Used by social-platform connectors
+/// (Publisher fetches `media_url` via HTTP before forwarding to the platform).
+/// In production this should be replaced with signed-URL redirects to whatever
+/// blob store (S3/R2/GCS) backs media — streaming through the API server is
+/// fine for local dev / single-instance deployments only.
+async fn serve_asset(
+    State(d): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
+    let asset = MediaAsset::find_by_id(&d.db().pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Asset not found".into()))?;
+
+    let file = tokio::fs::File::open(&asset.file_path).await.map_err(|e| {
+        ApiError::InternalError(format!(
+            "Asset {} file_path {} unreadable: {}",
+            asset.id, asset.file_path, e
+        ))
+    })?;
+
+    let size = file.metadata().await.ok().map(|m| m.len());
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    let mut headers = HeaderMap::new();
+    if let Ok(ct) = HeaderValue::from_str(&asset.mime_type) {
+        headers.insert(header::CONTENT_TYPE, ct);
+    }
+    if let Some(len) = size {
+        if let Ok(cl) = HeaderValue::from_str(&len.to_string()) {
+            headers.insert(header::CONTENT_LENGTH, cl);
+        }
+    }
+    // Inline so browsers preview rather than force-download.
+    if let Ok(cd) = HeaderValue::from_str(&format!("inline; filename=\"{}\"", asset.filename)) {
+        headers.insert(header::CONTENT_DISPOSITION, cd);
+    }
+
+    Ok((StatusCode::OK, headers, body).into_response())
 }
 
 /// GET /media/{id}
@@ -670,5 +720,19 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/media/remote-pull", post(remote_pull))
         .route("/media/{id}", get(get_asset).delete(delete_asset))
         .route("/media/{id}/analyze", post(retrigger_analysis))
+        .with_state(deployment.clone())
+}
+
+/// Public (unauthenticated) media routes.
+///
+/// Only `/media/{id}/serve` lives here. It needs to be reachable from internal
+/// services — the social `Publisher` fetches `media_urls` via reqwest with no
+/// session cookie — and from any future external CDN/preview consumer. In
+/// production this should be replaced with signed-URL redirects to whatever
+/// blob store backs media; bytes streamed from the API server are fine for
+/// local dev / single-instance deploys.
+pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+    Router::new()
+        .route("/media/{id}/serve", get(serve_asset))
         .with_state(deployment.clone())
 }

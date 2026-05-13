@@ -287,6 +287,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))
         .merge(orcha::orcha_routes())
+        .merge(media_library::public_router(&deployment))
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(marketplace::public_router(&deployment))
