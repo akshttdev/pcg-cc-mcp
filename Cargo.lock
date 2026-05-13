@@ -6718,30 +6718,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pcg-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "colored 3.1.1",
- "dirs 5.0.1",
- "futures",
- "git2",
- "reqwest 0.12.28",
- "rustyline",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.2",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "pcg-dashboard"
 version = "0.0.55"
 dependencies = [
@@ -10968,6 +10944,30 @@ dependencies = [
  "tokio",
  "tracing",
  "ts-rs",
+ "uuid",
+]
+
+[[package]]
+name = "topsi-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "colored 3.1.1",
+ "dirs 5.0.1",
+ "futures",
+ "git2",
+ "reqwest 0.12.28",
+ "rustyline",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.2",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 

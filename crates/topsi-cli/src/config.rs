@@ -1,13 +1,13 @@
-//! Configuration management for PCG CLI
+//! Configuration management for Topsi CLI
 //!
-//! Handles loading and saving configuration from ~/.pcg/config.toml
+//! Handles loading and saving configuration from ~/.topsi/config.toml
 
 use std::path::PathBuf;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-/// Configuration for PCG CLI
+/// Configuration for Topsi CLI
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
@@ -140,7 +140,7 @@ impl Config {
     pub fn config_path() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".pcg")
+            .join(".topsi")
             .join("config.toml")
     }
 

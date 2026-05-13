@@ -7,8 +7,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, Utc};
 // Database models for querying real data (topology/agent tools still use these directly)
-use db::models::project::Project;
-use db::models::{agent::Agent, task::Task};
+use db::models::pcg_router_model::PcgRouterModel;
+use db::models::{agent::Agent, project::Project, task::Task};
 // Import Nora's LLM infrastructure
 use nora::brain::{
     infer_provider_from_model, LLMClient, LLMConfig as NoraLLMConfig, LLMProvider, LLMResponse,
@@ -527,9 +527,15 @@ impl TopsiAgent {
             .await;
 
         match request.request_type {
-            TopsiRequestType::Chat { message } => {
-                self.handle_chat(&message, user_context, &scope, session_id)
-                    .await
+            TopsiRequestType::Chat { message, model_id } => {
+                self.handle_chat(
+                    &message,
+                    model_id.as_deref(),
+                    user_context,
+                    &scope,
+                    session_id,
+                )
+                .await
             }
             TopsiRequestType::GetTopology { project_id } => {
                 self.handle_get_topology(project_id, user_context, &scope)
@@ -593,15 +599,101 @@ impl TopsiAgent {
     }
 
     /// Handle chat messages with LLM integration — agentic loop with multi-step reasoning
+    /// Build an ad-hoc `LLMClient` from a PCG Router model record.
+    ///
+    /// Used by [`handle_chat`] when the caller supplies a `model_id` override.
+    /// Looks up the router model by id, maps its provider string onto an
+    /// [`LLMProvider`] variant and constructs an [`LLMClient`] with the model's
+    /// resolved API key plus an explicit chat-completions endpoint derived from
+    /// the model's base URL.
+    ///
+    /// Non-OpenAI-shaped providers (anthropic, ollama) get mapped onto their
+    /// dedicated variants; everything else is treated as OpenAI-compatible
+    /// since the Router's supported providers (openrouter, gemini, mistral,
+    /// xai, deepseek, groq, cohere, qwen) all expose OpenAI-compatible
+    /// `/v1/chat/completions` endpoints.
+    async fn build_llm_for_router_model(&self, model_id: &str) -> Result<LLMClient> {
+        let pool = self.db.as_ref().ok_or_else(|| {
+            TopsiError::ConfigError(
+                "PCG Router model lookup requires database connection".to_string(),
+            )
+        })?;
+
+        let model = PcgRouterModel::get_by_model_id(pool, model_id)
+            .await
+            .map_err(|e| {
+                TopsiError::ConfigError(format!(
+                    "Failed to query PCG Router model '{}': {}",
+                    model_id, e
+                ))
+            })?
+            .ok_or_else(|| {
+                TopsiError::ConfigError(format!(
+                    "PCG Router model '{}' not found or disabled",
+                    model_id
+                ))
+            })?;
+
+        let provider = match model.provider.as_str() {
+            "anthropic" => LLMProvider::Anthropic,
+            "ollama" => LLMProvider::Ollama,
+            // All other Router providers (openai, openrouter, gemini, mistral,
+            // xai, deepseek, groq, cohere, qwen) expose OpenAI-compatible APIs
+            _ => LLMProvider::OpenAI,
+        };
+
+        // Endpoint URL: for OpenAI-compatible providers we append the chat
+        // completions path; Anthropic uses its messages API path; Ollama uses
+        // OpenAI-compatible chat completions.
+        let endpoint = match provider {
+            LLMProvider::Anthropic => format!("{}/v1/messages", model.base_url()),
+            LLMProvider::OpenAI | LLMProvider::Ollama => {
+                format!("{}/v1/chat/completions", model.base_url())
+            }
+        };
+
+        let max_tokens: u32 = model
+            .max_output_tokens
+            .and_then(|n| u32::try_from(n).ok())
+            .unwrap_or(4096);
+
+        let config = NoraLLMConfig {
+            provider,
+            model: model.model_id.clone(),
+            temperature: 0.2,
+            max_tokens,
+            system_prompt: String::new(),
+            endpoint: Some(endpoint),
+        };
+
+        Ok(LLMClient::with_explicit_key(
+            config,
+            model.resolve_api_key(),
+        ))
+    }
+
     async fn handle_chat(
         &self,
         message: &str,
+        model_override: Option<&str>,
         user_context: &UserContext,
         scope: &AccessScope,
         session_id: Option<&str>,
     ) -> Result<TopsiResponse> {
-        // If LLM is not configured, return a helpful message
-        let Some(llm) = &self.llm else {
+        // Resolve which LLM client this turn uses. When the caller supplies a
+        // PCG Router model_id, build an ad-hoc client from that router record;
+        // otherwise fall back to the agent's static `self.llm`.
+        let llm_owned: Option<LLMClient> = match model_override {
+            Some(model_id) => Some(self.build_llm_for_router_model(model_id).await?),
+            None => None,
+        };
+
+        // If neither override nor static LLM is configured, return a helpful message
+        let llm: &LLMClient = if let Some(ref ad_hoc) = llm_owned {
+            ad_hoc
+        } else if let Some(ref base) = self.llm {
+            base
+        } else {
             let scope_description = match scope {
                 AccessScope::Admin => "full platform access".to_string(),
                 AccessScope::Projects(ids) => format!("access to {} projects", ids.len()),
@@ -2795,7 +2887,14 @@ impl TopsiAgent {
 #[serde(tag = "type")]
 pub enum TopsiRequestType {
     /// Chat with Topsi
-    Chat { message: String },
+    Chat {
+        message: String,
+        /// Optional PCG Router model_id to override Topsi's configured default LLM
+        /// for this turn (e.g. "claude-sonnet-4-6", "gpt-4o"). When None, uses
+        /// the agent's static LLM configured at startup.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model_id: Option<String>,
+    },
     /// Get topology for a project
     GetTopology { project_id: Option<Uuid> },
     /// Detect issues in topology

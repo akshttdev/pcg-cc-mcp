@@ -7,7 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// API client for ORCHA Dashboard
+/// API client for the PCG Dashboard
 pub struct ApiClient {
     client: Client,
     base_url: String,
@@ -61,7 +61,7 @@ impl ApiClient {
             // Check if response is HTML (frontend) instead of JSON
             if text.starts_with("<!DOCTYPE") || text.starts_with("<html") {
                 anyhow::bail!(
-                    "Authentication required. Run: orcha config --set server.username=YOUR_USER"
+                    "Authentication required. Run: topsi config --set server.username=YOUR_USER"
                 );
             }
             // Try parsing as wrapped response {"success": true, "data": [...]}
@@ -74,7 +74,7 @@ impl ApiClient {
             Ok(projects)
         } else if resp.status().as_u16() == 401 {
             anyhow::bail!(
-                "Authentication required. Run: orcha config --set server.username=YOUR_USER"
+                "Authentication required. Run: topsi config --set server.username=YOUR_USER"
             );
         } else {
             let status = resp.status();
@@ -339,19 +339,25 @@ impl ApiClient {
         }
     }
 
-    /// Chat directly with Topsi platform agent via dedicated endpoint
+    /// Chat directly with Topsi platform agent via dedicated endpoint.
+    ///
+    /// `model_id`, when set, overrides Topsi's configured default LLM for this
+    /// turn. The value must match a `model_id` registered in PCG Router (see
+    /// [`Self::list_router_models`]).
     pub async fn chat_with_topsi(
         &self,
         message: &str,
         session_id: &str,
         project_id: Option<Uuid>,
         context: Option<serde_json::Value>,
+        model_id: Option<&str>,
     ) -> Result<TopsiChatResponse> {
         let request = serde_json::json!({
             "message": message,
             "sessionId": session_id,
             "projectId": project_id,
             "context": context,
+            "modelId": model_id,
         });
 
         let resp = self
@@ -384,6 +390,35 @@ impl ApiClient {
             let err_text = resp.text().await?;
             anyhow::bail!("Topsi chat failed: {}", err_text)
         }
+    }
+
+    // ============ PCG Router models ============
+
+    /// Fetch the list of PCG Router-registered models. Returned in the Router's
+    /// own priority order (lowest priority value first).
+    pub async fn list_router_models(&self) -> Result<Vec<RouterModel>> {
+        let resp = self
+            .client
+            .get(format!("{}/api/pcg-router/models", self.base_url))
+            .send()
+            .await
+            .context("Failed to fetch PCG Router models")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Failed to list router models: {} — {}", status, text);
+        }
+
+        let text = resp.text().await?;
+        if text.starts_with("<!DOCTYPE") || text.starts_with("<html") {
+            anyhow::bail!(
+                "Authentication required. Run: topsi config --set server.username=YOUR_USER"
+            );
+        }
+        let models: Vec<RouterModel> =
+            serde_json::from_str(&text).context("Failed to parse router models response")?;
+        Ok(models)
     }
 
     // ============ Agents ============
@@ -485,7 +520,7 @@ pub struct CreateTaskRequest {
 }
 
 fn default_created_by() -> String {
-    "pcg-cli".to_string()
+    "topsi-cli".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -603,6 +638,40 @@ pub struct TopsiChatResponse {
     /// Names of tools Topsi invoked while processing the request
     #[serde(default)]
     pub tool_calls: Vec<String>,
+}
+
+/// PCG Router model record returned by `GET /api/pcg-router/models`.
+///
+/// Local mirror of `db::models::pcg_router_model::PcgRouterModel` — defined
+/// here so the CLI doesn't need to depend on the `db` crate (which pulls SQLx).
+/// Wire format is camelCase via the server-side `TS` export.
+///
+/// `id`, `priority` and `max_output_tokens` are deserialized for completeness
+/// (Router-side ordering and future tier-routing UI) even though the current
+/// `/model` view does not render them.
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct RouterModel {
+    pub id: String,
+    pub name: String,
+    pub model_id: String,
+    pub provider: String,
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default)]
+    pub context_window: Option<i64>,
+    #[serde(default)]
+    pub max_output_tokens: Option<i64>,
+    #[serde(default)]
+    pub supports_tools: bool,
+    #[serde(default)]
+    pub supports_vision: bool,
+    #[serde(default)]
+    pub cost_per_million_input: i64,
+    #[serde(default)]
+    pub cost_per_million_output: i64,
+    #[serde(default)]
+    pub is_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

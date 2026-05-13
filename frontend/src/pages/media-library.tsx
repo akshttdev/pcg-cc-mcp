@@ -1,17 +1,18 @@
+import { useQuery } from '@tanstack/react-query';
+import { Image as ImageIcon, Search, Trash2, Upload } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { CardGrid } from '@/components/ui/card-grid';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
+import { Loader } from '@/components/ui/loader';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { mediaApi, type MediaAsset } from '@/lib/api';
 import { mediaKeys } from '@/lib/query-keys';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Loader } from '@/components/ui/loader';
-import { CardGrid } from '@/components/ui/card-grid';
-import { Upload, Search, Trash2, Image as ImageIcon } from 'lucide-react';
-import { EmptyState } from '@/components/ui/empty-state';
-import { useDebounce } from '@/hooks/useDebounce';
 
 function ShotTypeBadge({ type }: { type?: string }) {
   if (!type) return null;
@@ -24,7 +25,9 @@ function ShotTypeBadge({ type }: { type?: string }) {
   };
   const cls = colors[type] ?? 'bg-muted text-muted-foreground';
   return (
-    <span className={`inline-block text-xs px-1.5 py-0.5 rounded font-medium ${cls}`}>
+    <span
+      className={`inline-block text-xs px-1.5 py-0.5 rounded font-medium ${cls}`}
+    >
       {type.replace('_', ' ')}
     </span>
   );
@@ -36,11 +39,47 @@ function EnergyBar({ value }: { value: number }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-        <div style={{ width: `${pct}%`, background: color }} className="h-full rounded-full" />
+        <div
+          style={{ width: `${pct}%`, background: color }}
+          className="h-full rounded-full"
+        />
       </div>
-      <span className="text-xs text-muted-foreground w-6 text-right">{pct}%</span>
+      <span className="text-xs text-muted-foreground w-6 text-right">
+        {pct}%
+      </span>
     </div>
   );
+}
+
+function AssetThumb({ asset }: { asset: MediaAsset }) {
+  const src = `/api/media/${asset.id}/file`;
+  const isImage = asset.mime_type?.startsWith('image/');
+  const isVideo = asset.mime_type?.startsWith('video/');
+
+  if (isImage) {
+    return (
+      <img
+        src={src}
+        alt={asset.filename}
+        className="w-full h-full object-cover"
+        loading="lazy"
+        data-testid={`media-thumb-${asset.id}`}
+      />
+    );
+  }
+  if (isVideo) {
+    return (
+      <video
+        src={src}
+        className="w-full h-full object-cover"
+        muted
+        playsInline
+        preload="metadata"
+        data-testid={`media-thumb-${asset.id}`}
+      />
+    );
+  }
+  return <ImageIcon className="h-10 w-10 text-muted-foreground/40" />;
 }
 
 function AssetCard({
@@ -53,7 +92,11 @@ function AssetCard({
   onDelete: () => void;
 }) {
   const tags: string[] = (() => {
-    try { return JSON.parse(asset.scene_tags) as string[]; } catch { return []; }
+    try {
+      return JSON.parse(asset.scene_tags) as string[];
+    } catch {
+      return [];
+    }
   })();
 
   return (
@@ -61,9 +104,9 @@ function AssetCard({
       className="group relative border border-border rounded-lg overflow-hidden bg-card hover:border-primary/50 transition-colors cursor-pointer"
       onClick={onClick}
     >
-      {/* Thumbnail placeholder */}
-      <div className="aspect-video bg-muted flex items-center justify-center relative">
-        <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
+      {/* Thumbnail / preview from the streaming endpoint */}
+      <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
+        <AssetThumb asset={asset} />
         {asset.analysis_status === 'running' && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <Loader message="Analysing…" size={20} />
@@ -71,18 +114,26 @@ function AssetCard({
         )}
         {asset.analysis_status === 'pending' && (
           <div className="absolute top-2 right-2">
-            <Badge variant="outline" className="text-xs">pending</Badge>
+            <Badge variant="outline" className="text-xs">
+              pending
+            </Badge>
           </div>
         )}
       </div>
 
       <div className="p-2 space-y-1.5">
         <div className="flex items-start justify-between gap-1">
-          <p className="text-xs font-medium truncate flex-1" title={asset.filename}>
+          <p
+            className="text-xs font-medium truncate flex-1"
+            title={asset.filename}
+          >
             {asset.filename}
           </p>
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
           >
             <Trash2 className="h-3 w-3" />
@@ -105,12 +156,17 @@ function AssetCard({
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="text-xs bg-muted px-1 rounded text-muted-foreground">
+              <span
+                key={tag}
+                className="text-xs bg-muted px-1 rounded text-muted-foreground"
+              >
                 {tag}
               </span>
             ))}
             {tags.length > 3 && (
-              <span className="text-xs text-muted-foreground">+{tags.length - 3}</span>
+              <span className="text-xs text-muted-foreground">
+                +{tags.length - 3}
+              </span>
             )}
           </div>
         )}
@@ -119,28 +175,60 @@ function AssetCard({
   );
 }
 
-function AssetDetailPanel({ asset, onClose }: { asset: MediaAsset; onClose: () => void }) {
+function AssetDetailPanel({
+  asset,
+  onClose,
+}: {
+  asset: MediaAsset;
+  onClose: () => void;
+}) {
   const tags: string[] = (() => {
-    try { return JSON.parse(asset.scene_tags) as string[]; } catch { return []; }
+    try {
+      return JSON.parse(asset.scene_tags) as string[];
+    } catch {
+      return [];
+    }
   })();
 
   return (
     <div className="w-72 shrink-0 border-l border-border p-4 space-y-4 overflow-y-auto">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">Asset Details</h3>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xs">
+        <button
+          onClick={onClose}
+          className="text-muted-foreground hover:text-foreground text-xs"
+        >
           ✕
         </button>
       </div>
 
-      <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
-        <ImageIcon className="h-12 w-12 text-muted-foreground/40" />
+      <div className="aspect-video bg-muted rounded-lg flex items-center justify-center overflow-hidden">
+        {asset.mime_type?.startsWith('video/') ? (
+          <video
+            src={`/api/media/${asset.id}/file`}
+            className="w-full h-full object-contain bg-black"
+            controls
+            playsInline
+            preload="metadata"
+            data-testid={`media-detail-${asset.id}`}
+          />
+        ) : asset.mime_type?.startsWith('image/') ? (
+          <img
+            src={`/api/media/${asset.id}/file`}
+            alt={asset.filename}
+            className="w-full h-full object-contain"
+            data-testid={`media-detail-${asset.id}`}
+          />
+        ) : (
+          <ImageIcon className="h-12 w-12 text-muted-foreground/40" />
+        )}
       </div>
 
       <div className="space-y-1">
         <p className="text-xs font-medium">{asset.filename}</p>
         <p className="text-xs text-muted-foreground">
-          {asset.mime_type} · {(asset.file_size_bytes / 1024 / 1024).toFixed(2)} MB
+          {asset.mime_type} · {(asset.file_size_bytes / 1024 / 1024).toFixed(2)}{' '}
+          MB
         </p>
       </div>
 
@@ -168,7 +256,9 @@ function AssetDetailPanel({ asset, onClose }: { asset: MediaAsset; onClose: () =
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">Confidence</span>
-          <span className="text-xs">{Math.round(asset.ai_confidence * 100)}%</span>
+          <span className="text-xs">
+            {Math.round(asset.ai_confidence * 100)}%
+          </span>
         </div>
       </div>
 

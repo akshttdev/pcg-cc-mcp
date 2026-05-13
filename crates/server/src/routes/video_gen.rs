@@ -13,7 +13,7 @@ use db::models::{
     video_job::{CreateVideoJob, VideoJob},
 };
 use deployment::Deployment;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::fs;
 use uuid::Uuid;
 
@@ -53,6 +53,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         // Video jobs
         .route("/video-gen/jobs", get(list_jobs).post(create_job))
         .route("/video-gen/jobs/{id}", get(get_job).delete(delete_job))
+        // Video Studio inventory
+        .route("/video-gen/files", get(list_video_files))
+        .route("/video-gen/overlays", get(list_overlay_episodes))
         .with_state(deployment.clone())
 }
 
@@ -958,6 +961,128 @@ mod heygen {
 // ---------------------------------------------------------------------------
 // Unit Tests
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Video Studio inventory: /video-gen/files and /video-gen/overlays
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+struct VideoFile {
+    filename: String,
+    size_bytes: u64,
+    stream_url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct OverlayFile {
+    filename: String,
+    size_bytes: u64,
+    download_url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct OverlayEpisode {
+    episode: String,
+    files: Vec<OverlayFile>,
+}
+
+/// GET /video-gen/files — lists final-cut MP4s under dev_assets/video_gen/video/
+async fn list_video_files() -> Result<Json<Vec<VideoFile>>, ApiError> {
+    let dir = video_dir();
+    let mut out = Vec::new();
+    let mut read_dir = match fs::read_dir(&dir).await {
+        Ok(d) => d,
+        Err(_) => return Ok(Json(out)),
+    };
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
+        let path = entry.path();
+        let is_video = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| matches!(e.to_lowercase().as_str(), "mp4" | "mov" | "webm"))
+            .unwrap_or(false);
+        if !is_video {
+            continue;
+        }
+        let filename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        let size_bytes = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
+        let job_stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let stream_url = format!("/api/video-gen/video/{}", job_stem);
+        out.push(VideoFile {
+            filename,
+            size_bytes,
+            stream_url,
+        });
+    }
+    out.sort_by(|a, b| a.filename.cmp(&b.filename));
+    Ok(Json(out))
+}
+
+/// GET /video-gen/overlays — lists overlay PNG episodes under pipeline/video/overlays/
+async fn list_overlay_episodes() -> Result<Json<Vec<OverlayEpisode>>, ApiError> {
+    let root = PathBuf::from("pipeline/video/overlays");
+    let mut out = Vec::new();
+    let mut read_dir = match fs::read_dir(&root).await {
+        Ok(d) => d,
+        Err(_) => return Ok(Json(out)),
+    };
+    while let Ok(Some(ep_entry)) = read_dir.next_entry().await {
+        let ep_path = ep_entry.path();
+        if !ep_path.is_dir() {
+            continue;
+        }
+        let episode = ep_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        if episode.is_empty() {
+            continue;
+        }
+        let mut files = Vec::new();
+        let mut ep_read = match fs::read_dir(&ep_path).await {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        while let Ok(Some(f_entry)) = ep_read.next_entry().await {
+            let f_path = f_entry.path();
+            let is_png = f_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("png"))
+                .unwrap_or(false);
+            if !is_png {
+                continue;
+            }
+            let filename = f_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let size_bytes = f_entry.metadata().await.map(|m| m.len()).unwrap_or(0);
+            let download_url = format!("/api/video-gen/overlays/{}/{}", episode, filename);
+            files.push(OverlayFile {
+                filename,
+                size_bytes,
+                download_url,
+            });
+        }
+        files.sort_by(|a, b| a.filename.cmp(&b.filename));
+        if !files.is_empty() {
+            out.push(OverlayEpisode { episode, files });
+        }
+    }
+    out.sort_by(|a, b| a.episode.cmp(&b.episode));
+    Ok(Json(out))
+}
 
 #[cfg(test)]
 mod tests {

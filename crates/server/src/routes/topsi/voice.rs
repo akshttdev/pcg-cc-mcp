@@ -562,6 +562,7 @@ pub async fn voice_interaction(
 
     let topsi_request = TopsiRequest::new(TopsiRequestType::Chat {
         message: input_text,
+        model_id: None,
     });
 
     let response = topsi

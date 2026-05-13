@@ -418,6 +418,11 @@ pub struct TopsiChatRequest {
     pub session_id: String,
     pub project_id: Option<Uuid>,
     pub context: Option<serde_json::Value>,
+    /// Optional PCG Router `model_id` to override Topsi's configured default LLM
+    /// for this turn (e.g. "claude-sonnet-4-6", "gpt-4o"). When absent, Topsi
+    /// uses the LLM configured at agent initialization.
+    #[serde(default)]
+    pub model_id: Option<String>,
 }
 
 /// Topology overview response

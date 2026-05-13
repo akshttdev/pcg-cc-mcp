@@ -16,7 +16,7 @@ members = [
     "crates/pythia-client",
     "apn-app/src-tauri",
     "frontend/src-tauri",
-    "crates/cli",
+    "crates/topsi-cli",
     "crates/setup-wizard",
     "crates/editron-runner",
     "crates/discord-bot",

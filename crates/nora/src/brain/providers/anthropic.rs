@@ -48,6 +48,23 @@ impl AnthropicProvider {
         provider
     }
 
+    /// Create with an explicit API key (skips env-var lookup when key is `Some`).
+    /// Used by PCG Router-driven per-call model overrides. When `api_key` is `None`,
+    /// behaves like [`new`] and falls back to env-var lookup.
+    pub fn with_explicit_key(api_key: Option<String>, endpoint: Option<String>) -> Self {
+        let resolved_key = api_key.or_else(|| {
+            std::env::var("NORA_ANTHROPIC_API_KEY")
+                .or_else(|_| std::env::var("ANTHROPIC_API_KEY"))
+                .ok()
+        });
+        Self {
+            client: Client::new(),
+            api_key: resolved_key,
+            endpoint: endpoint
+                .unwrap_or_else(|| "https://api.anthropic.com/v1/messages".to_string()),
+        }
+    }
+
     /// Convert our ChatMessage to Anthropic API format
     /// Note: Anthropic uses a different format - system is separate, and tool results are special
     fn messages_to_anthropic(

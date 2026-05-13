@@ -266,6 +266,14 @@ impl LLMClient {
             }
         }
 
+        Self::with_explicit_key(config, api_key)
+    }
+
+    /// Construct an LLMClient with an explicit API key (skipping env-var lookup).
+    ///
+    /// Used by PCG Router-driven per-call model overrides where the key comes from
+    /// the router model record rather than process environment.
+    pub fn with_explicit_key(config: LLMConfig, api_key: Option<String>) -> Self {
         // Check for local Ollama fallback (local LLM models)
         let fallback_endpoint = std::env::var("OLLAMA_ENDPOINT").ok().or_else(|| {
             // Check if Ollama is running on default port
@@ -1643,7 +1651,10 @@ impl LLMClient {
     ) -> Result<String> {
         use providers::{ChatConfig, ChatMessage, ChatRequest};
 
-        let provider = AnthropicProvider::new();
+        let provider = AnthropicProvider::with_explicit_key(
+            self.api_key.clone(),
+            self.config.endpoint.clone(),
+        );
         if !provider.is_configured() {
             return Err(NoraError::ConfigError(
                 "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
@@ -1695,7 +1706,10 @@ impl LLMClient {
         use futures::StreamExt;
         use providers::{ChatConfig, ChatMessage, ChatRequest};
 
-        let provider = AnthropicProvider::new();
+        let provider = AnthropicProvider::with_explicit_key(
+            self.api_key.clone(),
+            self.config.endpoint.clone(),
+        );
         if !provider.is_configured() {
             return Err(NoraError::ConfigError(
                 "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
@@ -1750,7 +1764,10 @@ impl LLMClient {
     ) -> Result<LLMResponse> {
         use providers::{ChatConfig, ChatMessage, ChatRequest, ToolDefinition};
 
-        let provider = AnthropicProvider::new();
+        let provider = AnthropicProvider::with_explicit_key(
+            self.api_key.clone(),
+            self.config.endpoint.clone(),
+        );
         if !provider.is_configured() {
             return Err(NoraError::ConfigError(
                 "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
@@ -1858,7 +1875,10 @@ impl LLMClient {
     ) -> Result<LLMResponse> {
         use providers::{ChatConfig, ChatMessage, ChatRequest, ToolCallRequest, ToolDefinition};
 
-        let provider = AnthropicProvider::new();
+        let provider = AnthropicProvider::with_explicit_key(
+            self.api_key.clone(),
+            self.config.endpoint.clone(),
+        );
         if !provider.is_configured() {
             return Err(NoraError::ConfigError(
                 "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
