@@ -364,6 +364,14 @@ export type DiffChangeKind = "added" | "deleted" | "modified" | "renamed" | "cop
 
 export type RepositoryInfo = { id: bigint, name: string, full_name: string, owner: string, description: string | null, clone_url: string, ssh_url: string, default_branch: string, private: boolean, };
 
+export type AuthenticatedUser = { id: bigint, login: string, name: string | null, avatar_url: string | null, email: string | null, };
+
+export type CommitSummary = { sha: string, html_url: string, message: string, author_name: string | null, author_email: string | null, author_date?: Date | null, committer_login: string | null, };
+
+export type GitHubRepoLink = { id: string, organization_id: string, project_id: string, integration_connection_id?: string, github_repo_id: bigint, owner: string, repo_name: string, full_name: string, default_branch: string, clone_url?: string, ssh_url?: string, private: boolean, last_sync_at?: Date | null, last_synced_commit_sha?: string, last_error?: string, metadata: string, created_at: Date, updated_at: Date, };
+
+export type CreateGitHubRepoLink = { organization_id: string, project_id: string, integration_connection_id: string | null, github_repo_id: bigint, owner: string, repo_name: string, full_name: string, default_branch: string | null, clone_url: string | null, ssh_url: string | null, private: boolean | null, metadata: string | null, };
+
 export type CommandBuilder = { 
 /**
  * Base executable command (e.g., "npx -y @anthropic-ai/claude-code@latest")
