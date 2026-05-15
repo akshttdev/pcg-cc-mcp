@@ -1,14 +1,14 @@
 use axum::{
+    Json, Router,
     body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, State},
-    http::{header, HeaderMap, HeaderValue},
+    http::{HeaderMap, HeaderValue, header},
     response::Response,
     routing::{get, post},
-    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
-    models::data_source::{metadata_template, CreateDataSource, DataSource, UpdateDataSource},
+    models::data_source::{CreateDataSource, DataSource, UpdateDataSource, metadata_template},
 };
 use deployment::Deployment;
 use serde::Deserialize;
@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ── List endpoints ──────────────────────────────────────────────────────────
 

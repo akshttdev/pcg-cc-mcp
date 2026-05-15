@@ -3,7 +3,7 @@ use axum::{
     http::HeaderValue,
     response::{IntoResponse, Response},
 };
-use reqwest::{header, StatusCode};
+use reqwest::{StatusCode, header};
 use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]

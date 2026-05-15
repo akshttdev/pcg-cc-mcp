@@ -16,9 +16,9 @@ use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use super::{
+    EditronError, EditronResult,
     music::{MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria, MusicTrack},
     scene_detection::SceneDetectionResult,
-    EditronError, EditronResult,
 };
 
 /// Video content analysis for music matching

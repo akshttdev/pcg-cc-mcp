@@ -7,11 +7,11 @@
 //!   GET  /companies/:id/export-analysis          — download business analysis markdown document
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::header,
     response::Response,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use db::{
@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 

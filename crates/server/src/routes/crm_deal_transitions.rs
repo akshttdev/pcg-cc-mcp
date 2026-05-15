@@ -4,17 +4,17 @@
 //! and Phase 1 business report generation.
 
 use axum::{
-    extract::{Path, State},
     Extension, Json,
+    extract::{Path, State},
 };
 use db::{db_uuid::DbUuid, models::crm_deal::CrmDeal};
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
-use super::crm_deals::{require_deal_org_access, MoveDealRequest};
+use super::crm_deals::{MoveDealRequest, require_deal_org_access};
 use crate::{
-    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext, DeploymentImpl,
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext,
 };
 
 /// PATCH /crm/deals/:id/stage - Move deal to new stage (drag-drop or context menu)

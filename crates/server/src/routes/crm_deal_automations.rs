@@ -5,8 +5,8 @@
 //! and transcript management.
 
 use axum::{
-    extract::{Path, State},
     Extension, Json,
+    extract::{Path, State},
 };
 use db::{
     db_uuid::DbUuid,
@@ -22,8 +22,8 @@ use utils::response::ApiResponse;
 
 use super::crm_deals::require_deal_org_access;
 use crate::{
-    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext, DeploymentImpl,
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext,
 };
 
 // ── Scout: Who-Is Research ────────────────────────────────────────────────────

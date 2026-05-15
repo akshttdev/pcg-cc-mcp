@@ -1,11 +1,11 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, put},
-    Json, Router,
 };
-use db::models::model_pricing::{infer_provider, ModelPricing};
+use db::models::model_pricing::{ModelPricing, infer_provider};
 use deployment::Deployment;
 use serde::Deserialize;
 use ts_rs::TS;

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::services::email_providers::{GmailClient, GmailError};
+use crate::services::email_providers::{GmailClient, GmailError, ZohoClient, ZohoError};
 
 #[derive(Debug, Clone)]
 pub enum ChannelOwner {
@@ -66,45 +66,6 @@ pub enum ChannelError {
     Api(String),
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
-}
-
-#[derive(Debug, Deserialize)]
-struct ZohoTokenResponse {
-    access_token: String,
-    expires_in: Option<i64>,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct ZohoSendResponse {
-    status: ZohoStatus,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct ZohoStatus {
-    #[serde(rename = "httpStatusCode")]
-    http_status_code: u16,
-    description: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ZohoInboxResponse {
-    data: Vec<ZohoMessageSummary>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ZohoMessageSummary {
-    #[serde(rename = "messageId")]
-    message_id: String,
-    #[serde(rename = "fromAddress")]
-    from_address: String,
-    subject: String,
-    summary: Option<String>,
-    #[serde(rename = "receivedTime")]
-    received_time: Option<String>,
-    #[serde(rename = "isRead")]
-    is_read: Option<bool>,
 }
 
 /// Shared agent communication channel service.
@@ -166,46 +127,16 @@ impl AgentChannelService {
         subject: &str,
         body: &str,
     ) -> Result<String, ChannelError> {
-        let token = self.valid_access_token(account).await?;
-        let zoho_domain = self.zoho_domain_from_account(account);
-        let account_id = self.zoho_account_id_from_account(account)?;
-
-        let to_str = to.join(", ");
-        let payload = serde_json::json!({
-            "fromAddress": account.email_address,
-            "toAddress": to_str,
-            "subject": subject,
-            "content": body,
-            "mailFormat": "plaintext"
-        });
-
-        let resp = self
-            .http
-            .post(format!(
-                "https://mail.zoho.{}/api/accounts/{}/messages",
-                zoho_domain, account_id
-            ))
-            .header("Authorization", format!("Zoho-oauthtoken {}", token))
-            .json(&payload)
-            .send()
+        let client = self.zoho_client(account).await?;
+        let message_id = client
+            .send_message(&account.email_address, to, &[], &[], subject, body)
             .await
-            .map_err(|e| ChannelError::Api(e.to_string()))?;
-
-        let status = resp.status();
-        let body_text = resp.text().await.unwrap_or_default();
-
-        if !status.is_success() {
-            return Err(ChannelError::Api(format!(
-                "Zoho send failed {}: {}",
-                status, body_text
-            )));
-        }
-
-        // Zoho returns the message_id inside the response object
-        let message_id = serde_json::from_str::<serde_json::Value>(&body_text)
-            .ok()
-            .and_then(|v| v["data"]["messageId"].as_str().map(String::from))
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
+            .map_err(|e| ChannelError::Api(format!("Zoho send: {e}")))?;
+        let message_id = if message_id.is_empty() {
+            Uuid::new_v4().to_string()
+        } else {
+            message_id
+        };
 
         tracing::info!(
             "[AgentChannelService] Email sent from {} to {:?} (id={})",
@@ -255,40 +186,13 @@ impl AgentChannelService {
             )));
         }
 
-        let token = self.valid_access_token(&account).await?;
-        let zoho_domain = self.zoho_domain_from_account(&account);
-        let account_id = self.zoho_account_id_from_account(&account)?;
-
-        let resp = self
-            .http
-            .get(format!(
-                "https://mail.zoho.{}/api/accounts/{}/messages/view",
-                zoho_domain, account_id
-            ))
-            .query(&[
-                ("limit", limit.to_string()),
-                ("sortorder", "false".to_string()), // newest first
-            ])
-            .header("Authorization", format!("Zoho-oauthtoken {}", token))
-            .send()
+        let client = self.zoho_client(&account).await?;
+        let summaries = client
+            .list_inbox(limit)
             .await
-            .map_err(|e| ChannelError::Api(e.to_string()))?;
+            .map_err(|e| ChannelError::Api(format!("Zoho inbox read: {e}")))?;
 
-        if !resp.status().is_success() {
-            let err = resp.text().await.unwrap_or_default();
-            return Err(ChannelError::Api(format!(
-                "Zoho inbox read failed: {}",
-                err
-            )));
-        }
-
-        let inbox: ZohoInboxResponse = resp
-            .json()
-            .await
-            .map_err(|e| ChannelError::Api(format!("Failed to parse inbox response: {}", e)))?;
-
-        let messages = inbox
-            .data
+        Ok(summaries
             .into_iter()
             .map(|m| InboxMessage {
                 message_id: m.message_id,
@@ -298,111 +202,33 @@ impl AgentChannelService {
                 received_at: m.received_time.unwrap_or_default(),
                 is_read: m.is_read.unwrap_or(false),
             })
-            .collect();
-
-        Ok(messages)
+            .collect())
     }
 
     /// Fetch the full content of a Zoho message, including text from any linked
     /// documents (Google Docs, Fireflies transcripts) found in the body.
     ///
-    /// Uses the folder-scoped endpoint which is required for message content access:
-    /// GET /api/accounts/{accountId}/folders/{folderId}/messages/{messageId}/content
+    /// HTML→text stripping in `ZohoClient` is intentionally lightweight; this
+    /// method runs the agent-channel regex version + the linked-document
+    /// crawl to produce a body suitable for the intake pipeline.
     pub async fn fetch_message_body(
         &self,
         owner: &ChannelOwner,
         message_id: &str,
     ) -> Result<String, ChannelError> {
         let account = self.get_email_account(owner).await?;
-        let token = self.valid_access_token(&account).await?;
-        let zoho_domain = self.zoho_domain_from_account(&account);
-        let account_id = self.zoho_account_id_from_account(&account)?;
-
-        // Step 1: get folder list to find the inbox folder ID
-        let folders_resp = self
-            .http
-            .get(format!(
-                "https://mail.zoho.{}/api/accounts/{}/folders",
-                zoho_domain, account_id
-            ))
-            .header("Authorization", format!("Zoho-oauthtoken {}", token))
-            .send()
+        let client = self.zoho_client(&account).await?;
+        let folder_id = client
+            .inbox_folder_id()
             .await
-            .map_err(|e| ChannelError::Api(e.to_string()))?;
-
-        let folders: serde_json::Value = folders_resp
-            .json()
+            .map_err(|e| ChannelError::Api(format!("Zoho inbox folder: {e}")))?;
+        let msg = client
+            .get_message(&folder_id, message_id)
             .await
-            .map_err(|e| ChannelError::Api(format!("Failed to parse folders: {}", e)))?;
+            .map_err(|e| ChannelError::Api(format!("Zoho message fetch: {e}")))?;
 
-        // Find inbox (or any folder that has this message — try inbox first)
-        let inbox_id = folders["data"]
-            .as_array()
-            .and_then(|arr| {
-                arr.iter().find(|f| {
-                    f["folderName"]
-                        .as_str()
-                        .map(|n| n.eq_ignore_ascii_case("Inbox"))
-                        .unwrap_or(false)
-                })
-            })
-            .and_then(|f| {
-                f["folderId"]
-                    .as_str()
-                    .or_else(|| f["folderId"].as_u64().map(|_| ""))
-                    .map(|_| ())
-            })
-            .and_then(|_| {
-                folders["data"].as_array().and_then(|arr| {
-                    arr.iter()
-                        .find(|f| {
-                            f["folderName"]
-                                .as_str()
-                                .map(|n| n.eq_ignore_ascii_case("Inbox"))
-                                .unwrap_or(false)
-                        })
-                        .and_then(|f| {
-                            f["folderId"]
-                                .as_u64()
-                                .map(|id| id.to_string())
-                                .or_else(|| f["folderId"].as_str().map(String::from))
-                        })
-                })
-            })
-            .ok_or_else(|| ChannelError::Api("Inbox folder not found".into()))?;
-
-        // Step 2: fetch message content via folder-scoped endpoint
-        let resp = self
-            .http
-            .get(format!(
-                "https://mail.zoho.{}/api/accounts/{}/folders/{}/messages/{}/content",
-                zoho_domain, account_id, inbox_id, message_id
-            ))
-            .header("Authorization", format!("Zoho-oauthtoken {}", token))
-            .send()
-            .await
-            .map_err(|e| ChannelError::Api(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let err = resp.text().await.unwrap_or_default();
-            return Err(ChannelError::Api(format!(
-                "Zoho message fetch failed: {}",
-                err
-            )));
-        }
-
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| ChannelError::Api(format!("Failed to parse message body: {}", e)))?;
-
-        let html_content = body["data"]["content"].as_str().unwrap_or("").to_string();
-
-        // Step 3: strip HTML and extract plain text
+        let html_content = msg.body_html.unwrap_or_default();
         let plain = strip_html(&html_content);
-
-        // Step 4: find linked document URLs (Google Docs, Fireflies, Otter.ai, etc.)
-        // and fetch their public text content to append to the email body
         let mut full_content = plain.clone();
         let linked_text = fetch_linked_documents(&self.http, &plain).await;
         if !linked_text.is_empty() {
@@ -505,76 +331,33 @@ impl AgentChannelService {
         Ok(refreshed.access_token)
     }
 
-    /// Return a valid access token, refreshing if expired or missing.
+    /// Return a valid Zoho access token, refreshing via `ZohoClient` if needed.
     async fn valid_access_token(&self, account: &EmailAccount) -> Result<String, ChannelError> {
-        // Check if token is still valid (with 60s buffer)
         if let Some(ref token) = account.access_token {
             if let Some(expires_at) = account.token_expires_at {
-                let buffer = chrono::Duration::seconds(60);
-                if chrono::Utc::now() + buffer < expires_at {
+                if chrono::Utc::now() + chrono::Duration::seconds(60) < expires_at {
                     return Ok(token.clone());
                 }
             } else {
-                // No expiry stored — assume still valid
                 return Ok(token.clone());
             }
         }
 
-        // Need to refresh
         let refresh_token = account
             .refresh_token
             .as_deref()
             .ok_or_else(|| ChannelError::TokenRefresh("No refresh token stored".into()))?;
-
         let zoho_domain = self.zoho_domain_from_account(account);
 
-        let client_id = std::env::var("ZOHO_CLIENT_ID")
-            .map_err(|_| ChannelError::TokenRefresh("ZOHO_CLIENT_ID not set".into()))?;
-        let client_secret = std::env::var("ZOHO_CLIENT_SECRET")
-            .map_err(|_| ChannelError::TokenRefresh("ZOHO_CLIENT_SECRET not set".into()))?;
-
-        let params = [
-            ("grant_type", "refresh_token"),
-            ("client_id", &client_id),
-            ("client_secret", &client_secret),
-            ("refresh_token", refresh_token),
-        ];
-
-        let resp = self
-            .http
-            .post(format!(
-                "https://accounts.zoho.{}/oauth/v2/token",
-                zoho_domain
-            ))
-            .form(&params)
-            .send()
+        let refreshed = ZohoClient::refresh_access_token(refresh_token, &zoho_domain)
             .await
-            .map_err(|e| ChannelError::TokenRefresh(e.to_string()))?;
+            .map_err(|e: ZohoError| ChannelError::TokenRefresh(e.to_string()))?;
 
-        if !resp.status().is_success() {
-            let err = resp.text().await.unwrap_or_default();
-            return Err(ChannelError::TokenRefresh(format!(
-                "Refresh request failed: {}",
-                err
-            )));
-        }
-
-        let token_resp: ZohoTokenResponse = resp
-            .json()
-            .await
-            .map_err(|e| ChannelError::TokenRefresh(format!("Parse error: {}", e)))?;
-
-        // Persist new token to DB
-        let expires_at = token_resp
-            .expires_in
-            .map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
-
-        let expires_str = expires_at.map(|t| t.to_rfc3339());
         sqlx::query(
             "UPDATE email_accounts SET access_token = ?, token_expires_at = ?, updated_at = datetime('now','subsec') WHERE id = ?",
         )
-        .bind(&token_resp.access_token)
-        .bind(expires_str.as_deref())
+        .bind(&refreshed.access_token)
+        .bind(refreshed.expires_at.map(|t| t.to_rfc3339()))
         .bind(account.id)
         .execute(&self.pool)
         .await
@@ -585,7 +368,15 @@ impl AgentChannelService {
             account.email_address
         );
 
-        Ok(token_resp.access_token)
+        Ok(refreshed.access_token)
+    }
+
+    /// Build a `ZohoClient` bound to this account's token, region, and accountId.
+    async fn zoho_client(&self, account: &EmailAccount) -> Result<ZohoClient, ChannelError> {
+        let token = self.valid_access_token(account).await?;
+        let domain = self.zoho_domain_from_account(account);
+        let account_id = self.zoho_account_id_from_account(account)?;
+        Ok(ZohoClient::new(token, domain, account_id))
     }
 
     fn zoho_domain_from_account(&self, account: &EmailAccount) -> String {

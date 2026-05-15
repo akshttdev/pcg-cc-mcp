@@ -1,12 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
 use db::{
+    DBService,
     models::{
         merge::{Merge, MergeStatus, PrMerge},
         task::{Task, TaskStatus},
         task_attempt::{TaskAttempt, TaskAttemptError},
     },
-    DBService,
 };
 use sqlx::error::Error as SqlxError;
 use thiserror::Error;

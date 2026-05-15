@@ -16,7 +16,7 @@
 //!   agent_escalation:     { agent_name, task_title, blocked_reason?, review_url? }
 
 use db::models::slack_channel_route::SlackEventType;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Pretty-print a USD amount: `$24,000` (no decimals if whole, else `$24,000.50`).
 fn fmt_usd(amount: f64) -> String {

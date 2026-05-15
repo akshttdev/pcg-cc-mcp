@@ -14,9 +14,9 @@
 //! The frontend polls GET /api/contacts/:id/intelligence-status.
 
 use axum::{
+    Extension, Json, Router,
     extract::{Path, State},
     routing::{get, post},
-    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -34,8 +34,8 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
-    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext, routes::nora::get_nora_instance, DeploymentImpl,
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext, routes::nora::get_nora_instance,
 };
 
 // ── Request / Response types ──────────────────────────────────────────────────
@@ -2083,8 +2083,7 @@ async fn run_research_pass(
         )
     };
 
-    let system =
-        "You are an expert business intelligence researcher. Conduct thorough web research \
+    let system = "You are an expert business intelligence researcher. Conduct thorough web research \
         and return structured findings. Always respond with valid JSON only.";
 
     let prompt = format!(

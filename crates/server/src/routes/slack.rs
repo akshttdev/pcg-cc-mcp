@@ -12,10 +12,10 @@
 use std::str::FromStr;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     response::Redirect,
     routing::{delete, get, post, put},
-    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -31,14 +31,14 @@ use serde::{Deserialize, Serialize};
 use services::services::{
     oauth_token_manager::{self, PlainTokens, StoreTokensInput},
     slack::{
-        client::{exchange_oauth_code, SlackChannel, SlackClient},
+        client::{SlackChannel, SlackClient, exchange_oauth_code},
         dispatcher::dispatch_test,
     },
 };
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, helpers::uuid_params::parse_db_uuid_param, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param};
 
 const PROVIDER_SLACK: &str = "slack";
 const SLACK_AUTH_URL: &str = "https://slack.com/oauth/v2/authorize";

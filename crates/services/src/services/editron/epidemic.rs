@@ -18,11 +18,11 @@ use tokio::sync::RwLock;
 use ts_rs::TS;
 
 use super::{
+    EditronError,
     music::{
         LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
         MusicTrack,
     },
-    EditronError,
 };
 
 /// Epidemic Sound API base URL

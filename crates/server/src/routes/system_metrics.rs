@@ -1,10 +1,10 @@
-use axum::{extract::State, response::Json as ResponseJson, routing::get, Router};
+use axum::{Router, extract::State, response::Json as ResponseJson, routing::get};
 use serde::Serialize;
 use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, RefreshKind, System};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]

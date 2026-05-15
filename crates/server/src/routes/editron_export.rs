@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use axum::{
+    Router,
     body::Body,
     extract::{Path, Query, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::Response,
     routing::get,
-    Router,
 };
 use db::models::execution_artifact::{ArtifactType, ExecutionArtifact};
 use deployment::Deployment;
@@ -18,7 +18,7 @@ use services::services::editron::{
 use utils::assets::asset_dir;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Deserialize)]
 pub struct ExportQuery {

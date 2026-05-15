@@ -11,11 +11,11 @@
 use std::str::FromStr;
 
 use axum::{
+    Json, Router,
     body::Bytes,
     extract::{Query, State},
     http::HeaderMap,
     routing::{get, post},
-    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -28,13 +28,13 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use services::services::billing::{
     create_billing_portal_session, create_checkout_session, ensure_customer, handle_event,
-    usage::{usage_status, UsageStatus},
+    usage::{UsageStatus, usage_status},
     webhook::verify_signature,
 };
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ─── Request / response shapes ──────────────────────────────────────────────
 

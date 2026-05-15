@@ -21,8 +21,8 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::{
-    report::{run_company_research_pass, run_report_generation},
     ExtractedIndividual, ExtractedIntake, ExtractedParticipant,
+    report::{run_company_research_pass, run_report_generation},
 };
 
 // ── Core pipeline ─────────────────────────────────────────────────────────────

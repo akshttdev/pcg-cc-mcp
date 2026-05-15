@@ -43,7 +43,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use regex::Regex;
 
 use super::{EditronError, EditronResult};

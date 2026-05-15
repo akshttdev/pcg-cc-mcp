@@ -44,5 +44,5 @@ pub enum QboError {
 
 pub use client::QboClient;
 pub use push::push_invoice;
-pub use summary::{financial_summary, FinancialSummary};
-pub use sync::{run_qbo_sync, SyncStats};
+pub use summary::{FinancialSummary, financial_summary};
+pub use sync::{SyncStats, run_qbo_sync};

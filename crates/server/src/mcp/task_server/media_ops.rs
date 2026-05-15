@@ -13,14 +13,12 @@
 use std::path::PathBuf;
 
 use db::models::media_asset::{CreateMediaAsset, MediaAsset};
-use rmcp::{
-    handler::server::tool::Parameters, model::CallToolResult, schemars, tool, ErrorData,
-};
+use rmcp::{ErrorData, handler::server::tool::Parameters, model::CallToolResult, schemars, tool};
 use serde::{Deserialize, Serialize};
 use services::services::editron::asset_intelligence;
 use uuid::Uuid;
 
-use super::{helpers::*, TaskServer};
+use super::{TaskServer, helpers::*};
 
 // ─── Request types ──────────────────────────────────────────────────────────
 
@@ -102,7 +100,8 @@ fn asset_to_summary(asset: &MediaAsset) -> MediaAssetSummary {
 }
 
 fn media_root() -> String {
-    std::env::var("MEDIA_ROOT").unwrap_or_else(|_| "/home/pythia/pcg-cc-mcp/dev_assets/media".into())
+    std::env::var("MEDIA_ROOT")
+        .unwrap_or_else(|_| "/home/pythia/pcg-cc-mcp/dev_assets/media".into())
 }
 
 // ─── Tool implementations ───────────────────────────────────────────────────
@@ -164,10 +163,7 @@ impl TaskServer {
                 "asset": asset_to_summary(&asset),
             }))),
             Ok(None) => Ok(error_result("Asset not found", None)),
-            Err(e) => Ok(error_result(
-                "Failed to load asset",
-                Some(&e.to_string()),
-            )),
+            Err(e) => Ok(error_result("Failed to load asset", Some(&e.to_string()))),
         }
     }
 
@@ -227,7 +223,7 @@ impl TaskServer {
                 return Ok(error_result(
                     "Failed to construct HTTP client",
                     Some(&e.to_string()),
-                ))
+                ));
             }
         };
 
@@ -237,7 +233,7 @@ impl TaskServer {
                 return Ok(error_result(
                     "Failed to fetch source_url",
                     Some(&e.to_string()),
-                ))
+                ));
             }
         };
         if !resp.status().is_success() {
@@ -263,7 +259,7 @@ impl TaskServer {
                 return Ok(error_result(
                     "Failed to read response bytes",
                     Some(&e.to_string()),
-                ))
+                ));
             }
         };
         let file_size = bytes.len() as i64;
@@ -296,7 +292,7 @@ impl TaskServer {
                 return Ok(error_result(
                     "Failed to insert media_assets row",
                     Some(&e.to_string()),
-                ))
+                ));
             }
         };
 

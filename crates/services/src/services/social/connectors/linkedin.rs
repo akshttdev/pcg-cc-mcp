@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use db::models::social_account::SocialPlatform;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::services::social::{
     EngagementMetrics, OAuthTokens, PlatformConnector, PlatformLimits, PlatformMention,
@@ -53,54 +53,245 @@ struct LinkedInUserInfo {
     picture: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-struct LinkedInShareContent {
-    author: String,
-    #[serde(rename = "lifecycleState")]
-    lifecycle_state: String,
-    #[serde(rename = "specificContent")]
-    specific_content: LinkedInSpecificContent,
-    visibility: LinkedInVisibility,
-}
-
-#[derive(Debug, Serialize)]
-struct LinkedInSpecificContent {
-    #[serde(rename = "com.linkedin.ugc.ShareContent")]
-    share_content: LinkedInShareBody,
-}
-
-#[derive(Debug, Serialize)]
-struct LinkedInShareBody {
-    #[serde(rename = "shareCommentary")]
-    share_commentary: LinkedInText,
-    #[serde(rename = "shareMediaCategory")]
-    share_media_category: String,
-    media: Option<Vec<LinkedInMedia>>,
-}
-
-#[derive(Debug, Serialize)]
-struct LinkedInText {
-    text: String,
-}
-
-#[derive(Debug, Serialize)]
-struct LinkedInMedia {
-    status: String,
-    #[serde(rename = "originalUrl")]
-    original_url: Option<String>,
-    media: Option<String>,
-    title: Option<LinkedInText>,
-}
-
-#[derive(Debug, Serialize)]
-struct LinkedInVisibility {
-    #[serde(rename = "com.linkedin.ugc.MemberNetworkVisibility")]
-    visibility: String,
-}
-
 #[derive(Debug, Deserialize)]
 struct LinkedInPostResponse {
     id: String,
+}
+
+// ─── Media upload helpers ──────────────────────────────────────────────────
+//
+// LinkedIn requires a 3-step asset upload before posting images/videos:
+//
+//   1. POST /v2/assets?action=registerUpload  → returns { asset_urn, upload_url }
+//   2. PUT bytes to upload_url
+//   3. POST /v2/ugcPosts  with shareMediaCategory=IMAGE|VIDEO + media=[asset_urn]
+//
+// Images and videos use different "recipes" but otherwise the same protocol.
+// Single-shot SYNCHRONOUS_UPLOAD works for files ≲ 200 MB; larger payloads
+// would need MULTIPART_UPLOAD with chunking — a future enhancement.
+const LINKEDIN_RECIPE_IMAGE: &str = "urn:li:digitalmediaRecipe:feedshare-image";
+const LINKEDIN_RECIPE_VIDEO: &str = "urn:li:digitalmediaRecipe:feedshare-video";
+
+/// Fetch source media bytes + content-type. Buffered in memory; fine for
+/// images and short clips, but unsuitable for multi-GB sources.
+async fn fetch_media_bytes(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<(Vec<u8>, String), SocialError> {
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| SocialError::NetworkError(e.to_string()))?;
+    if !resp.status().is_success() {
+        return Err(SocialError::PlatformError(format!(
+            "Failed to fetch media from {url}: HTTP {}",
+            resp.status()
+        )));
+    }
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(';').next().unwrap_or(s).trim().to_string())
+        .unwrap_or_else(|| "application/octet-stream".into());
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| SocialError::NetworkError(e.to_string()))?
+        .to_vec();
+    Ok((bytes, content_type))
+}
+
+/// Step 1: ask LinkedIn for an upload slot. Returns (upload_url, asset_urn).
+/// `recipe` controls whether this is an image or video upload.
+async fn register_upload(
+    client: &reqwest::Client,
+    access_token: &str,
+    author_urn: &str,
+    recipe: &str,
+) -> Result<(String, String), SocialError> {
+    let body = serde_json::json!({
+        "registerUploadRequest": {
+            "owner": author_urn,
+            "recipes": [recipe],
+            "serviceRelationships": [{
+                "relationshipType": "OWNER",
+                "identifier": "urn:li:userGeneratedContent"
+            }],
+            "supportedUploadMechanism": ["SYNCHRONOUS_UPLOAD"],
+        }
+    });
+
+    let resp = client
+        .post(format!("{LINKEDIN_API_BASE}/assets?action=registerUpload"))
+        .bearer_auth(access_token)
+        .header("X-Restli-Protocol-Version", "2.0.0")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| SocialError::NetworkError(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(SocialError::PlatformError(format!(
+            "LinkedIn registerUpload failed ({status}): {body}"
+        )));
+    }
+
+    let payload: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| SocialError::PlatformError(e.to_string()))?;
+
+    let asset_urn = payload["value"]["asset"]
+        .as_str()
+        .ok_or_else(|| {
+            SocialError::PlatformError(
+                "LinkedIn registerUpload response missing value.asset".into(),
+            )
+        })?
+        .to_string();
+    let upload_url = payload["value"]["uploadMechanism"]
+        ["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]["uploadUrl"]
+        .as_str()
+        .ok_or_else(|| {
+            SocialError::PlatformError(
+                "LinkedIn registerUpload response missing upload URL".into(),
+            )
+        })?
+        .to_string();
+
+    Ok((upload_url, asset_urn))
+}
+
+/// Step 2: PUT the raw bytes to the upload URL returned by `register_upload`.
+/// LinkedIn returns 201 with no body on success.
+async fn upload_asset_bytes(
+    client: &reqwest::Client,
+    access_token: &str,
+    upload_url: &str,
+    bytes: Vec<u8>,
+    content_type: &str,
+) -> Result<(), SocialError> {
+    let resp = client
+        .put(upload_url)
+        .bearer_auth(access_token)
+        .header(reqwest::header::CONTENT_TYPE, content_type)
+        .header(reqwest::header::CONTENT_LENGTH, bytes.len().to_string())
+        .body(bytes)
+        .send()
+        .await
+        .map_err(|e| SocialError::NetworkError(e.to_string()))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(SocialError::PlatformError(format!(
+            "LinkedIn asset upload failed ({status}): {body}"
+        )));
+    }
+    Ok(())
+}
+
+/// Decide which LinkedIn share media category to use based on the source
+/// media's content-type. Returns the category string and the recipe to use
+/// for registerUpload, or `None` for non-uploadable types (which fall back
+/// to ARTICLE link previews — fine for shareable URLs, never for embeds).
+fn share_category_for(content_type: &str) -> Option<(&'static str, &'static str)> {
+    if content_type.starts_with("image/") {
+        Some(("IMAGE", LINKEDIN_RECIPE_IMAGE))
+    } else if content_type.starts_with("video/") {
+        Some(("VIDEO", LINKEDIN_RECIPE_VIDEO))
+    } else {
+        None
+    }
+}
+
+/// Append hashtags onto the caption with a blank line separator. Match the
+/// previous behaviour so existing callers see no visible change.
+fn build_caption(base: &str, hashtags: &[String]) -> String {
+    if hashtags.is_empty() {
+        return base.to_string();
+    }
+    let tags = hashtags
+        .iter()
+        .map(|h| format!("#{h}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{base}\n\n{tags}")
+}
+
+// ─── UGC post builders ─────────────────────────────────────────────────────
+//
+// Each builder returns the body for `POST /v2/ugcPosts`. We use raw
+// `serde_json::Value` to keep the LinkedIn-specific shape colocated with
+// the call site — typed structs were over-engineered for a one-off API.
+
+fn text_only_share(author_urn: &str, caption: &str) -> serde_json::Value {
+    serde_json::json!({
+        "author": author_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": { "text": caption },
+                "shareMediaCategory": "NONE",
+            }
+        },
+        "visibility": {
+            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+        }
+    })
+}
+
+/// IMAGE or VIDEO native upload — `asset_urn` came from `register_upload`.
+fn native_media_share(
+    author_urn: &str,
+    caption: &str,
+    category: &str,
+    asset_urn: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "author": author_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": { "text": caption },
+                "shareMediaCategory": category,
+                "media": [{
+                    "status": "READY",
+                    "media": asset_urn,
+                    "description": { "text": caption },
+                }],
+            }
+        },
+        "visibility": {
+            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+        }
+    })
+}
+
+/// Fallback for non-image/non-video media URLs: LinkedIn will auto-scrape
+/// the URL and render a link card. Useless for local/intranet URLs but
+/// reasonable for shareable public links (blog posts, GitHub repos, etc.).
+fn article_share(author_urn: &str, caption: &str, url: &str) -> serde_json::Value {
+    serde_json::json!({
+        "author": author_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": { "text": caption },
+                "shareMediaCategory": "ARTICLE",
+                "media": [{
+                    "status": "READY",
+                    "originalUrl": url,
+                }],
+            }
+        },
+        "visibility": {
+            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+        }
+    })
 }
 
 #[async_trait]
@@ -246,59 +437,42 @@ impl PlatformConnector for LinkedInConnector {
     ) -> Result<PublishResult, SocialError> {
         self.validate_content(content)?;
 
-        // Get user profile to get the URN
         let profile = self.get_profile(access_token).await?;
         let author_urn = format!("urn:li:person:{}", profile.platform_account_id);
 
-        // Build the caption with hashtags
-        let mut caption = content.caption.clone();
-        if !content.hashtags.is_empty() {
-            caption.push_str("\n\n");
-            caption.push_str(
-                &content
-                    .hashtags
-                    .iter()
-                    .map(|h| format!("#{}", h))
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            );
-        }
+        let caption = build_caption(&content.caption, &content.hashtags);
 
-        // Determine media category
-        let (media_category, media) = if content.media_urls.is_empty() {
-            ("NONE".to_string(), None)
-        } else {
-            let media_items: Vec<LinkedInMedia> = content
-                .media_urls
-                .iter()
-                .map(|url| LinkedInMedia {
-                    status: "READY".to_string(),
-                    original_url: Some(url.clone()),
-                    media: None,
-                    title: None,
-                })
-                .collect();
-            ("ARTICLE".to_string(), Some(media_items))
-        };
-
-        let share_content = LinkedInShareContent {
-            author: author_urn,
-            lifecycle_state: "PUBLISHED".to_string(),
-            specific_content: LinkedInSpecificContent {
-                share_content: LinkedInShareBody {
-                    share_commentary: LinkedInText { text: caption },
-                    share_media_category: media_category,
-                    media,
-                },
-            },
-            visibility: LinkedInVisibility {
-                visibility: "PUBLIC".to_string(),
-            },
+        // Route by media presence + type. LinkedIn supports up to 9 images per
+        // post and one video per post; the first URL determines the route.
+        // Mixed image+video carousels aren't supported by LinkedIn at all.
+        let share_content = match content.media_urls.first() {
+            None => text_only_share(&author_urn, &caption),
+            Some(first_url) => {
+                let (bytes, content_type) = fetch_media_bytes(&self.client, first_url).await?;
+                match share_category_for(&content_type) {
+                    Some((category, recipe)) => {
+                        let (upload_url, asset_urn) =
+                            register_upload(&self.client, access_token, &author_urn, recipe)
+                                .await?;
+                        upload_asset_bytes(
+                            &self.client,
+                            access_token,
+                            &upload_url,
+                            bytes,
+                            &content_type,
+                        )
+                        .await?;
+                        native_media_share(&author_urn, &caption, category, &asset_urn)
+                    }
+                    // Non-image, non-video MIME — fall back to ARTICLE link preview.
+                    None => article_share(&author_urn, &caption, first_url),
+                }
+            }
         };
 
         let response = self
             .client
-            .post(format!("{}/ugcPosts", LINKEDIN_API_BASE))
+            .post(format!("{LINKEDIN_API_BASE}/ugcPosts"))
             .bearer_auth(access_token)
             .header("X-Restli-Protocol-Version", "2.0.0")
             .json(&share_content)
@@ -309,8 +483,7 @@ impl PlatformConnector for LinkedInConnector {
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
             return Err(SocialError::PlatformError(format!(
-                "LinkedIn publish failed: {}",
-                error_text
+                "LinkedIn publish failed: {error_text}"
             )));
         }
 

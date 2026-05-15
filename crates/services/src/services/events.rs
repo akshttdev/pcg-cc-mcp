@@ -2,18 +2,18 @@ use std::{str::FromStr, sync::Arc};
 
 use anyhow::Error as AnyhowError;
 use db::{
+    DBService,
     models::{
         execution_process::ExecutionProcess,
         task::{Task, TaskWithAttemptStatus},
         task_attempt::TaskAttempt,
     },
-    DBService,
 };
 use futures::StreamExt;
 use json_patch::{AddOperation, Patch, PatchOperation, RemoveOperation, ReplaceOperation};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{sqlite::SqliteOperation, Error as SqlxError, SqlitePool};
+use sqlx::{Error as SqlxError, SqlitePool, sqlite::SqliteOperation};
 use strum_macros::{Display, EnumString};
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -241,8 +241,8 @@ impl EventService {
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<(), sqlx::Error>> + Send + 'a>,
     > + Send
-           + Sync
-           + 'static {
+    + Sync
+    + 'static {
         move |conn: &mut sqlx::sqlite::SqliteConnection| {
             let msg_store_for_hook = msg_store.clone();
             let entry_count_for_hook = entry_count.clone();

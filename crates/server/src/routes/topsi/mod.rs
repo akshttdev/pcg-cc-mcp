@@ -13,15 +13,15 @@ pub mod voice;
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{get, post},
-    Json, Router,
 };
 use chrono::{DateTime, Utc};
 use db::models::{
     system_settings::SystemSetting,
     task_attempt::{CreateTaskAttempt, TaskAttempt},
-    topsi_user_settings::{classify_tool_risk, TopsiUserSettings},
+    topsi_user_settings::{TopsiUserSettings, classify_tool_risk},
 };
 use deployment::Deployment;
 use executors::{executors::BaseCodingAgent, profile::ExecutorProfileId};
@@ -32,14 +32,14 @@ use services::services::container::ContainerService;
 use sqlx;
 use tokio::sync::RwLock;
 use topsi::{
-    initialize_topsi, AccessScope, DetectedIssue, ProjectAccess, RecommendationBatch,
-    TaskExecutionBridge, TopologySummary, TopsiAgent, TopsiConfig, TopsiError, TopsiRequest,
-    TopsiRequestType, TopsiResponse, UserContext, VideoJobBridge,
+    AccessScope, DetectedIssue, ProjectAccess, RecommendationBatch, TaskExecutionBridge,
+    TopologySummary, TopsiAgent, TopsiConfig, TopsiError, TopsiRequest, TopsiRequestType,
+    TopsiResponse, UserContext, VideoJobBridge, initialize_topsi,
 };
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 /// Bridge between Topsi and the Deployment layer for task execution
 struct DeploymentBridge {

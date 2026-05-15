@@ -4,9 +4,9 @@
 //! 1 VIBE = $0.01 USD  (VIBE_USD_VALUE in model_pricing.rs)
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{get, patch},
-    Json, Router,
 };
 use db::models::invoice::{CreateInvoice, Invoice, UpdateInvoice};
 use deployment::Deployment;
@@ -14,7 +14,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, helpers::uuid_params::parse_db_uuid_param, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param};
 
 const VIBE_PER_USD: f64 = 100.0; // 1 USD = 100 VIBE  (since 1 VIBE = $0.01)
 

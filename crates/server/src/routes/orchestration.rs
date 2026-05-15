@@ -5,14 +5,14 @@
 use std::{convert::Infallible, time::Duration};
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::{
-        sse::{Event, KeepAlive},
         Sse,
+        sse::{Event, KeepAlive},
     },
     routing::{get, post},
-    Json, Router,
 };
 use db::models::orchestration_task::{
     CreateOrchestrationTask, OrchestrationTask, OrchestrationTaskStatus, OrchestrationTaskType,
@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ── Request/Response Types ────────────────────────────────────────────────────
 

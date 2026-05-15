@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use axum::{
+    Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::get,
-    Router,
 };
 use db::models::{
     cms_faq_item::CmsFaqItem, cms_page_section::CmsPageSection, cms_product::CmsProduct,
@@ -15,7 +15,7 @@ use serde::Serialize;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Serialize, TS)]
 pub struct PublicSiteData {

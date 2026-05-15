@@ -5,16 +5,16 @@ use std::{
 };
 
 use futures::{
-    channel::mpsc::{channel, Receiver},
     SinkExt,
+    channel::mpsc::{Receiver, channel},
 };
 use ignore::{
-    gitignore::{Gitignore, GitignoreBuilder},
     WalkBuilder,
+    gitignore::{Gitignore, GitignoreBuilder},
 };
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{
-    new_debouncer, DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache,
+    DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer,
 };
 use thiserror::Error;
 

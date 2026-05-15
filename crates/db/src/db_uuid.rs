@@ -32,10 +32,10 @@ use std::{fmt, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 use sqlx::{
+    Decode, Encode, Sqlite, Type, TypeInfo, ValueRef,
     encode::IsNull,
     error::BoxDynError,
     sqlite::{SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef},
-    Decode, Encode, Sqlite, Type, TypeInfo, ValueRef,
 };
 
 /// A UUID that transparently decodes both BLOB and TEXT from SQLite.

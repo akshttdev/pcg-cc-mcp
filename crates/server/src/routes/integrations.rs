@@ -15,10 +15,10 @@
 use std::str::FromStr;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     response::Redirect,
     routing::{delete, get},
-    Json, Router,
 };
 use chrono::{Duration, Utc};
 use db::{
@@ -40,7 +40,7 @@ use tracing::{error, info, warn};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 

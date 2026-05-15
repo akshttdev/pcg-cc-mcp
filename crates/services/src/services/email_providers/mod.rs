@@ -10,6 +10,8 @@
 
 pub mod gmail;
 pub mod normalized;
+pub mod zoho;
 
 pub use gmail::{GmailClient, GmailError};
 pub use normalized::{NormalizedAttachment, NormalizedMessage};
+pub use zoho::{MessageSummary as ZohoMessageSummary, ZohoAccountInfo, ZohoClient, ZohoError};

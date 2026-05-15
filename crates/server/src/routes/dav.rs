@@ -13,12 +13,12 @@
 //!   /<org-slug>/<proj-slug>/source/<rest>  → media_pipeline2/source/<proj-slug>/<rest>
 
 use axum::{
+    Router,
     body::Body,
     extract::{Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::Response,
     routing::any,
-    Router,
 };
 use base64::Engine as _;
 use deployment::Deployment;
@@ -30,7 +30,7 @@ use tokio::{
 use tokio_util::io::ReaderStream;
 use utils::assets::asset_dir;
 
-use crate::{middleware::access_control::get_current_user, DeploymentImpl};
+use crate::{DeploymentImpl, middleware::access_control::get_current_user};
 
 /// Volume name shown in macOS Finder
 pub const APN_VOLUME_NAME: &str = "PCG APN";

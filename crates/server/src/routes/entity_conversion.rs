@@ -1,4 +1,4 @@
-use axum::{extract::State, routing::post, Extension, Json, Router};
+use axum::{Extension, Json, Router, extract::State, routing::post};
 use db::models::entity_conversion;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]

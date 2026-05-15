@@ -15,14 +15,14 @@ use db::{
     db_uuid::DbUuid,
     models::{
         integration_connection::IntegrationConnection,
-        slack_channel_route::{record_dispatch, SlackChannelRoute, SlackEventType},
+        slack_channel_route::{SlackChannelRoute, SlackEventType, record_dispatch},
     },
 };
 use serde_json::Value;
 use sqlx::SqlitePool;
 use tracing::{info, warn};
 
-use super::{client::SlackClient, formatter::format_event, SlackError};
+use super::{SlackError, client::SlackClient, formatter::format_event};
 use crate::services::oauth_token_manager;
 
 const PROVIDER_SLACK: &str = "slack";

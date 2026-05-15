@@ -3,7 +3,7 @@
 //! Implements OAuth 2.0 and video publishing for TikTok.
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use db::models::social_account::SocialPlatform;
 use reqwest::Client;

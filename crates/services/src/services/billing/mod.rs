@@ -40,8 +40,8 @@ pub enum BillingError {
 }
 
 pub use stripe::{
-    create_billing_portal_session, create_checkout_session, ensure_customer, price_id_for_plan,
-    StripeCheckoutSession, StripePortalSession,
+    StripeCheckoutSession, StripePortalSession, create_billing_portal_session,
+    create_checkout_session, ensure_customer, price_id_for_plan,
 };
-pub use usage::{record_action, usage_status, UsageStatus};
+pub use usage::{UsageStatus, record_action, usage_status};
 pub use webhook::handle_event;

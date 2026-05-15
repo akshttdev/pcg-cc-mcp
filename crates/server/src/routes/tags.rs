@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     response::Json as ResponseJson,
     routing::get,
-    Json, Router,
 };
 use db::models::tag::{CreateTag, Tag, UpdateTag};
 use deployment::Deployment;
@@ -10,7 +10,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Deserialize)]
 pub struct TagQuery {

@@ -18,13 +18,14 @@ use std::future::Future;
 use db::models::{project::Project, project_knowledge_source::ProjectKnowledgeSource, task::Task};
 use helpers::*;
 use rmcp::{
+    ErrorData, ServerHandler,
     handler::server::tool::ToolRouter,
     model::{
         Annotated, Implementation, ListResourceTemplatesResult, ProtocolVersion,
         RawResourceTemplate, ReadResourceRequestParam, ReadResourceResult, ResourceContents,
         ResourceTemplate, ServerCapabilities, ServerInfo,
     },
-    tool_handler, tool_router, ErrorData, ServerHandler,
+    tool_handler, tool_router,
 };
 use serde_json::Value;
 use sqlx::SqlitePool;

@@ -13,7 +13,7 @@ use db::{
         crm_deal::CrmDeal,
     },
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use services::services::workflow_llm::{
     LLMResponse, ToolCallRequest, ToolDefinition, WorkflowLLMService,
 };
@@ -921,7 +921,7 @@ impl AgentFlowExecutor {
     ///
     /// Returns a list of (tool_use_id, result) pairs in the same order as input calls.
     async fn execute_tool_calls_batched(&self, calls: &[ToolCallRequest]) -> Vec<(String, String)> {
-        use crate::tool_partitioner::{default_tool_metadata, partition_tool_calls, ToolCall};
+        use crate::tool_partitioner::{ToolCall, default_tool_metadata, partition_tool_calls};
 
         if calls.is_empty() {
             return Vec::new();

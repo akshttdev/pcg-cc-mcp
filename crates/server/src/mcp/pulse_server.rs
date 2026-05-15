@@ -2,11 +2,12 @@ use db::models::{
     pulse_alert::PulseAlert, pulse_content_item::PulseContentItem, pulse_source::PulseSource,
 };
 use rmcp::{
+    ErrorData, ServerHandler,
     handler::server::tool::{Parameters, ToolRouter},
     model::{
         CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
     },
-    schemars, tool, tool_handler, tool_router, ErrorData, ServerHandler,
+    schemars, tool, tool_handler, tool_router,
 };
 use serde::Deserialize;
 use sqlx::SqlitePool;

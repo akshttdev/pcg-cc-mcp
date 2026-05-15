@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::Error as AnyhowError;
-use axum::http::{header::ACCEPT, HeaderName};
+use axum::http::{HeaderName, header::ACCEPT};
 use octocrab::{
-    auth::{Continue, DeviceCodes, OAuth},
     OctocrabBuilder,
+    auth::{Continue, DeviceCodes, OAuth},
 };
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};

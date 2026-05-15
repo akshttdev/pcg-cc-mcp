@@ -1,15 +1,15 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
-    Json, Router,
 };
 use db::models::execution_process::ExecutionProcess;
 use deployment::Deployment;
 use services::services::container::ContainerService;
 use utils::approvals::{
     ApprovalPendingInfo, ApprovalRequest, ApprovalResponse, CreateApprovalRequest,
-    ToolApprovalStatus, EXIT_PLAN_MODE_TOOL_NAME,
+    EXIT_PLAN_MODE_TOOL_NAME, ToolApprovalStatus,
 };
 
 use crate::DeploymentImpl;

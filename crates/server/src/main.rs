@@ -1,14 +1,14 @@
 use anyhow::{self, Error as AnyhowError};
 use deployment::{Deployment, DeploymentError};
-use server::{routes, DeploymentImpl};
+use server::{DeploymentImpl, routes};
 use sqlx::Error as SqlxError;
 use strip_ansi_escapes::strip;
 use thiserror::Error;
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, prelude::*};
 use utils::{
     assets::asset_dir,
     browser::open_browser,
-    external_services::{initialize_external_services, ExternalServicesConfig},
+    external_services::{ExternalServicesConfig, initialize_external_services},
     port_file::write_port_file,
     sentry::sentry_layer,
 };

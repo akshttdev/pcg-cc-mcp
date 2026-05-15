@@ -15,10 +15,10 @@
 //! safe for production. A loud warning fires every time the fallback is used.
 
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
     AeadCore, Aes256Gcm, Key, Nonce,
+    aead::{Aead, KeyInit, OsRng},
 };
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use thiserror::Error;
 
 #[derive(Debug, Error)]

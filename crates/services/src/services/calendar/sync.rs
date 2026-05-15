@@ -26,7 +26,7 @@ use tokio::time::interval;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use super::{google, outlook, CalendarError, CalendarSyncStats};
+use super::{CalendarError, CalendarSyncStats, google, outlook};
 use crate::services::oauth_token_manager;
 
 const PROVIDER_GOOGLE: &str = "google_calendar";

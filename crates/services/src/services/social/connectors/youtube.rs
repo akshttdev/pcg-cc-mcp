@@ -400,12 +400,7 @@ impl PlatformConnector for YouTubeConnector {
         let avatar_url = snippet
             .as_ref()
             .and_then(|s| s.thumbnails.as_ref())
-            .and_then(|t| {
-                t.high
-                    .as_ref()
-                    .or(t.medium.as_ref())
-                    .or(t.default.as_ref())
-            })
+            .and_then(|t| t.high.as_ref().or(t.medium.as_ref()).or(t.default.as_ref()))
             .and_then(|t| t.url.clone());
         let profile_url = Some(format!("https://www.youtube.com/channel/{}", channel.id));
         let follower_count = channel
@@ -439,9 +434,10 @@ impl PlatformConnector for YouTubeConnector {
     ) -> Result<PublishResult, SocialError> {
         self.validate_content(content)?;
 
-        let video_url = content.media_urls.first().ok_or_else(|| {
-            SocialError::ValidationError("YouTube requires a video URL".into())
-        })?;
+        let video_url = content
+            .media_urls
+            .first()
+            .ok_or_else(|| SocialError::ValidationError("YouTube requires a video URL".into()))?;
 
         let (video_bytes, content_type) = fetch_video_bytes(&self.client, video_url).await?;
         let metadata = build_video_metadata(content);

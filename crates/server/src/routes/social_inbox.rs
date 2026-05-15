@@ -3,9 +3,9 @@
 //! Unified inbox for mentions, comments, and DMs across all platforms.
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{get, patch, post},
-    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Deserialize)]
 pub struct InboxQuery {

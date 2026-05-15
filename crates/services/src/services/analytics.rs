@@ -5,7 +5,7 @@ use std::{
 };
 
 use os_info;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Clone)]
 pub struct AnalyticsContext {

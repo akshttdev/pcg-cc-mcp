@@ -5,14 +5,15 @@ use nora::agent::{
     NoraRequest, NoraRequestType, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority,
 };
 use rmcp::{
+    ErrorData, ServerHandler,
     handler::server::tool::{Parameters, ToolRouter},
     model::{
         CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
     },
-    schemars, tool, tool_handler, tool_router, ErrorData, ServerHandler,
+    schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::SqlitePool;
 
 use crate::routes::nora::NoraManager;

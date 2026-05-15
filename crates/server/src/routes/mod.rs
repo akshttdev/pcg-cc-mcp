@@ -1,17 +1,20 @@
 use axum::{
-    http::{header, Method, StatusCode},
+    Router,
+    http::{Method, StatusCode, header},
     middleware,
     response::IntoResponse,
-    routing::{get, IntoMakeService},
-    Router,
+    routing::{IntoMakeService, get},
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-use crate::{middleware as app_middleware, DeploymentImpl};
+use crate::{DeploymentImpl, middleware as app_middleware};
 
 pub mod activity;
+pub mod agent_chat;
 pub mod agent_flow_events;
 pub mod agent_flows;
+pub mod agent_wallets;
+pub mod agents;
 pub mod airtable;
 pub mod apn_data;
 pub mod approvals;
@@ -19,30 +22,23 @@ pub mod aptos;
 pub mod artifact_reviews;
 pub mod artifacts;
 pub mod auth;
-pub mod bowser;
-pub mod cms;
-pub mod collaboration;
-pub mod comments;
-pub mod config;
-pub mod containers;
-pub mod dav;
-pub mod editron_export;
-pub mod filesystem;
-// pub mod github;
-pub mod agent_chat;
-pub mod agent_wallets;
-pub mod agents;
 pub mod automations;
 pub mod autonomy;
 pub mod billing;
 pub mod board_shares;
 pub mod bot_bridge;
+pub mod bowser;
 pub mod calendar;
 pub mod cinematics;
 pub mod clients;
+pub mod cms;
+pub mod collaboration;
 pub mod command_center;
+pub mod comments;
 pub mod communications;
 pub mod companies;
+pub mod config;
+pub mod containers;
 pub mod crm_activities;
 pub mod crm_contacts;
 pub mod crm_deal_automations;
@@ -51,9 +47,11 @@ pub mod crm_deals;
 pub mod crm_pipelines;
 pub mod data_source_workflows;
 pub mod data_sources;
+pub mod dav;
 pub mod deliverables;
 pub mod discord;
 pub mod dropbox;
+pub mod editron_export;
 pub mod email_accounts;
 pub mod entity_conversion;
 pub mod event_stream;
@@ -61,7 +59,9 @@ pub mod events;
 pub mod execution_processes;
 pub mod execution_summaries;
 pub mod feedback;
+pub mod filesystem;
 pub mod frontend;
+pub mod github;
 pub mod graph;
 pub mod health;
 pub mod images;
@@ -168,6 +168,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(social_posts::router(&deployment))
         .merge(social_inbox::router(&deployment))
         .merge(integrations::router(&deployment))
+        .merge(github::router(&deployment))
         .merge(storage::router(&deployment))
         .merge(email_accounts::router(&deployment))
         .merge(crm_contacts::router(&deployment))

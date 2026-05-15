@@ -9,7 +9,7 @@ use std::{
 };
 
 use backon::{ExponentialBuilder, Retryable};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -17,11 +17,11 @@ use tokio::sync::RwLock;
 use ts_rs::TS;
 
 use super::{
+    EditronError,
     music::{
         LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
         MusicTrack,
     },
-    EditronError,
 };
 
 /// Artlist API endpoints

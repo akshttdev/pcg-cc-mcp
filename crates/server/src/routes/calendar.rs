@@ -15,10 +15,10 @@
 //! `MICROSOFT_CLIENT_ID/SECRET`); missing creds surface as 503-style errors.
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     response::Redirect,
     routing::{delete, get, post},
-    Json, Router,
 };
 use chrono::{Duration, Utc};
 use db::{
@@ -28,13 +28,13 @@ use db::{
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use services::services::{
-    calendar::{sync_account, CalendarSyncStats},
+    calendar::{CalendarSyncStats, sync_account},
     oauth_token_manager::{self, PlainTokens, StoreTokensInput},
 };
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, helpers::uuid_params::parse_db_uuid_param, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param};
 
 const PROVIDER_GOOGLE: &str = "google_calendar";
 const PROVIDER_OUTLOOK: &str = "outlook_calendar";

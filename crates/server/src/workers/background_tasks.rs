@@ -601,7 +601,7 @@ async fn sync_account_with_claim(
 
     let result = match account.provider.as_str() {
         "gmail" => sync_gmail_account(pool.clone(), &account).await,
-        "zoho" => Ok(SyncOutcome::default()), // covered by NoraInboxPoller; full sync TBD
+        "zoho" => sync_zoho_account(pool.clone(), &account).await,
         other => Err(format!("provider '{other}' sync not yet implemented")),
     };
 
@@ -714,6 +714,172 @@ async fn sync_gmail_account(
     })
 }
 
+/// Zoho sync: list inbox newest-first, take everything past `sync_cursor`
+/// (stored as the epoch-millis `receivedTime` of the highest imported
+/// message), fetch each one, persist, and route trusted-sender mail to intake.
+///
+/// On first run (no cursor), we cap the bootstrap at 50 messages — same as
+/// Gmail — to keep the first tick bounded. Subsequent ticks paginate as
+/// needed in 100-message pages.
+async fn sync_zoho_account(
+    pool: sqlx::SqlitePool,
+    account: &db::models::email_account::EmailAccount,
+) -> Result<SyncOutcome, String> {
+    use services::services::email_providers::{ZohoClient, ZohoError};
+
+    let token = valid_zoho_access_token(&pool, account)
+        .await
+        .map_err(|e| format!("zoho token: {e}"))?;
+    let (domain, account_id) = zoho_domain_and_account_id(account)?;
+    let client = ZohoClient::new(token, &domain, &account_id);
+
+    let folder_id = client
+        .inbox_folder_id()
+        .await
+        .map_err(|e: ZohoError| format!("zoho inbox folder: {e}"))?;
+
+    // Parse cursor as epoch millis. None = bootstrap.
+    let cursor_ms = account
+        .sync_cursor
+        .as_deref()
+        .and_then(|s| s.parse::<i64>().ok());
+
+    let page_limit = if cursor_ms.is_some() { 100 } else { 50 };
+    let summaries = client
+        .list_inbox(page_limit)
+        .await
+        .map_err(|e| format!("zoho list inbox: {e}"))?;
+
+    // Zoho returns newest first. Filter to messages strictly newer than cursor
+    // (skip the cursor itself to avoid re-importing the boundary message).
+    let new_summaries: Vec<_> = match cursor_ms {
+        Some(cur) => summaries
+            .into_iter()
+            .filter(|s| {
+                s.received_time
+                    .as_deref()
+                    .and_then(|t| t.parse::<i64>().ok())
+                    .map(|ms| ms > cur)
+                    .unwrap_or(false)
+            })
+            .collect(),
+        None => summaries,
+    };
+
+    let next_cursor_ms = new_summaries
+        .iter()
+        .filter_map(|s| {
+            s.received_time
+                .as_deref()
+                .and_then(|t| t.parse::<i64>().ok())
+        })
+        .max();
+
+    let mut imported = 0usize;
+    let mut intake_routed = 0usize;
+
+    // Oldest-first so the next cursor is monotonic if we crash mid-batch.
+    for summary in new_summaries.into_iter().rev() {
+        let mid = summary.message_id.clone();
+        match client.get_message(&folder_id, &mid).await {
+            Err(e) => tracing::warn!("[EMAIL_SYNC] zoho get_message {mid} failed: {e}"),
+            Ok(msg) => {
+                let from_address = msg.from_address.clone();
+                let subject = msg.subject.clone().unwrap_or_default();
+                let body_for_intake = msg.body_text.clone().or_else(|| msg.body_html.clone());
+
+                if let Some(stored) = persist_normalized(&pool, account, &msg).await? {
+                    imported += 1;
+                    if is_trusted_sender(&from_address) {
+                        let body = body_for_intake.unwrap_or_default();
+                        if !body.trim().is_empty() {
+                            route_to_intake(
+                                pool.clone(),
+                                stored.provider_message_id.clone(),
+                                from_address,
+                                subject,
+                                body,
+                            )
+                            .await;
+                            intake_routed += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(SyncOutcome {
+        imported,
+        intake_routed,
+        gmail_history_id: None,
+        sync_cursor: next_cursor_ms
+            .map(|ms| ms.to_string())
+            .or_else(|| account.sync_cursor.clone()),
+    })
+}
+
+/// Pull Zoho TLD and account id out of `email_accounts.metadata`. Both are
+/// stamped at OAuth-completion time in `routes::email_accounts::zoho_oauth_callback`.
+fn zoho_domain_and_account_id(
+    account: &db::models::email_account::EmailAccount,
+) -> Result<(String, String), String> {
+    let meta = account
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .ok_or_else(|| "zoho account has no metadata".to_string())?;
+    let domain = meta["zoho_domain"]
+        .as_str()
+        .map(String::from)
+        .unwrap_or_else(|| "com".to_string());
+    let account_id = meta["zoho_account_id"]
+        .as_str()
+        .map(String::from)
+        .ok_or_else(|| "zoho_account_id missing from account metadata".to_string())?;
+    Ok((domain, account_id))
+}
+
+/// Refresh-or-reuse the Zoho access token, persisting any new value to the row.
+/// Mirrors `AgentChannelService::valid_access_token` but lives at the worker
+/// layer to keep the provider client free of DB writes.
+async fn valid_zoho_access_token(
+    pool: &sqlx::SqlitePool,
+    account: &db::models::email_account::EmailAccount,
+) -> Result<String, String> {
+    use services::services::email_providers::ZohoClient;
+
+    if let (Some(token), Some(expires_at)) =
+        (account.access_token.as_ref(), account.token_expires_at)
+    {
+        if chrono::Utc::now() + chrono::Duration::seconds(60) < expires_at {
+            return Ok(token.clone());
+        }
+    }
+
+    let refresh_token = account
+        .refresh_token
+        .as_deref()
+        .ok_or_else(|| "zoho account has no refresh token".to_string())?;
+    let (domain, _) = zoho_domain_and_account_id(account)?;
+
+    let refreshed = ZohoClient::refresh_access_token(refresh_token, &domain)
+        .await
+        .map_err(|e| format!("zoho refresh: {e}"))?;
+
+    sqlx::query(
+        "UPDATE email_accounts SET access_token = ?, token_expires_at = ?, status = 'active', last_error = NULL, updated_at = datetime('now','subsec') WHERE id = ?",
+    )
+    .bind(&refreshed.access_token)
+    .bind(refreshed.expires_at.map(|t| t.to_rfc3339()))
+    .bind(account.id)
+    .execute(pool)
+    .await
+    .map_err(|e| format!("persist refreshed zoho token: {e}"))?;
+
+    Ok(refreshed.access_token)
+}
+
 async fn bootstrap_gmail(
     client: &services::services::email_providers::GmailClient,
 ) -> Result<(Vec<String>, Option<String>), String> {
@@ -746,17 +912,18 @@ async fn persist_normalized(
     let attachments_json = if msg.attachments.is_empty() {
         None
     } else {
-        Some(serde_json::json!(msg
-            .attachments
-            .iter()
-            .map(|a| serde_json::json!({
-                "provider_attachment_id": a.provider_attachment_id,
-                "filename": a.filename,
-                "content_type": a.content_type,
-                "size_bytes": a.size_bytes,
-                "content_id": a.content_id,
-            }))
-            .collect::<Vec<_>>()))
+        Some(serde_json::json!(
+            msg.attachments
+                .iter()
+                .map(|a| serde_json::json!({
+                    "provider_attachment_id": a.provider_attachment_id,
+                    "filename": a.filename,
+                    "content_type": a.content_type,
+                    "size_bytes": a.size_bytes,
+                    "content_id": a.content_id,
+                }))
+                .collect::<Vec<_>>()
+        ))
     };
 
     let row = EmailMessage::insert_if_absent(

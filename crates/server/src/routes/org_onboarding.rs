@@ -4,9 +4,9 @@
 //! This is the org-scoped equivalent of the project onboarding system.
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{get, post},
-    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -21,7 +21,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 /// Create org onboarding router
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {

@@ -3,9 +3,9 @@
 //! Handles content CRUD, scheduling, and publishing operations.
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post},
-    Json, Router,
 };
 use db::models::social_post::{CreateSocialPost, SocialPost, UpdateSocialPost};
 use deployment::Deployment;
@@ -14,7 +14,7 @@ use services::services::social::{PublishResult, Publisher};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Deserialize)]
 pub struct ListPostsQuery {

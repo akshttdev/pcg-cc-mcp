@@ -1,8 +1,8 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer};
 use rand::RngCore;
 use reqwest::Client;

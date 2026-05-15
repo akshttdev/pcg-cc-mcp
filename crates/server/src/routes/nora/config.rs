@@ -1,10 +1,10 @@
 //! Nora mode presets and LLM configuration overrides.
 
 use nora::{
-    brain::{infer_provider_from_model, LLMConfig},
+    LLMProvider, NoraConfig,
+    brain::{LLMConfig, infer_provider_from_model},
     personality::PersonalityConfig,
     voice::VoiceConfig,
-    LLMProvider, NoraConfig,
 };
 use once_cell::sync::Lazy;
 use serde::Serialize;

@@ -13,7 +13,7 @@ use sqlx::SqlitePool;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use super::{get_connector, PublishContent, PublishResult, SocialError};
+use super::{PublishContent, PublishResult, SocialError, get_connector};
 use crate::services::oauth_token_manager;
 
 /// Publisher configuration

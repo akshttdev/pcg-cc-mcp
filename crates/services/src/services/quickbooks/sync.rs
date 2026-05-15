@@ -27,7 +27,7 @@ use sqlx::SqlitePool;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use super::{client::QboClient, QboError};
+use super::{QboError, client::QboClient};
 
 /// Counts of what changed in one sync pass.
 #[derive(Debug, Default, Clone, serde::Serialize)]

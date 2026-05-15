@@ -4,6 +4,7 @@
 //! screenshot capture, visual diffs, and security-first URL allowlisting.
 
 use db::{
+    DBService,
     models::{
         browser_action::{
             ActionResult, ActionType, BrowserAction, BrowserActionError, CompleteAction,
@@ -19,7 +20,6 @@ use db::{
             BrowserSession, BrowserSessionError, BrowserType, CreateBrowserSession, SessionStatus,
         },
     },
-    DBService,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

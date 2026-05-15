@@ -51,6 +51,7 @@ pub mod execution_summary;
 pub mod executor_session;
 pub mod follow_up_draft;
 pub mod gateway_request;
+pub mod github_repo_link;
 pub mod image;
 pub mod integration_connection;
 pub mod marketplace_listing;

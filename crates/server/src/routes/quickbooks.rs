@@ -4,10 +4,10 @@
 //! Each organization connects its own QBO account.
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     response::Redirect,
     routing::{delete, get, patch, post},
-    Json, Router,
 };
 use chrono::{Duration, Utc};
 use db::{
@@ -19,12 +19,12 @@ use db::{
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use services::services::quickbooks::{
-    financial_summary, push_invoice, run_qbo_sync, FinancialSummary, SyncStats,
+    FinancialSummary, SyncStats, financial_summary, push_invoice, run_qbo_sync,
 };
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 

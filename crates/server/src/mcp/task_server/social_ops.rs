@@ -10,14 +10,12 @@ use db::models::{
     social_account::SocialAccount,
     social_post::{ContentType, CreateSocialPost, SocialPost},
 };
-use rmcp::{
-    handler::server::tool::Parameters, model::CallToolResult, schemars, tool, ErrorData,
-};
+use rmcp::{ErrorData, handler::server::tool::Parameters, model::CallToolResult, schemars, tool};
 use serde::{Deserialize, Serialize};
 use services::services::social::Publisher;
 use uuid::Uuid;
 
-use super::{helpers::*, TaskServer};
+use super::{TaskServer, helpers::*};
 
 // ─── Request / Response types ───────────────────────────────────────────────
 
@@ -166,12 +164,13 @@ fn build_create_post(
         .and_then(parse_content_type)
         .or(Some(ContentType::Post));
 
-    let task_uuid = match task_id {
-        Some(t) => Some(Uuid::parse_str(t).map_err(|_| {
-            error_result("Invalid task_id", Some("task_id must be a valid UUID"))
-        })?),
-        None => None,
-    };
+    let task_uuid =
+        match task_id {
+            Some(t) => Some(Uuid::parse_str(t).map_err(|_| {
+                error_result("Invalid task_id", Some("task_id must be a valid UUID"))
+            })?),
+            None => None,
+        };
 
     let scheduled_for = scheduled_for.and_then(parse_iso_datetime);
 
@@ -273,7 +272,7 @@ impl TaskServer {
                 return Ok(error_result(
                     "Failed to list social posts",
                     Some(&e.to_string()),
-                ))
+                ));
             }
         };
 
@@ -451,7 +450,7 @@ impl TaskServer {
                 return Ok(error_result(
                     "Failed to create social post",
                     Some(&e.to_string()),
-                ))
+                ));
             }
         };
 

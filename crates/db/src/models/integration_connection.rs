@@ -26,16 +26,6 @@ const SELECT_ALL_TEXT_TO_BLOB: &str = "\
         scopes, status, last_sync_at, last_error, metadata, created_at, updated_at \
     FROM integration_connections";
 
-const SELECT_ALL_TEXT_TO_BLOB_WHERE_ID: &str = "SELECT \
-        unhex(replace(id, '-', ''))              AS id, \
-        unhex(replace(organization_id, '-', '')) AS organization_id, \
-        CASE WHEN project_id IS NULL THEN NULL \
-             ELSE unhex(replace(project_id, '-', '')) END AS project_id, \
-        provider, provider_account_id, display_name, avatar_url, \
-        access_token_ciphertext, refresh_token_ciphertext, token_expires_at, \
-        scopes, status, last_sync_at, last_error, metadata, created_at, updated_at \
-     FROM integration_connections WHERE id = ?1";
-
 const SELECT_ALL_TEXT_TO_BLOB_WHERE_ORG_PROVIDER: &str = "SELECT \
         unhex(replace(id, '-', ''))              AS id, \
         unhex(replace(organization_id, '-', '')) AS organization_id, \
