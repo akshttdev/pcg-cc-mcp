@@ -129,6 +129,10 @@ pub fn expand_tilde(path_str: &str) -> std::path::PathBuf {
 mod tests {
     use super::*;
 
+    // Uses Unix `/tmp/...` paths which `Path::is_absolute()` returns false for
+    // on Windows. The production code path is exercised on Windows with real
+    // `C:\…` worktree paths in integration tests.
+    #[cfg(unix)]
     #[test]
     fn test_make_path_relative() {
         // Test with relative path (should remain unchanged)
