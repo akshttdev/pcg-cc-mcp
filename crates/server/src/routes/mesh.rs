@@ -86,20 +86,45 @@ pub struct TransactionLog {
     pub task_id: Option<Uuid>,
 }
 
+/// Resolve this node's APN identity without APN Core running.
+/// Priority: APN_NODE_ID env → ~/.apn/node_identity.json → hostname fallback
+fn resolve_node_id_fallback() -> String {
+    // 1. Check env var (set in .env)
+    if let Ok(id) = std::env::var("APN_NODE_ID") {
+        if !id.is_empty() {
+            return id;
+        }
+    }
+
+    // 2. Read ~/.apn/node_identity.json
+    if let Some(home) = dirs::home_dir() {
+        let identity_path = home.join(".apn").join("node_identity.json");
+        if let Ok(contents) = std::fs::read_to_string(&identity_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                if let Some(id) = json.get("node_id").and_then(|v| v.as_str()) {
+                    if !id.is_empty() {
+                        return id.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Hostname fallback (last resort)
+    let hostname = hostname::get()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+    format!("apn_{}", &hostname.replace('.', "-"))
+}
+
 /// Fetch peers from APN Core API (replaces log file parsing)
 async fn fetch_peers_from_apn_core() -> (Vec<PeerInfo>, bool, String, u64) {
     let client = apn_client::ApnClient::new();
 
-    // Try to get identity and peers from APN Core
+    // Try to get identity from APN Core, then env/node_identity.json, then hostname
     let node_id = match client.get_identity().await {
         Ok(identity) => identity.node_id,
-        Err(_) => {
-            // Fall back to hostname if APN Core not available
-            let hostname = hostname::get()
-                .map(|h| h.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "unknown".to_string());
-            format!("omega-{}", &hostname[..hostname.len().min(8)])
-        }
+        Err(_) => resolve_node_id_fallback(),
     };
 
     let (peers, relay_connected, uptime) = match client.get_network_stats().await {
@@ -358,12 +383,33 @@ pub async fn get_apn_identity(
             Ok(ResponseJson(ApiResponse::success(value)))
         }
         Err(_) => {
+            // APN Core not running — resolve identity from env/node_identity.json
+            let node_id = resolve_node_id_fallback();
+            let mut wallet = std::env::var("APN_WALLET_ADDRESS").ok();
+            let mut device_name = std::env::var("APN_DEVICE_NAME").ok();
+            let mut public_key: Option<String> = None;
+
+            // Enrich from ~/.apn/node_identity.json
+            if let Some(home) = dirs::home_dir() {
+                let identity_path = home.join(".apn").join("node_identity.json");
+                if let Ok(contents) = std::fs::read_to_string(&identity_path) {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                        let str_field =
+                            |key: &str| json.get(key).and_then(|v| v.as_str()).map(String::from);
+                        wallet = wallet.or_else(|| str_field("wallet_address"));
+                        public_key = str_field("public_key");
+                        device_name = device_name.or_else(|| str_field("device_name"));
+                    }
+                }
+            }
+
             let value = serde_json::json!({
-                "node_id": null,
-                "wallet_address": null,
-                "public_key": null,
+                "node_id": node_id,
+                "device_name": device_name,
+                "wallet_address": wallet,
+                "public_key": public_key,
                 "apn_core_connected": false,
-                "message": "APN Core not running at localhost:8000",
+                "message": "Identity resolved from local config (APN Core not running)",
             });
             Ok(ResponseJson(ApiResponse::success(value)))
         }

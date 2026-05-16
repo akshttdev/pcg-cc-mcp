@@ -1,14 +1,14 @@
 use anyhow::{self, Error as AnyhowError};
 use deployment::{Deployment, DeploymentError};
-use server::{DeploymentImpl, routes};
+use server::{routes, DeploymentImpl};
 use sqlx::Error as SqlxError;
 use strip_ansi_escapes::strip;
 use thiserror::Error;
-use tracing_subscriber::{EnvFilter, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter};
 use utils::{
     assets::asset_dir,
     browser::open_browser,
-    external_services::{ExternalServicesConfig, initialize_external_services},
+    external_services::{initialize_external_services, ExternalServicesConfig},
     port_file::write_port_file,
     sentry::sentry_layer,
 };
@@ -247,7 +247,12 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     if auto_start_apn {
         tokio::spawn(async move {
-            tracing::info!("🌐 Media Monsters Master Node — starting APN node...");
+            // Resolve node identity from env or ~/.apn/node_identity.json
+            let node_id = std::env::var("APN_NODE_ID").unwrap_or_default();
+            let device_name =
+                std::env::var("APN_DEVICE_NAME").unwrap_or_else(|_| "APN Node".to_string());
+
+            tracing::info!("🌐 Starting APN node — {} ({})...", device_name, node_id);
 
             // Kill any existing apn_node processes to prevent accumulation
             utils::external_services::kill_existing_apn_nodes();
@@ -265,21 +270,24 @@ async fn main() -> Result<(), VibeKanbanError> {
                 return;
             }
 
-            let device_name = std::env::var("APN_DEVICE_NAME")
-                .unwrap_or_else(|_| "Media Monsters Master Node".to_string());
+            let relay_url = std::env::var("APN_RELAY_URL")
+                .unwrap_or_else(|_| "nats://nonlocal.info:4222".to_string());
 
             let mut cmd = tokio::process::Command::new(&apn_binary);
             cmd.arg("--port")
                 .arg("4001")
                 .arg("--relay")
-                .arg("nats://nonlocal.info:4222")
+                .arg(&relay_url)
                 .arg("--heartbeat-interval")
                 .arg("30")
                 .arg("--name")
                 .arg(&device_name);
 
-            // Set custom hostname for master node
-            cmd.env("APN_HOSTNAME", "media-monsters-master");
+            // Pass unified identity to APN node subprocess
+            if !node_id.is_empty() {
+                cmd.env("APN_HOSTNAME", &node_id);
+                cmd.env("APN_NODE_ID", &node_id);
+            }
 
             // Stdin/stdout/stderr should be null for background process
             cmd.stdin(std::process::Stdio::null())
@@ -289,7 +297,9 @@ async fn main() -> Result<(), VibeKanbanError> {
             match cmd.spawn() {
                 Ok(child) => {
                     tracing::info!(
-                        "✅ Media Monsters Master Node — APN node active (PID: {:?})",
+                        "✅ {} ({}) — APN node active (PID: {:?})",
+                        device_name,
+                        node_id,
                         child.id()
                     );
                 }
