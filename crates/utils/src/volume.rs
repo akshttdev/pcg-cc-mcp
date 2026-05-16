@@ -51,7 +51,19 @@ pub fn volume_base_path(volume: &str) -> Result<PathBuf, VolumePathError> {
         VOLUME_SOVEREIGN => Ok(PathBuf::from(storage_root)),
         VOLUME_DATA_SOURCES => Ok(crate::cache_dir().join("data_sources")),
         VOLUME_ARTIFACTS => Ok(crate::cache_dir().join("artifacts")),
-        other => Err(VolumePathError::UnknownVolume(other.to_string())),
+        // Fallback: a `cloud_files.storage_volume` that's a literal absolute
+        // path is interpreted as a self-describing volume. This is how
+        // LocalFolderConnector-synced rows reach the filesystem without
+        // needing a per-account entry in this registry. Containment checks
+        // in `resolve_volume_path` still defend against traversal.
+        other => {
+            let p = PathBuf::from(other);
+            if p.is_absolute() {
+                Ok(p)
+            } else {
+                Err(VolumePathError::UnknownVolume(other.to_string()))
+            }
+        }
     }
 }
 
