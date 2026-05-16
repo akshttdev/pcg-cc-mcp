@@ -299,7 +299,7 @@ impl Organization {
         sqlx::query_as::<_, Organization>(
             r#"INSERT INTO organizations (id, name, slug, description, avatar_url, owner_id)
                VALUES (?, ?, ?, ?, ?, ?)
-               RETURNING id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address"#,
+               RETURNING id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address, wallet_address, vibe_balance, vibe_budget_total"#,
         )
         .bind(id)
         .bind(&data.name)
@@ -335,7 +335,7 @@ impl Organization {
         sqlx::query_as::<_, Organization>(
             r#"UPDATE organizations SET name = ?, slug = ?, description = ?, avatar_url = ?, address = ?, updated_at = datetime('now')
                WHERE id = ?
-               RETURNING id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address"#,
+               RETURNING id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address, wallet_address, vibe_balance, vibe_budget_total"#,
         )
         .bind(name)
         .bind(slug)
