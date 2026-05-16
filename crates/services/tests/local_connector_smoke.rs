@@ -68,3 +68,59 @@ async fn smoke_sirak_dropbox_root() {
 async fn smoke_sirak_team() {
     walk_and_report("Sirak Studios Team — 641 GB / ~395k files", SIRAK_TEAM).await;
 }
+
+/// Volume-resolution contract: an absolute path stored in
+/// `cloud_files.storage_volume` must round-trip through
+/// `utils::volume::resolve_volume_path` to an existing file on disk. This is
+/// what wires LocalFolderConnector-synced rows to the existing
+/// `/org-cloud/{org_id}/files/{file_id}/download` route.
+///
+/// Not `#[ignore]`d — runs in CI as long as the Sirak data is on E:.
+#[tokio::test]
+async fn smoke_volume_resolution_for_local_paths() {
+    use std::path::Path;
+    use utils::volume::{resolve_volume_path, volume_base_path};
+
+    if !Path::new(SIRAK_PERSONAL).exists() {
+        eprintln!("skipping: {SIRAK_PERSONAL} not present on this machine");
+        return;
+    }
+
+    // Base path passthrough: a literal absolute path should resolve to itself.
+    let base = volume_base_path(SIRAK_PERSONAL).expect("absolute path must resolve");
+    assert_eq!(
+        base.to_string_lossy().replace('\\', "/"),
+        SIRAK_PERSONAL,
+        "volume_base_path of an absolute path should be the path itself"
+    );
+
+    // Walk one file out of the tree so we have a real file_path to resolve.
+    let conn = LocalFolderConnector::new();
+    let batch = conn
+        .sync_changes("", None, Some(SIRAK_PERSONAL))
+        .await
+        .expect("walk should succeed");
+    let first_file = batch
+        .changes
+        .iter()
+        .find(|c| !c.is_folder)
+        .expect("at least one file under SIRAK_PERSONAL");
+
+    let resolved =
+        resolve_volume_path(SIRAK_PERSONAL, &first_file.path).expect("path should resolve");
+    assert!(
+        resolved.exists(),
+        "resolved download path {resolved:?} must exist on disk"
+    );
+
+    println!();
+    println!("── Volume resolution smoke ─────────────────────────");
+    println!("  storage_volume: {SIRAK_PERSONAL}");
+    println!("  file_path:      {}", first_file.path);
+    println!("  resolved:       {resolved:?}");
+    println!("  exists on disk: {}", resolved.exists());
+
+    // Path-traversal defence: a `..` in file_path must be rejected.
+    let evil = resolve_volume_path(SIRAK_PERSONAL, "../etc/passwd");
+    assert!(evil.is_err(), "../ in file_path must be rejected");
+}
