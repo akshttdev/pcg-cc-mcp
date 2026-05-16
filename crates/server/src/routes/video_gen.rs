@@ -9,9 +9,12 @@ use axum::{
     Extension, Json, Router,
 };
 use base64::Engine as _;
-use db::models::{
-    avatar_profile::{AvatarProfile, CreateAvatarProfile, UpdateAvatarProfile},
-    video_job::{CreateVideoJob, VideoJob},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        avatar_profile::{AvatarProfile, CreateAvatarProfile, UpdateAvatarProfile},
+        video_job::{CreateVideoJob, VideoJob},
+    },
 };
 use deployment::Deployment;
 use serde::Deserialize;
@@ -111,7 +114,12 @@ async fn list_avatars(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Vec<AvatarProfile>>, ApiError> {
     let pool = &deployment.db().pool;
-    let org_id = params.get("org_id").and_then(|s| Uuid::parse_str(s).ok());
+    // Per rust-standards: parse via DbUuid, then convert to uuid::Uuid for the
+    // model layer (which still uses uuid::Uuid until Phase 2.2 follow-up).
+    let org_id = params
+        .get("org_id")
+        .and_then(|s| DbUuid::parse(s).ok())
+        .and_then(|d| Uuid::parse_str(d.as_str()).ok());
 
     match org_id {
         Some(oid) => {
@@ -150,6 +158,8 @@ async fn create_avatar(
     }
 
     // Wire created_by from auth context so per-user billing attribution works.
+    // ctx.user_id is a DbUuid (validated by auth middleware); convert to
+    // uuid::Uuid until the model migrates to DbUuid in the Phase 2.2 follow-up.
     let created_by = Uuid::parse_str(ctx.user_id.as_str()).ok();
     let avatar = AvatarProfile::create(pool, body, created_by)
         .await
@@ -299,9 +309,17 @@ async fn generate_profile(
         ));
     }
 
-    AvatarProfile::update_profile_status(&pool, id, "pending", None)
+    // Atomic claim: only proceed if no other pipeline is in flight for this
+    // avatar. Prevents two concurrent POSTs from each spawning a pipeline and
+    // clobbering each other's shots on disk.
+    let claimed = AvatarProfile::try_claim_profile_generation(&pool, id)
         .await
         .map_err(ApiError::Database)?;
+    if !claimed {
+        return Err(ApiError::Conflict(
+            "avatar profile generation already in progress".to_string(),
+        ));
+    }
 
     let cfg = avatar_engine::PipelineConfig {
         avatar_id: id,
@@ -981,7 +999,7 @@ async fn serve_audio(Path(job_id): Path<String>) -> Result<Response, ApiError> {
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "audio/mpeg")
         .body(Body::from(data))
-        .unwrap())
+        .unwrap_or_else(|_| Response::new(Body::empty())))
 }
 
 async fn serve_video(Path(job_id): Path<String>) -> Result<Response, ApiError> {
@@ -993,7 +1011,7 @@ async fn serve_video(Path(job_id): Path<String>) -> Result<Response, ApiError> {
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "video/mp4")
         .body(Body::from(data))
-        .unwrap())
+        .unwrap_or_else(|_| Response::new(Body::empty())))
 }
 
 async fn serve_final_video(
@@ -1037,7 +1055,7 @@ async fn serve_final_video(
                                 format!("bytes {}-{}/{}", start, end, file_size),
                             )
                             .body(Body::from(buf))
-                            .unwrap());
+                            .unwrap_or_else(|_| Response::new(Body::empty())));
                     }
                 }
             }
@@ -1056,7 +1074,7 @@ async fn serve_final_video(
         .header(header::ACCEPT_RANGES, "bytes")
         .header(header::CONTENT_LENGTH, file_size)
         .body(Body::from(data))
-        .unwrap())
+        .unwrap_or_else(|_| Response::new(Body::empty())))
 }
 
 // ---------------------------------------------------------------------------
@@ -1097,18 +1115,24 @@ pub(crate) async fn produce_job(
     // Convert MP3 → WAV — HeyGen's speech recognition extracts word timing
     // much more reliably from uncompressed PCM, enabling the expressive avatar.
     let wav_path = audio_dir().join(format!("{}.wav", job_id));
+    let audio_path_str = audio_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("audio path is not valid utf-8"))?;
+    let wav_path_str = wav_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("wav path is not valid utf-8"))?;
     let ffmpeg_out = tokio::process::Command::new("ffmpeg")
         .args([
             "-y",
             "-i",
-            audio_path.to_str().unwrap(),
+            audio_path_str,
             "-ar",
             "16000", // 16 kHz — optimal for speech recognition
             "-ac",
             "1", // mono
             "-f",
             "wav",
-            wav_path.to_str().unwrap(),
+            wav_path_str,
         ])
         .output()
         .await?;

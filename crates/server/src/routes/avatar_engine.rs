@@ -262,10 +262,13 @@ async fn run_pipeline_inner(pool: &SqlitePool, cfg: &PipelineConfig) -> anyhow::
         AvatarProfile::set_thumbnail(pool, cfg.avatar_id, &front.url).await?;
     }
 
+    // Partial-success path: distinct status so clients can tell "all 16 shots
+    // landed" from "some failed but the profile is still usable." Frontend
+    // treats `partial` as a re-generatable state.
     let final_status = if errors.is_empty() {
         "ready"
     } else {
-        "ready" // partial success — keep ready, surface errors in profile_error
+        "partial"
     };
     let err_text = if errors.is_empty() {
         None

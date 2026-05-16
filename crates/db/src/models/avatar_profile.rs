@@ -216,6 +216,29 @@ impl AvatarProfile {
         Ok(())
     }
 
+    /// Atomically transition `profile_status` to `pending` only if the avatar
+    /// is NOT already in `pending` or `generating`. Returns `Ok(true)` if the
+    /// transition happened, `Ok(false)` if another pipeline is already in flight.
+    ///
+    /// Prevents two concurrent `POST /generate-profile` requests from each
+    /// spawning a pipeline and clobbering each other's shots on disk.
+    pub async fn try_claim_profile_generation(
+        pool: &SqlitePool,
+        id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE avatar_profiles
+             SET profile_status = 'pending',
+                 profile_error = NULL,
+                 updated_at = datetime('now','subsec')
+             WHERE id = ? AND profile_status NOT IN ('pending', 'generating')",
+        )
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Replace the full portrait_set JSON array (e.g. after a complete regeneration).
     pub async fn set_portrait_set(
         pool: &SqlitePool,
