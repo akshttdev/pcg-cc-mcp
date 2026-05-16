@@ -18,7 +18,10 @@ use serde::Deserialize;
 use tokio::fs;
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::AccessContext, routes::avatar_engine, DeploymentImpl};
+use crate::{
+    error::ApiError, helpers::avatar_access::require_avatar_org_access, middleware::AccessContext,
+    routes::avatar_engine, DeploymentImpl,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,10 +107,24 @@ pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
 async fn list_avatars(
     State(deployment): State<DeploymentImpl>,
+    Extension(ctx): Extension<AccessContext>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Vec<AvatarProfile>>, ApiError> {
     let pool = &deployment.db().pool;
     let org_id = params.get("org_id").and_then(|s| Uuid::parse_str(s).ok());
+
+    match org_id {
+        Some(oid) => {
+            ctx.require_org_membership(pool, &oid.to_string()).await?;
+        }
+        None if !ctx.is_admin => {
+            return Err(ApiError::BadRequest(
+                "org_id query parameter required".to_string(),
+            ));
+        }
+        None => {} // admin may list across orgs
+    }
+
     let avatars = AvatarProfile::list(pool, org_id)
         .await
         .map_err(ApiError::Database)?;
@@ -120,8 +137,20 @@ async fn create_avatar(
     Json(body): Json<CreateAvatarProfile>,
 ) -> Result<(StatusCode, Json<AvatarProfile>), ApiError> {
     let pool = &deployment.db().pool;
-    let _ctx = ctx; // user is authenticated; skip FK binding until blob/uuid alignment resolved
-    let created_by: Option<uuid::Uuid> = None;
+
+    // Access control: caller must be a member of the target org (or admin).
+    match body.organization_id {
+        Some(oid) => {
+            ctx.require_org_membership(pool, &oid.to_string()).await?;
+        }
+        None if !ctx.is_admin => {
+            return Err(ApiError::BadRequest("organization_id required".to_string()));
+        }
+        None => {} // admin may create un-scoped avatars
+    }
+
+    // Wire created_by from auth context so per-user billing attribution works.
+    let created_by = Uuid::parse_str(ctx.user_id.as_str()).ok();
     let avatar = AvatarProfile::create(pool, body, created_by)
         .await
         .map_err(ApiError::Database)?;
@@ -131,21 +160,21 @@ async fn create_avatar(
 async fn get_avatar(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
+    Extension(ctx): Extension<AccessContext>,
 ) -> Result<Json<AvatarProfile>, ApiError> {
     let pool = &deployment.db().pool;
-    let avatar = AvatarProfile::find(pool, id)
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+    let avatar = require_avatar_org_access(&ctx, pool, id).await?;
     Ok(Json(avatar))
 }
 
 async fn update_avatar(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
+    Extension(ctx): Extension<AccessContext>,
     Json(body): Json<UpdateAvatarProfile>,
 ) -> Result<Json<AvatarProfile>, ApiError> {
     let pool = &deployment.db().pool;
+    require_avatar_org_access(&ctx, pool, id).await?;
     let avatar = AvatarProfile::update(pool, id, body)
         .await
         .map_err(ApiError::Database)?
@@ -156,8 +185,10 @@ async fn update_avatar(
 async fn delete_avatar(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
+    Extension(ctx): Extension<AccessContext>,
 ) -> Result<StatusCode, ApiError> {
     let pool = &deployment.db().pool;
+    require_avatar_org_access(&ctx, pool, id).await?;
     let deleted = AvatarProfile::delete(pool, id)
         .await
         .map_err(ApiError::Database)?;
@@ -180,16 +211,13 @@ async fn delete_avatar(
 async fn upload_reference(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
-    Extension(_ctx): Extension<AccessContext>,
+    Extension(ctx): Extension<AccessContext>,
     mut multipart: Multipart,
 ) -> Result<Json<AvatarProfile>, ApiError> {
     let pool = &deployment.db().pool;
 
-    // Confirm the avatar exists up-front.
-    let _ = AvatarProfile::find(pool, id)
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+    // Access control + existence check in one call.
+    require_avatar_org_access(&ctx, pool, id).await?;
 
     let mut bytes: Option<Vec<u8>> = None;
     while let Some(field) = multipart
@@ -207,6 +235,27 @@ async fn upload_reference(
         }
     }
     let bytes = bytes.ok_or_else(|| ApiError::BadRequest("missing `image` field".to_string()))?;
+
+    // Field-level size cap (the 20MB body limit is a backstop).
+    const MAX_REFERENCE_BYTES: usize = 10 * 1024 * 1024;
+    if bytes.len() > MAX_REFERENCE_BYTES {
+        return Err(ApiError::BadRequest(format!(
+            "image too large ({} bytes, max 10 MB)",
+            bytes.len()
+        )));
+    }
+
+    // Magic-byte sniff — reject anything that isn't a real PNG or JPEG.
+    // The bytes get base64-fed into gpt-image-1 and served back to clients, so
+    // a sniff vs claim mismatch is a real risk (SVG-with-JS, EXE renamed .png).
+    let kind = infer::get(&bytes)
+        .ok_or_else(|| ApiError::BadRequest("could not determine image type".to_string()))?;
+    let mime = kind.mime_type();
+    if mime != "image/png" && mime != "image/jpeg" {
+        return Err(ApiError::BadRequest(format!(
+            "unsupported image type {mime} — must be PNG or JPEG"
+        )));
+    }
 
     let dir = avatar_dir(id);
     fs::create_dir_all(&dir)
@@ -237,14 +286,11 @@ async fn upload_reference(
 async fn generate_profile(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
-    Extension(_ctx): Extension<AccessContext>,
+    Extension(ctx): Extension<AccessContext>,
 ) -> Result<Json<AvatarProfile>, ApiError> {
     let pool = deployment.db().pool.clone();
 
-    AvatarProfile::find(&pool, id)
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+    require_avatar_org_access(&ctx, &pool, id).await?;
 
     let reference_path = avatar_dir(id).join("reference.png");
     if !reference_path.exists() {
@@ -284,14 +330,11 @@ async fn generate_profile(
 async fn init_talking_head(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
-    Extension(_ctx): Extension<AccessContext>,
+    Extension(ctx): Extension<AccessContext>,
 ) -> Result<Json<AvatarProfile>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let _ = AvatarProfile::find(pool, id)
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+    require_avatar_org_access(&ctx, pool, id).await?;
 
     let front = avatar_dir(id).join("shots").join("front.png");
     let fallback = avatar_dir(id).join("reference.png");
@@ -378,13 +421,20 @@ mod heygen_talking_photo {
 }
 
 /// GET /api/video-gen/avatars/:id/reference.png — public
+///
+/// Path keeps the historical `.png` suffix for backwards compatibility, but the
+/// actual file may be PNG or JPEG (validated at upload). We sniff bytes to emit
+/// the correct `Content-Type` header.
 async fn serve_reference(Path(id): Path<Uuid>) -> Result<Response, ApiError> {
     let path = avatar_dir(id).join("reference.png");
     let data = fs::read(&path)
         .await
         .map_err(|_| ApiError::NotFound(format!("reference for avatar {}", id)))?;
+    let content_type = infer::get(&data)
+        .map(|k| k.mime_type())
+        .unwrap_or("image/png");
     Ok(Response::builder()
-        .header(header::CONTENT_TYPE, "image/png")
+        .header(header::CONTENT_TYPE, content_type)
         .header(header::CACHE_CONTROL, "public, max-age=3600")
         .body(Body::from(data))
         .unwrap_or_else(|_| Response::new(Body::empty())))
@@ -424,14 +474,11 @@ struct MotionClipResponse {
 async fn render_motion(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
-    Extension(_ctx): Extension<AccessContext>,
+    Extension(ctx): Extension<AccessContext>,
     Json(body): Json<RenderMotionBody>,
 ) -> Result<Json<MotionClipResponse>, ApiError> {
     let pool = &deployment.db().pool;
-    let avatar = AvatarProfile::find(pool, id)
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+    let avatar = require_avatar_org_access(&ctx, pool, id).await?;
 
     if body.script_text.trim().is_empty() {
         return Err(ApiError::BadRequest("script_text is empty".to_string()));
@@ -701,9 +748,12 @@ async fn render_motion(
 
 /// GET /api/video-gen/avatars/:id/motion/<clip> — public
 async fn serve_motion_clip(Path((id, clip)): Path<(Uuid, String)>) -> Result<Response, ApiError> {
-    // Defense in depth: only allow .mp4 files, no traversal
-    if !clip.ends_with(".mp4") || clip.contains('/') || clip.contains("..") {
-        return Err(ApiError::BadRequest("bad clip name".to_string()));
+    // Strict whitelist: alnum + underscore/dash, then literal `.mp4`. Rejects
+    // backslash, NUL, leading dots, anything with a slash or `..`, etc.
+    static MOTION_CLIP_RE: once_cell::sync::Lazy<regex::Regex> =
+        once_cell::sync::Lazy::new(|| regex::Regex::new(r"^[A-Za-z0-9_\-]+\.mp4$").unwrap());
+    if !MOTION_CLIP_RE.is_match(&clip) {
+        return Err(ApiError::BadRequest("invalid clip name".to_string()));
     }
     let path = avatar_dir(id).join("motion").join(&clip);
     let data = fs::read(&path)
@@ -798,11 +848,14 @@ async fn elevenlabs_tts(api_key: &str, voice_id: &str, text: &str) -> anyhow::Re
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         if status.as_u16() != 400 || !body.contains("voice_not_fine_tuned") {
-            anyhow::bail!("ElevenLabs TTS {status}: {body}");
+            // Scrubbed: upstream body can echo headers / request IDs that aid
+            // enumeration. Log full detail, surface only status to the caller.
+            tracing::error!(target: "avatar_engine", %status, body = %body, "elevenlabs tts failed");
+            anyhow::bail!("tts failed (status {status})");
         }
         tracing::warn!("voice {voice_id} rejected by {model_id}, trying next");
     }
-    anyhow::bail!("ElevenLabs TTS: voice {voice_id} accepted by no model")
+    anyhow::bail!("tts failed: voice {voice_id} not supported by any model")
 }
 
 /// GET /api/video-gen/avatars/:id/shots/:slot.png — public

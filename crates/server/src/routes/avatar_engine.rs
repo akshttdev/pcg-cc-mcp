@@ -347,7 +347,11 @@ async fn generate_bible(api_key: &str, reference_b64: &str) -> anyhow::Result<Ch
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Anthropic bible call failed {status}: {text}");
+        // Scrubbed: upstream body can echo our request payload (data URIs, headers)
+        // and feeds back through profile_error to the client. Log full detail for
+        // ops, surface only the status to the caller.
+        tracing::error!(target: "avatar_engine", %status, body = %text, "anthropic bible call failed");
+        anyhow::bail!("bible generation failed (status {status})");
     }
 
     #[derive(Deserialize)]
@@ -458,8 +462,16 @@ async fn generate_one_shot(
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
+        // Scrubbed: see note in generate_bible.
+        tracing::error!(
+            target: "avatar_engine",
+            slot = %slot.key,
+            %status,
+            body = %text,
+            "fal kontext shot generation failed",
+        );
         anyhow::bail!(
-            "fal kontext failed for slot {} ({status}): {text}",
+            "shot generation failed for slot {} (status {status})",
             slot.key
         );
     }
