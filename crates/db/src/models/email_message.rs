@@ -5,6 +5,8 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::db_uuid::DbUuid;
+
 #[derive(Debug, Error)]
 pub enum EmailMessageError {
     #[error(transparent)]
@@ -38,7 +40,9 @@ pub enum EmailPriority {
 pub struct EmailMessage {
     pub id: Uuid,
     pub email_account_id: Uuid,
-    pub project_id: Uuid,
+    // DbUuid because this column stores TEXT (matching the projects.id FK target).
+    // Plain Uuid only decodes 16-byte BLOB cells; DbUuid handles both formats.
+    pub project_id: DbUuid,
     pub provider_message_id: String,
     pub thread_id: Option<String>,
     pub from_address: String,
@@ -53,7 +57,7 @@ pub struct EmailMessage {
     pub snippet: Option<String>,
     pub has_attachments: i32,
     pub attachments: Option<String>, // JSON array
-    pub labels: Option<String>, // JSON array
+    pub labels: Option<String>,      // JSON array
     pub is_read: i32,
     pub is_starred: i32,
     pub is_draft: i32,
@@ -165,10 +169,16 @@ impl EmailMessage {
     ) -> Result<Self, EmailMessageError> {
         let id = Uuid::new_v4();
         let to_addresses = serde_json::to_string(&data.to_addresses).unwrap_or_default();
-        let cc_addresses = data.cc_addresses.map(|v| serde_json::to_string(&v).unwrap_or_default());
-        let bcc_addresses = data.bcc_addresses.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let cc_addresses = data
+            .cc_addresses
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let bcc_addresses = data
+            .bcc_addresses
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let attachments = data.attachments.map(|v| v.to_string());
-        let labels = data.labels.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let labels = data
+            .labels
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
 
         let message = sqlx::query_as::<_, EmailMessage>(
             r#"
@@ -185,7 +195,12 @@ impl EmailMessage {
         )
         .bind(id)
         .bind(data.email_account_id)
-        .bind(data.project_id)
+        // `email_messages.project_id` is a legacy BLOB column whose FK
+        // targets `projects.id` (TEXT, 36-char UUID string). SQLite compares
+        // FKs byte-for-byte, so we must store the UTF-8 of the hyphenated
+        // form to match. Binding `Uuid` directly serialises as 16 raw bytes
+        // and fails the FK with code 787.
+        .bind(data.project_id.to_string())
         .bind(&data.provider_message_id)
         .bind(&data.thread_id)
         .bind(&data.from_address)
@@ -213,14 +228,34 @@ impl EmailMessage {
         Ok(message)
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, EmailMessageError> {
-        sqlx::query_as::<_, EmailMessage>(
-            r#"SELECT * FROM email_messages WHERE id = ?1"#,
+    /// Insert a message if no row exists for `(email_account_id, provider_message_id)`.
+    /// Returns Ok(Some(row)) on insert, Ok(None) when the message was already stored.
+    /// Used by the sync worker to dedupe across polling cycles.
+    pub async fn insert_if_absent(
+        pool: &SqlitePool,
+        data: CreateEmailMessage,
+    ) -> Result<Option<Self>, EmailMessageError> {
+        let exists: Option<Uuid> = sqlx::query_scalar(
+            r#"SELECT id FROM email_messages
+               WHERE email_account_id = ?1 AND provider_message_id = ?2"#,
         )
-        .bind(id)
+        .bind(data.email_account_id)
+        .bind(&data.provider_message_id)
         .fetch_optional(pool)
-        .await?
-        .ok_or(EmailMessageError::NotFound)
+        .await?;
+
+        if exists.is_some() {
+            return Ok(None);
+        }
+        Self::create(pool, data).await.map(Some)
+    }
+
+    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, EmailMessageError> {
+        sqlx::query_as::<_, EmailMessage>(r#"SELECT * FROM email_messages WHERE id = ?1"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(EmailMessageError::NotFound)
     }
 
     pub async fn find_by_filter(
@@ -255,19 +290,24 @@ impl EmailMessage {
             conditions.push(format!("is_trash = {}", if is_trash { 1 } else { 0 }));
         }
         if let Some(needs_response) = filter.needs_response {
-            conditions.push(format!("needs_response = {}", if needs_response { 1 } else { 0 }));
+            conditions.push(format!(
+                "needs_response = {}",
+                if needs_response { 1 } else { 0 }
+            ));
         }
         if filter.crm_contact_id.is_some() {
             conditions.push("crm_contact_id = ?".to_string());
         }
         if filter.search.is_some() {
-            conditions.push("(subject LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR snippet LIKE ?)".to_string());
+            conditions.push(
+                "(subject LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR snippet LIKE ?)"
+                    .to_string(),
+            );
         }
 
         // For simplicity, using a more straightforward query approach
-        let messages = sqlx::query_as::<_, EmailMessage>(
-            &format!(
-                r#"
+        let messages = sqlx::query_as::<_, EmailMessage>(&format!(
+            r#"
                 SELECT * FROM email_messages
                 WHERE is_trash = 0 AND is_spam = 0
                 AND project_id = COALESCE(?1, project_id)
@@ -275,9 +315,8 @@ impl EmailMessage {
                 ORDER BY received_at DESC
                 LIMIT ?3 OFFSET ?4
                 "#
-            ),
-        )
-        .bind(filter.project_id)
+        ))
+        .bind(filter.project_id.map(|u| u.to_string()))
         .bind(filter.email_account_id)
         .bind(limit)
         .bind(offset)
@@ -301,7 +340,7 @@ impl EmailMessage {
             LIMIT ?2 OFFSET ?3
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(limit)
         .bind(offset)
         .fetch_all(pool)
@@ -323,7 +362,7 @@ impl EmailMessage {
             LIMIT ?2
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(limit)
         .fetch_all(pool)
         .await?;
@@ -354,7 +393,9 @@ impl EmailMessage {
         id: Uuid,
         data: UpdateEmailMessage,
     ) -> Result<Self, EmailMessageError> {
-        let labels = data.labels.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let labels = data
+            .labels
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let sentiment = data.sentiment.map(|s| format!("{:?}", s).to_lowercase());
         let priority = data.priority.map(|p| format!("{:?}", p).to_lowercase());
 
@@ -467,7 +508,8 @@ impl EmailMessage {
             WHERE project_id = ?1 AND is_trash = 0 AND is_spam = 0
             "#,
         )
-        .bind(project_id)
+        // email_messages.project_id stores TEXT to match projects.id FK
+        .bind(project_id.to_string())
         .fetch_one(pool)
         .await?;
 
@@ -501,12 +543,15 @@ impl EmailMessage {
             unread: stats.unread,
             starred: stats.starred,
             needs_response: stats.needs_response,
-            by_account: by_account.into_iter().map(|r| AccountStats {
-                account_id: r.account_id,
-                email_address: r.email_address,
-                total: r.total,
-                unread: r.unread,
-            }).collect(),
+            by_account: by_account
+                .into_iter()
+                .map(|r| AccountStats {
+                    account_id: r.account_id,
+                    email_address: r.email_address,
+                    total: r.total,
+                    unread: r.unread,
+                })
+                .collect(),
         })
     }
 

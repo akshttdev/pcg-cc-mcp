@@ -51,6 +51,25 @@ pub async fn move_deal_stage(
         crate::stage_transition::process_transition(pool, &deal, from_stage.as_ref(), &to_stage)
             .await;
 
+    // Fire-and-forget Slack notification. Soft-fails: dispatch_event returns
+    // Ok(0) when the org has no Slack workspace or no route configured.
+    if let Some(org_id) = &deal.organization_id {
+        let payload = serde_json::json!({
+            "deal_name": deal.name,
+            "stage_name": to_stage.name,
+            "deal_value_usd": deal.amount,
+            "owner": deal.owner_user_id,
+            "deal_url": format!("/organizations/{}/crm/deals/{}", org_id.as_str(), deal.id.as_str()),
+        });
+        let _ = services::services::slack::dispatch_event(
+            pool,
+            org_id,
+            db::models::slack_channel_route::SlackEventType::DealStageChanged,
+            &payload,
+        )
+        .await;
+    }
+
     Ok(Json(ApiResponse::success(result)))
 }
 

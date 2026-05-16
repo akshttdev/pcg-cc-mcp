@@ -63,6 +63,7 @@ impl PlatformConnector for ThreadsConnector {
         &self,
         code: &str,
         redirect_uri: &str,
+        _code_verifier: Option<&str>,
     ) -> Result<OAuthTokens, SocialError> {
         let params = [
             ("client_id", self.app_id.as_str()),

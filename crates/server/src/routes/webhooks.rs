@@ -319,6 +319,68 @@ struct GitHubRepo {
     full_name: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct GitHubPullRequestEvent {
+    action: String,
+    pull_request: GitHubPullRequest,
+    repository: Option<GitHubRepo>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)] // user / head / base are deserialized for forward use but unread today.
+struct GitHubPullRequest {
+    number: i64,
+    title: String,
+    body: Option<String>,
+    html_url: String,
+    state: String,
+    merged: Option<bool>,
+    merge_commit_sha: Option<String>,
+    user: Option<GitHubUser>,
+    head: Option<GitHubPullRequestRef>,
+    base: Option<GitHubPullRequestRef>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Captured for forward-compat with downstream branch-based linking.
+struct GitHubPullRequestRef {
+    #[serde(rename = "ref")]
+    ref_name: String,
+    sha: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubPushEvent {
+    #[serde(rename = "ref")]
+    ref_name: String,
+    after: Option<String>,
+    repository: Option<GitHubRepo>,
+    commits: Option<Vec<GitHubPushCommit>>,
+    pusher: Option<GitHubPusher>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Per-commit detail is captured but not yet persisted — webhook only bumps the sync cursor.
+struct GitHubPushCommit {
+    id: String,
+    message: String,
+    url: String,
+    author: Option<GitHubPushAuthor>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct GitHubPushAuthor {
+    name: Option<String>,
+    email: Option<String>,
+    username: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubPusher {
+    name: Option<String>,
+}
+
 /// Maximum body size for GitHub webhook payloads (256 KB).
 /// GitHub payloads are typically <50 KB; this is generous headroom.
 const GITHUB_WEBHOOK_MAX_BODY_SIZE: usize = 256 * 1024;
@@ -374,6 +436,8 @@ async fn github_webhook_handler(
 
     match event_type {
         "issues" => handle_github_issue_event(pool, &body, deployment.clone()).await,
+        "pull_request" => handle_github_pull_request_event(pool, &body).await,
+        "push" => handle_github_push_event(pool, &body).await,
         "ping" => {
             info!("GitHub webhook ping received");
             Ok(StatusCode::OK)
@@ -526,6 +590,201 @@ async fn handle_github_issue_event(
     info!(
         "Created DataSource from GitHub issue #{} ({}), firing workflow triggers",
         issue.number, event.action
+    );
+
+    Ok(StatusCode::OK)
+}
+
+/// Handles `pull_request` webhooks. Mirrors PR state onto any deliverable
+/// already linked to (repo, pr_number); otherwise creates a placeholder
+/// deliverable on the linked project so reviewers see it in the UI.
+async fn handle_github_pull_request_event(
+    pool: &sqlx::SqlitePool,
+    body: &[u8],
+) -> Result<StatusCode, StatusCode> {
+    use db::models::{
+        deliverable::{CreateDeliverable, Deliverable},
+        github_repo_link::GitHubRepoLink,
+    };
+
+    let event: GitHubPullRequestEvent = serde_json::from_slice(body).map_err(|e| {
+        warn!("Invalid GitHub pull_request payload: {e}");
+        StatusCode::BAD_REQUEST
+    })?;
+
+    // Only act on lifecycle events that actually change state.
+    if !["opened", "reopened", "closed", "edited", "synchronize"].contains(&event.action.as_str()) {
+        return Ok(StatusCode::OK);
+    }
+
+    let repo_name = match event.repository.as_ref() {
+        Some(r) => r.full_name.as_str(),
+        None => {
+            warn!("pull_request webhook missing repository field");
+            return Ok(StatusCode::OK);
+        }
+    };
+
+    let links = GitHubRepoLink::find_by_full_name(pool, repo_name)
+        .await
+        .map_err(|e| {
+            error!("Failed to look up github_repo_links for {repo_name}: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if links.is_empty() {
+        tracing::debug!("No project linked to GitHub repo {repo_name} — ignoring PR event");
+        return Ok(StatusCode::OK);
+    }
+
+    let pr = &event.pull_request;
+    let pr_state = if pr.merged.unwrap_or(false) {
+        "merged"
+    } else {
+        pr.state.as_str()
+    };
+
+    for link in links {
+        match Deliverable::find_by_pr(pool, link.id, pr.number).await {
+            Ok(Some(existing)) => {
+                if let Err(e) = Deliverable::set_github_pr(
+                    pool,
+                    existing.id,
+                    link.id,
+                    pr.number,
+                    &pr.html_url,
+                    pr_state,
+                )
+                .await
+                {
+                    error!(
+                        "Failed to update deliverable {} for PR #{}: {e}",
+                        existing.id, pr.number
+                    );
+                }
+                // Merged PRs flip the deliverable into 'done' if it isn't already.
+                if pr_state == "merged" && existing.status != "done" {
+                    let _ = Deliverable::move_status(pool, existing.id, "done").await;
+                }
+            }
+            Ok(None) => {
+                let title = format!("PR #{}: {}", pr.number, pr.title);
+                let description = pr.body.clone().unwrap_or_default();
+                match Deliverable::create(
+                    pool,
+                    CreateDeliverable {
+                        project_id: link.project_id,
+                        proposal_id: None,
+                        deliverable_type: Some("code".to_string()),
+                        title,
+                        description: Some(description),
+                        revision_rounds_allowed: None,
+                        working_file_url: Some(pr.html_url.clone()),
+                        due_date: None,
+                    },
+                )
+                .await
+                {
+                    Ok(d) => {
+                        if let Err(e) = Deliverable::set_github_pr(
+                            pool,
+                            d.id,
+                            link.id,
+                            pr.number,
+                            &pr.html_url,
+                            pr_state,
+                        )
+                        .await
+                        {
+                            error!("Failed to set PR metadata on new deliverable {}: {e}", d.id);
+                        }
+                        if pr_state == "merged" {
+                            let _ = Deliverable::move_status(pool, d.id, "done").await;
+                        }
+                        info!(
+                            "Created deliverable {} for PR #{} on project {}",
+                            d.id, pr.number, link.project_id
+                        );
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to create deliverable for PR #{} on project {}: {e}",
+                            pr.number, link.project_id
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to look up deliverable for PR #{}: {e}", pr.number);
+            }
+        }
+
+        if let Some(sha) = pr.merge_commit_sha.as_deref() {
+            let _ = GitHubRepoLink::touch_sync(pool, link.id, Some(sha)).await;
+        }
+    }
+
+    Ok(StatusCode::OK)
+}
+
+/// Handles `push` webhooks by advancing the linked repo's sync cursor and
+/// logging commits. Full commit ingestion lives in the `/github/links/{id}/
+/// commits` sync endpoint; the webhook only does the lightweight cursor bump.
+async fn handle_github_push_event(
+    pool: &sqlx::SqlitePool,
+    body: &[u8],
+) -> Result<StatusCode, StatusCode> {
+    use db::models::github_repo_link::GitHubRepoLink;
+
+    let event: GitHubPushEvent = serde_json::from_slice(body).map_err(|e| {
+        warn!("Invalid GitHub push payload: {e}");
+        StatusCode::BAD_REQUEST
+    })?;
+
+    let repo_name = match event.repository.as_ref() {
+        Some(r) => r.full_name.as_str(),
+        None => {
+            warn!("push webhook missing repository field");
+            return Ok(StatusCode::OK);
+        }
+    };
+
+    let links = GitHubRepoLink::find_by_full_name(pool, repo_name)
+        .await
+        .map_err(|e| {
+            error!("Failed to look up github_repo_links for {repo_name}: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if links.is_empty() {
+        tracing::debug!("No project linked to GitHub repo {repo_name} — ignoring push");
+        return Ok(StatusCode::OK);
+    }
+
+    let commit_count = event.commits.as_ref().map(|c| c.len()).unwrap_or(0);
+    let pusher = event
+        .pusher
+        .as_ref()
+        .and_then(|p| p.name.as_deref())
+        .unwrap_or("unknown");
+
+    for link in &links {
+        // Only advance the sync cursor on pushes to the default branch.
+        let on_default = event
+            .ref_name
+            .strip_prefix("refs/heads/")
+            .map(|b| b == link.default_branch)
+            .unwrap_or(false);
+
+        if on_default {
+            let _ = GitHubRepoLink::touch_sync(pool, link.id, event.after.as_deref()).await;
+        }
+    }
+
+    info!(
+        "Received GitHub push to {repo_name} ({} commits by {pusher}) — {} project link(s)",
+        commit_count,
+        links.len()
     );
 
     Ok(StatusCode::OK)

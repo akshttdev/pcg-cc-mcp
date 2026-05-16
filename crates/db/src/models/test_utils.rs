@@ -91,6 +91,7 @@ async fn bootstrap_schema(pool: &SqlitePool) {
             status TEXT NOT NULL DEFAULT 'active',
             last_sync_at TEXT,
             last_error TEXT,
+            integration_connection_id TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec'))
         );
@@ -196,6 +197,9 @@ async fn bootstrap_schema(pool: &SqlitePool) {
             signature TEXT,
             owner_type TEXT NOT NULL DEFAULT 'project',
             owner_id TEXT NOT NULL DEFAULT '',
+            gmail_history_id TEXT,
+            sync_cursor TEXT,
+            sync_in_progress INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
             UNIQUE(project_id, provider, email_address)

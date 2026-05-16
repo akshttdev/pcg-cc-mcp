@@ -32,6 +32,19 @@ pub struct Deliverable {
 
     /// ID of the active Editron cinematic brief, if one has been dispatched
     pub cinematic_brief_id: Option<String>,
+
+    /// Optional link to an upstream GitHub repository (github_repo_links.id).
+    #[ts(optional)]
+    pub github_repo_link_id: Option<String>,
+    /// PR number on the linked GitHub repo, if this deliverable tracks one.
+    #[ts(optional)]
+    pub github_pr_number: Option<i64>,
+    /// HTML URL of the PR — denormalised for quick UI display.
+    #[ts(optional)]
+    pub github_pr_url: Option<String>,
+    /// PR state: 'open' | 'closed' | 'merged'. Mirrors the upstream PR.
+    #[ts(optional)]
+    pub github_pr_state: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -176,5 +189,52 @@ impl Deliverable {
             .execute(pool)
             .await?;
         Ok(result.rows_affected() > 0)
+    }
+
+    /// Link or update GitHub PR metadata on this deliverable.
+    pub async fn set_github_pr(
+        pool: &SqlitePool,
+        id: Uuid,
+        link_id: Uuid,
+        pr_number: i64,
+        pr_url: &str,
+        pr_state: &str,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query(
+            "UPDATE deliverables SET \
+                github_repo_link_id = ?, \
+                github_pr_number = ?, \
+                github_pr_url = ?, \
+                github_pr_state = ?, \
+                updated_at = datetime('now','subsec') \
+             WHERE id = ?",
+        )
+        .bind(link_id.to_string())
+        .bind(pr_number)
+        .bind(pr_url)
+        .bind(pr_state)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Self::find_by_id(pool, id).await
+    }
+
+    /// Find a deliverable already linked to a (repo_link, pr_number).
+    /// Used by webhook handlers to update existing PR-backed deliverables
+    /// instead of duplicating them on every push.
+    pub async fn find_by_pr(
+        pool: &SqlitePool,
+        link_id: Uuid,
+        pr_number: i64,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as(
+            "SELECT * FROM deliverables \
+             WHERE github_repo_link_id = ? AND github_pr_number = ? \
+             LIMIT 1",
+        )
+        .bind(link_id.to_string())
+        .bind(pr_number)
+        .fetch_optional(pool)
+        .await
     }
 }

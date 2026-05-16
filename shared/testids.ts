@@ -1,40 +1,50 @@
-type AnyTestid = string & ((...args: unknown[]) => string);
+// Stub testid helpers. The real registry was deleted; this file restores
+// enough surface area that every consumer compiles and renders without
+// throwing. Each property can be used directly as a string
+// (`data-testid={tid.menu}`) or called with one or more string arguments
+// to produce a qualified id (`data-testid={tid.menu(deal.id)}`).
+//
+// Both forms render to a stable, hyphenated id derived from the prefix +
+// property name + arguments — adequate for development and E2E selectors
+// that don't pin the exact id format.
 
-function slugify(v: unknown): string {
-  return String(v)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+type Testid = string & ((...args: Array<string | number>) => string);
+type TestidGroup = Readonly<Record<string, Testid>>;
 
-function makeNamespace(ns: string): Record<string, AnyTestid> {
-  return new Proxy({} as Record<string, AnyTestid>, {
-    get(_target, prop: string | symbol): AnyTestid | undefined {
-      if (typeof prop !== 'string') return undefined;
-      if (prop === 'then') return undefined;
-      const key = slugify(prop);
-      const base = `${ns}-${key}`;
-      const fn = ((...args: unknown[]) => {
-        const suffix = args.map(slugify).filter(Boolean).join('-');
-        return suffix ? `${base}-${suffix}` : base;
-      }) as AnyTestid;
+const RESERVED = new Set<string | symbol>([
+  Symbol.toPrimitive,
+  Symbol.toStringTag,
+  Symbol.iterator,
+  'then',
+  'toString',
+  'toJSON',
+  'valueOf',
+  'constructor',
+]);
+
+function makeGroup(prefix: string): TestidGroup {
+  return new Proxy({} as TestidGroup, {
+    get(_target, prop) {
+      if (RESERVED.has(prop) || typeof prop === 'symbol') return undefined;
+      const base = `${prefix}-${String(prop)}`;
+      const fn = (...args: Array<string | number>) =>
+        args.length ? `${base}-${args.map(String).join('-')}` : base;
+      (fn as unknown as { toString(): string }).toString = () => base;
       Object.defineProperty(fn, Symbol.toPrimitive, { value: () => base });
-      Object.defineProperty(fn, 'toString', { value: () => base });
-      return fn;
+      return fn as Testid;
     },
   });
 }
 
-export const dealCard = makeNamespace('deal-card');
-export const pipeline = makeNamespace('pipeline');
-export const dealDetail = makeNamespace('deal-detail');
-export const agentHistory = makeNamespace('agent-history');
-export const callScheduling = makeNamespace('call-scheduling');
-export const deck = makeNamespace('deck');
-export const discovery = makeNamespace('discovery');
-export const pipelineSettings = makeNamespace('pipeline-settings');
-export const review = makeNamespace('review');
+export const dealCard = makeGroup('deal-card');
+export const pipeline = makeGroup('pipeline');
+export const dealDetail = makeGroup('deal-detail');
+export const agentHistory = makeGroup('agent-history');
+export const callScheduling = makeGroup('call-scheduling');
+export const deck = makeGroup('deck');
+export const discovery = makeGroup('discovery');
+export const pipelineSettings = makeGroup('pipeline-settings');
+export const review = makeGroup('review');
 
 export const avatars = {
   page: 'avatars-page',

@@ -9145,6 +9145,7 @@ dependencies = [
  "futures-util",
  "git2",
  "hex",
+ "hmac",
  "ignore",
  "json-patch 2.0.0",
  "lazy_static",

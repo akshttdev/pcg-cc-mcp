@@ -3,6 +3,8 @@
 //! Handles publishing content to multiple platforms with retry logic,
 //! rate limiting, and error handling.
 
+use std::str::FromStr;
+
 use db::models::{
     social_account::{SocialAccount, SocialPlatform},
     social_post::{PostStatus, SocialPost, UpdateSocialPost},
@@ -12,6 +14,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use super::{get_connector, PublishContent, PublishResult, SocialError};
+use crate::services::oauth_token_manager;
 
 /// Publisher configuration
 pub struct PublisherConfig {
@@ -44,6 +47,25 @@ impl Publisher {
 
     pub fn with_config(pool: SqlitePool, config: PublisherConfig) -> Self {
         Self { pool, config }
+    }
+
+    /// Returns a usable plaintext access token for a social account.
+    ///
+    /// Prefers the unified OAuth Token Manager (encrypted store, auto-refresh)
+    /// when `integration_connection_id` is set, and falls back to the legacy
+    /// plaintext `access_token` column for accounts created before the
+    /// 20260428 migration.
+    async fn resolve_access_token(&self, account: &SocialAccount) -> Result<String, SocialError> {
+        if let Some(connection_id) = account.integration_connection_id {
+            return oauth_token_manager::get_access_token(&self.pool, connection_id)
+                .await
+                .map_err(|e| SocialError::AuthError(format!("Token unavailable: {e}")));
+        }
+
+        account
+            .access_token
+            .clone()
+            .ok_or_else(|| SocialError::AuthError("No access token on account".into()))
     }
 
     /// Publish a single post to its target platforms
@@ -127,23 +149,10 @@ impl Publisher {
             .await
             .map_err(|_| SocialError::PlatformError("Account not found".to_string()))?;
 
-        let access_token = account
-            .access_token
-            .ok_or_else(|| SocialError::AuthError("No access token".to_string()))?;
+        let access_token = self.resolve_access_token(&account).await?;
 
-        // Parse platform
-        let platform: SocialPlatform = match account.platform.as_str() {
-            "instagram" => SocialPlatform::Instagram,
-            "linkedin" => SocialPlatform::LinkedIn,
-            "twitter" => SocialPlatform::Twitter,
-            "tiktok" => SocialPlatform::TikTok,
-            "youtube" => SocialPlatform::YouTube,
-            "facebook" => SocialPlatform::Facebook,
-            "threads" => SocialPlatform::Threads,
-            "bluesky" => SocialPlatform::Bluesky,
-            "pinterest" => SocialPlatform::Pinterest,
-            _ => return Err(SocialError::UnsupportedPlatform(account.platform)),
-        };
+        let platform = SocialPlatform::from_str(&account.platform)
+            .map_err(|_| SocialError::UnsupportedPlatform(account.platform.clone()))?;
 
         let connector = get_connector(platform)?;
 
@@ -167,6 +176,10 @@ impl Publisher {
                 .unwrap_or_default(),
             link: None,
             scheduled_for: post.scheduled_for,
+            platform_specific: post
+                .platform_specific
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok()),
         };
 
         // Retry logic
@@ -237,4 +250,31 @@ impl Publisher {
 
         Ok(published_count)
     }
+}
+
+/// Spawn the scheduled-post publisher loop.
+///
+/// Every 5 minutes, scans `social_posts` for entries with `status='scheduled'`
+/// and `scheduled_for <= now`, then publishes them through the appropriate
+/// platform connector. Errors per post are logged but do not abort the loop.
+pub fn spawn_publisher_loop(pool: SqlitePool) {
+    use std::time::Duration;
+
+    use tokio::time::interval;
+
+    tokio::spawn(async move {
+        let publisher = Publisher::new(pool);
+        // First scan after 60s so the rest of the server is up.
+        let mut ticker = interval(Duration::from_secs(300));
+        ticker.tick().await; // discard immediate fire
+        loop {
+            ticker.tick().await;
+            match publisher.process_scheduled_posts().await {
+                Ok(0) => {}
+                Ok(n) => info!("Social publisher: processed {n} scheduled post(s)"),
+                Err(e) => error!("Social publisher loop error: {e}"),
+            }
+        }
+    });
+    info!("Social publisher worker spawned (5-min interval)");
 }

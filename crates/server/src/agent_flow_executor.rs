@@ -1515,6 +1515,40 @@ impl AgentFlowExecutor {
                 flow.id,
                 message
             );
+
+            // Slack: agent escalation. Best-effort — resolve org via the flow's task → project.
+            let task_id_str = flow.task_id.as_str().to_string();
+            if let Ok(Some(task)) =
+                db::models::task::Task::find_by_id(&self.pool, &task_id_str).await
+            {
+                if let Ok(Some(project)) =
+                    db::models::project::Project::find_by_id(&self.pool, &task.project_id).await
+                {
+                    if let Some(org_str) = project.organization_id {
+                        let org_db = db::db_uuid::DbUuid::from_string(org_str.clone());
+                        let payload = serde_json::json!({
+                            "agent_name": flow
+                                .planner_agent_id
+                                .as_ref()
+                                .map(|a| a.as_str().to_string())
+                                .unwrap_or_else(|| "Agent".to_string()),
+                            "task_title": task.title,
+                            "blocked_reason": message,
+                            "review_url": format!(
+                                "/organizations/{}/projects/{}/tasks/{}",
+                                org_str, project.id, task.id
+                            ),
+                        });
+                        let _ = services::services::slack::dispatch_event(
+                            &self.pool,
+                            &org_db,
+                            db::models::slack_channel_route::SlackEventType::AgentEscalation,
+                            &payload,
+                        )
+                        .await;
+                    }
+                }
+            }
         }
     }
 
