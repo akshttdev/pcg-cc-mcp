@@ -1,4 +1,3 @@
-import { useTexture } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -226,6 +225,32 @@ interface OrbMeshProps {
   outputVolumeRef?: React.RefObject<number>;
 }
 
+/**
+ * Procedural fallback for the perlin noise texture the orb shader samples.
+ * The original `/perlin-noise.png` asset is missing from public/; generating
+ * a 256×256 value-noise texture at runtime avoids the 404 and keeps the orb
+ * shader happy.
+ */
+function buildNoiseTexture(): THREE.DataTexture {
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  for (let i = 0; i < size * size; i++) {
+    const v = Math.floor(Math.random() * 256);
+    data[i * 4 + 0] = v;
+    data[i * 4 + 1] = v;
+    data[i * 4 + 2] = v;
+    data[i * 4 + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.minFilter = THREE.LinearMipMapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function OrbMesh({
   state,
   isAdmin,
@@ -234,7 +259,7 @@ function OrbMesh({
   outputVolumeRef,
 }: OrbMeshProps) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const texture = useTexture('/perlin-noise.png');
+  const texture = useMemo(() => buildNoiseTexture(), []);
 
   const offsets = useMemo(() => {
     const rng = seededRng(seed);

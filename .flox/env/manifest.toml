@@ -25,6 +25,8 @@ libopus.pkg-path = "libopus"
 pkg-config.pkg-path = "pkg-config"
 sccache.pkg-path = "sccache"
 lld.pkg-path = "lld"
+ollama.pkg-path = "ollama"
+python311.pkg-path = "python311"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 

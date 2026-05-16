@@ -922,6 +922,14 @@ export type HealthStatus = "healthy" | "warning" | "critical" | "unknown";
 
 export type ProjectHealthSummary = { project_id: string, health_status: string, active_issues_count: bigint, critical_issues: bigint, warning_issues: bigint, knowledge_completeness: number, last_activity_at: string | null, };
 
+export type EntityGraphNode = { id: string, node_type: string, ref_id: string, ref_table: string, label: string, metadata: string | null, created_at: string, updated_at: string, };
+
+export type EntityGraphEdge = { id: string, from_node_id: string, to_node_id: string, edge_type: string, weight: number | null, metadata: string | null, created_at: string, };
+
+export type EntitySubgraph = { nodes: Array<EntityGraphNode>, edges: Array<EntityGraphEdge>, };
+
+export type SyncGlobalStats = { organizations_synced: number, clients_synced: number, companies_synced: number, projects_synced: number, pipelines_synced: number, deals_synced: number, proposals_synced: number, brand_profiles_synced: number, knowledge_sources_synced: number, };
+
 export type ProjectKnowledgeResponse = { project_id: string, completeness: ProjectKnowledgeCompleteness | null, total_sources: number, stale_count: number, sources_by_type: { [key in string]?: Array<ProjectKnowledgeSource> }, };
 
 export type SidebarTree = { owned_orgs: Array<SidebarOrg>, member_orgs: Array<SidebarOrg>, };

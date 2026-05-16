@@ -181,3 +181,7 @@ rustc-ice-2026-03-19T23_13_07-67791.txt
 # Playwright audit screenshots
 *.png
 demo_impl/
+
+# Python virtualenvs
+.venv/
+**/.venv*/
