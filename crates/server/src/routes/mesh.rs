@@ -79,6 +79,138 @@ pub struct TransactionLog {
     pub task_id: Option<Uuid>,
 }
 
+/// Resolve this node's APN identity without APN Core running.
+/// Priority: APN_NODE_ID env → ~/.apn/node_identity.json → hostname fallback
+fn resolve_node_id_fallback() -> String {
+    // 1. Check env var (set in .env)
+    if let Ok(id) = std::env::var("APN_NODE_ID") {
+        if !id.is_empty() {
+            return id;
+        }
+    }
+
+    // 2. Read ~/.apn/node_identity.json
+    if let Some(home) = dirs::home_dir() {
+        let identity_path = home.join(".apn").join("node_identity.json");
+        if let Ok(contents) = std::fs::read_to_string(&identity_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                if let Some(id) = json.get("node_id").and_then(|v| v.as_str()) {
+                    if !id.is_empty() {
+                        return id.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Hostname fallback (last resort)
+    let hostname = hostname::get()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+    format!("apn_{}", &hostname.replace('.', "-"))
+}
+
+/// Fetch peers from APN Core API (replaces log file parsing)
+async fn fetch_peers_from_apn_core() -> (Vec<PeerInfo>, bool, String, u64) {
+    let client = apn_client::ApnClient::new();
+
+    // Try to get identity from APN Core, then env/node_identity.json, then hostname
+    let node_id = match client.get_identity().await {
+        Ok(identity) => identity.node_id,
+        Err(_) => resolve_node_id_fallback(),
+    };
+
+    let (peers, relay_connected, uptime) = match client.get_network_stats().await {
+        Ok(stats) => {
+            let relay = stats.status == "online";
+            let uptime = stats.uptime_seconds;
+            let peers = match client.get_peers().await {
+                Ok(peer_list) => peer_list
+                    .peers
+                    .into_iter()
+                    .map(|p| PeerInfo {
+                        peer_id: p.node_id,
+                        address: p.wallet_address,
+                        latency_ms: None,
+                        connection_type: p.connection_type,
+                        bandwidth_mbps: None,
+                        reputation: 1.0,
+                        capabilities: p.capabilities,
+                        device_name: None,
+                        resources: None,
+                        last_seen: None,
+                    })
+                    .collect(),
+                Err(_) => vec![],
+            };
+            (peers, relay, uptime)
+        }
+        Err(_) => {
+            let (legacy_peers, legacy_relay) = fetch_peers_from_log_fallback().await;
+            (legacy_peers, legacy_relay, 0)
+        }
+    };
+
+    (peers, relay_connected, node_id, uptime)
+}
+
+/// Legacy fallback: parse peers from log file (used when APN Core is not running)
+async fn fetch_peers_from_log_fallback() -> (Vec<PeerInfo>, bool) {
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader},
+    };
+
+    use regex::Regex;
+
+    let log_path = "/tmp/apn_node.log";
+    let mut peers = std::collections::HashMap::new();
+    let mut relay_connected = false;
+
+    if let Ok(file) = File::open(log_path) {
+        let reader = BufReader::new(file);
+        let peer_regex = Regex::new(
+            r#"Message from apn\.discovery \(([^)]+)\): PeerAnnouncement \{ wallet_address: "([^"]+)", capabilities: \[([^\]]+)\], resources: (.+?) \}"#
+        ).unwrap();
+        let relay_regex = Regex::new(r"Relay connected").unwrap();
+        let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
+
+        for line in lines.iter().rev().take(1000) {
+            if relay_regex.is_match(line) {
+                relay_connected = true;
+            }
+            if let Some(caps) = peer_regex.captures(line) {
+                let node_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                let wallet = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                let caps_str = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+                let capabilities: Vec<String> = caps_str
+                    .split(',')
+                    .map(|s| s.trim().trim_matches('"').to_string())
+                    .collect();
+                if !peers.contains_key(node_id) {
+                    peers.insert(
+                        node_id.to_string(),
+                        PeerInfo {
+                            peer_id: node_id.to_string(),
+                            address: wallet.to_string(),
+                            latency_ms: None,
+                            connection_type: "NATS".to_string(),
+                            bandwidth_mbps: None,
+                            reputation: 1.0,
+                            capabilities,
+                            device_name: None,
+                            resources: None,
+                            last_seen: None,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    (peers.into_values().collect(), relay_connected)
+}
+
 fn get_local_resources() -> ResourceStats {
     let mut sys = sysinfo::System::new_all();
     sys.refresh_all();
@@ -267,25 +399,47 @@ pub async fn get_mesh_peers(
 pub async fn get_apn_identity(
     State(_deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
-    if let Some(mgr) = apn_peer_manager::global() {
-        let value = serde_json::json!({
-            "node_id": mgr.node_id,
-            "wallet_address": mgr.wallet_address,
-            "public_key": mgr.public_key,
-            "apn_core_connected": mgr.is_relay_connected().await,
-            "capabilities": mgr.capabilities,
-            "uptime_seconds": mgr.uptime_seconds(),
-        });
-        Ok(ResponseJson(ApiResponse::success(value)))
-    } else {
-        let value = serde_json::json!({
-            "node_id": null,
-            "wallet_address": null,
-            "public_key": null,
-            "apn_core_connected": false,
-            "message": "APN peer manager not initialized",
-        });
-        Ok(ResponseJson(ApiResponse::success(value)))
+    let client = apn_client::ApnClient::new();
+
+    match client.get_identity().await {
+        Ok(identity) => {
+            let value = serde_json::json!({
+                "node_id": identity.node_id,
+                "wallet_address": identity.wallet_address,
+                "public_key": identity.public_key,
+                "apn_core_connected": true,
+            });
+            Ok(ResponseJson(ApiResponse::success(value)))
+        }
+        Err(_) => {
+            let node_id = resolve_node_id_fallback();
+            let mut wallet = std::env::var("APN_WALLET_ADDRESS").ok();
+            let mut device_name = std::env::var("APN_DEVICE_NAME").ok();
+            let mut public_key: Option<String> = None;
+
+            if let Some(home) = dirs::home_dir() {
+                let identity_path = home.join(".apn").join("node_identity.json");
+                if let Ok(contents) = std::fs::read_to_string(&identity_path) {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                        let str_field =
+                            |key: &str| json.get(key).and_then(|v| v.as_str()).map(String::from);
+                        wallet = wallet.or_else(|| str_field("wallet_address"));
+                        public_key = str_field("public_key");
+                        device_name = device_name.or_else(|| str_field("device_name"));
+                    }
+                }
+            }
+
+            let value = serde_json::json!({
+                "node_id": node_id,
+                "device_name": device_name,
+                "wallet_address": wallet,
+                "public_key": public_key,
+                "apn_core_connected": false,
+                "message": "Identity resolved from local config (APN Core not running)",
+            });
+            Ok(ResponseJson(ApiResponse::success(value)))
+        }
     }
 }
 
