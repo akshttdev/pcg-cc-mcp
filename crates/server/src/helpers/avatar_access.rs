@@ -1,10 +1,11 @@
-//! Avatar Profile access control helper.
+//! Avatar Profile + Video Job access control helpers.
 //!
-//! Modeled on `require_deal_org_access` in `routes/crm_deals.rs`. Loads
-//! the avatar by id, admin-bypasses, otherwise asserts the caller is a
-//! member of the avatar's organization.
+//! Modeled on `require_deal_org_access` in `routes/crm_deals.rs`. Loads the
+//! resource by id, admin-bypasses, otherwise asserts the caller is a member
+//! of the resource's organization. Video jobs derive their org via the
+//! linked avatar profile (jobs don't carry org_id directly).
 
-use db::models::avatar_profile::AvatarProfile;
+use db::models::{avatar_profile::AvatarProfile, video_job::VideoJob};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -41,4 +42,27 @@ pub async fn require_avatar_org_access(
     }
 
     Ok(avatar)
+}
+
+/// Verify the caller can access a video job. Jobs derive their org through
+/// the linked avatar profile, so this loads the job, then delegates to
+/// `require_avatar_org_access`.
+///
+/// Errors mirror `require_avatar_org_access`.
+pub async fn require_video_job_org_access(
+    access: &AccessContext,
+    pool: &SqlitePool,
+    job_id: Uuid,
+) -> Result<VideoJob, ApiError> {
+    let job = VideoJob::find(pool, job_id)
+        .await
+        .map_err(ApiError::Database)?
+        .ok_or_else(|| ApiError::NotFound(format!("video job {}", job_id)))?;
+
+    if access.is_admin {
+        return Ok(job);
+    }
+
+    require_avatar_org_access(access, pool, job.avatar_profile_id).await?;
+    Ok(job)
 }

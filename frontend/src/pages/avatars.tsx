@@ -244,6 +244,14 @@ function ProfileStatusBadge({
       </div>
     );
   }
+  if (status === 'partial') {
+    return (
+      <div className="flex items-center gap-1 text-xs text-amber-300">
+        <CheckCircle2 className="h-3 w-3" />
+        {shots.length}/16 shots — retry to fill in
+      </div>
+    );
+  }
   if (status === 'failed') {
     return <div className="text-xs text-red-300">Failed</div>;
   }
@@ -446,7 +454,9 @@ function AvatarDetail({
               ? `Generating ${shots.length}/16…`
               : avatar.profile_status === 'ready'
                 ? 'Regenerate Profile'
-                : 'Generate Profile'}
+                : avatar.profile_status === 'partial'
+                  ? `Retry (${shots.length}/16 done)`
+                  : 'Generate Profile'}
           </button>
         </div>
       </div>

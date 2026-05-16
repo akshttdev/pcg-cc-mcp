@@ -22,8 +22,11 @@ use tokio::fs;
 use uuid::Uuid;
 
 use crate::{
-    error::ApiError, helpers::avatar_access::require_avatar_org_access, middleware::AccessContext,
-    routes::avatar_engine, DeploymentImpl,
+    error::ApiError,
+    helpers::avatar_access::{require_avatar_org_access, require_video_job_org_access},
+    middleware::AccessContext,
+    routes::avatar_engine,
+    DeploymentImpl,
 };
 
 // ---------------------------------------------------------------------------
@@ -803,9 +806,25 @@ struct ListJobsParams {
 
 async fn list_jobs(
     State(deployment): State<DeploymentImpl>,
+    Extension(ctx): Extension<AccessContext>,
     Query(params): Query<ListJobsParams>,
 ) -> Result<Json<Vec<VideoJob>>, ApiError> {
     let pool = &deployment.db().pool;
+
+    // Scope by avatar (which scopes by org). Non-admins must specify an
+    // avatar_id they have access to; admins may list across the system.
+    match params.avatar_id {
+        Some(avatar_id) => {
+            require_avatar_org_access(&ctx, pool, avatar_id).await?;
+        }
+        None if !ctx.is_admin => {
+            return Err(ApiError::BadRequest(
+                "avatar_id query parameter required".to_string(),
+            ));
+        }
+        None => {} // admin
+    }
+
     let jobs = VideoJob::list(pool, params.avatar_id)
         .await
         .map_err(ApiError::Database)?;
@@ -818,14 +837,13 @@ async fn create_job(
     Json(body): Json<CreateVideoJob>,
 ) -> Result<(StatusCode, Json<VideoJob>), ApiError> {
     let pool = deployment.db().pool.clone();
-    let _ctx = ctx; // user is authenticated; skip FK binding until blob/uuid alignment resolved
-    let created_by: Option<uuid::Uuid> = None;
 
-    // Look up the avatar for its voice ID
-    let avatar = AvatarProfile::find(&pool, body.avatar_profile_id)
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", body.avatar_profile_id)))?;
+    // Access control: caller must have access to the avatar this job uses.
+    // Returns the avatar so we can reuse it for voice/identity below.
+    let avatar = require_avatar_org_access(&ctx, &pool, body.avatar_profile_id).await?;
+
+    // Wire created_by from auth context so per-user billing attribution works.
+    let created_by = Uuid::parse_str(ctx.user_id.as_str()).ok();
 
     let job = VideoJob::create(&pool, body, created_by)
         .await
@@ -860,20 +878,20 @@ async fn create_job(
 async fn get_job(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
+    Extension(ctx): Extension<AccessContext>,
 ) -> Result<Json<VideoJob>, ApiError> {
     let pool = &deployment.db().pool;
-    let job = VideoJob::find(pool, id)
-        .await
-        .map_err(ApiError::Database)?
-        .ok_or_else(|| ApiError::NotFound(format!("job {}", id)))?;
+    let job = require_video_job_org_access(&ctx, pool, id).await?;
     Ok(Json(job))
 }
 
 async fn delete_job(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
+    Extension(ctx): Extension<AccessContext>,
 ) -> Result<StatusCode, ApiError> {
     let pool = &deployment.db().pool;
+    require_video_job_org_access(&ctx, pool, id).await?;
     let deleted = VideoJob::delete(pool, id)
         .await
         .map_err(ApiError::Database)?;

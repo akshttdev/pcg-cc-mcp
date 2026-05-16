@@ -87,10 +87,22 @@ export default defineConfig({
     {
       name: browser,
       dependencies: ["setup"],
-      testIgnore: /demos\/|quarantine\/|pipeline\//,
+      testIgnore: /demos\/|quarantine\/|pipeline\/|avatar-engine\.spec\.ts/,
       use: {
         ...devices[browserDeviceMap[browser] || "Desktop Chrome"],
         storageState: authFile,
+      },
+    },
+
+    // Pure-API specs — no browser auth required, runs against a live backend.
+    // Hits the backend port directly (not via Vite proxy) so status codes
+    // come straight from the Axum routes.
+    {
+      name: "api",
+      testMatch: /avatar-engine\.spec\.ts/,
+      use: {
+        ...devices[browserDeviceMap[browser] || "Desktop Chrome"],
+        baseURL: `http://127.0.0.1:${process.env.BACKEND_PORT || 3001}`,
       },
     },
 
