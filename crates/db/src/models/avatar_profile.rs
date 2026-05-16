@@ -109,10 +109,7 @@ impl AvatarProfile {
             .await
     }
 
-    pub async fn list(
-        pool: &SqlitePool,
-        org_id: Option<Uuid>,
-    ) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn list(pool: &SqlitePool, org_id: Option<Uuid>) -> Result<Vec<Self>, sqlx::Error> {
         match org_id {
             Some(oid) => sqlx::query_as(
                 "SELECT * FROM avatar_profiles WHERE organization_id = ? ORDER BY created_at DESC",
