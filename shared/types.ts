@@ -762,7 +762,7 @@ description_field: string | null, };
 
 export type AirtableConnectionWithBase = { connection: AirtableBase, base_info: AirtableBaseInfo | null, };
 
-export type FlowType = "content_creation" | "research" | "engagement" | "scheduling" | "campaign" | "analysis" | "monitoring" | "custom";
+export type FlowType = "content_creation" | "research" | "engagement" | "scheduling" | "campaign" | "analysis" | "monitoring" | "custom" | "task_execution";
 
 export type FlowStatus = "planning" | "executing" | "verifying" | "completed" | "failed" | "paused" | "awaiting_approval" | "needs_clarification";
 
@@ -777,6 +777,10 @@ clarification_request: string | null,
  * Link to CRM deal (for pipeline-triggered agent flows)
  */
 crm_deal_id: string | null, 
+/**
+ * Link to project (for task-execution flows)
+ */
+project_id: string | null, 
 /**
  * Agent auto-start can be cancelled before this deadline
  */
@@ -1009,3 +1013,21 @@ attachments: string, proposal_id: string | null, created_at: string, updated_at:
 export type ContactResearchPass = { id: string, crm_contact_id: string, pass_number: bigint, research_focus: string, focus_prompt: string | null, status: string, summary: string | null, raw_results: string | null, key_findings: string, search_queries: string, confidence_delta: number, agent_used: string | null, tokens_used: bigint | null, error: string | null, created_at: string, completed_at: string | null, };
 
 export type ContactSocialProfile = { id: string, crm_contact_id: string, platform: string, handle: string | null, profile_url: string | null, follower_count: bigint | null, following_count: bigint | null, bio: string | null, verified: number, raw_data: string | null, last_synced_at: string | null, created_at: string, updated_at: string, };
+
+export type AvatarProfile = { id: string, organization_id: string | null, created_by: string | null, name: string, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string, elevenlabs_voice_id: string, voice_sample_url: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, status: string, error_message: string | null, created_at: string, updated_at: string, 
+/**
+ * JSON array of `{ slot, url, prompt, locked, generated_at }` entries — one per generated shot.
+ */
+portrait_set: string, 
+/**
+ * Structured character bible JSON produced by the Claude vision pass.
+ */
+bible_json: string | null, 
+/**
+ * Lifecycle of the profile-generation pipeline: `none`/`pending`/`generating`/`ready`/`failed`.
+ */
+profile_status: string, profile_error: string | null, };
+
+export type CreateAvatarProfile = { organization_id: string | null, name: string, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string | null, elevenlabs_voice_id: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, };
+
+export type UpdateAvatarProfile = { name: string | null, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string | null, elevenlabs_voice_id: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, status: string | null, bible_json: string | null, };
