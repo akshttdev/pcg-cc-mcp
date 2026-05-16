@@ -296,6 +296,10 @@ fn generate_types_content() -> String {
         db::models::contact_note::ContactNote::decl(),
         db::models::contact_research_pass::ContactResearchPass::decl(),
         db::models::contact_social_profile::ContactSocialProfile::decl(),
+        // Avatar Profile Engine
+        db::models::avatar_profile::AvatarProfile::decl(),
+        db::models::avatar_profile::CreateAvatarProfile::decl(),
+        db::models::avatar_profile::UpdateAvatarProfile::decl(),
     ];
 
     let body = decls
