@@ -78,19 +78,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             post(generate_profile),
         )
         .route("/video-gen/avatars/{id}/render-motion", post(render_motion))
-        // Video jobs
-        .route("/video-gen/jobs", get(list_jobs).post(create_job))
-        .route("/video-gen/jobs/{id}", get(get_job).delete(delete_job))
-        .with_state(deployment.clone())
-}
-
-/// Public routes — no auth (audio/video file serving so HeyGen can fetch)
-pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
-    Router::new()
-        .route("/video-gen/audio/{job_id}", get(serve_audio))
-        .route("/video-gen/video/{job_id}", get(serve_video))
-        .route("/video-gen/final/{job_id}", get(serve_final_video))
-        // Avatar engine asset serving (HeyGen / Hedra need fetchable URLs)
+        // Avatar engine asset serving — auth-required to prevent UUID-guessing
+        // leaks across orgs. HeyGen / external consumers are gone, frontend
+        // sends cookies, so authenticating these is feasible.
         .route(
             "/video-gen/avatars/{id}/reference.png",
             get(serve_reference),
@@ -100,6 +90,18 @@ pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/video-gen/avatars/{id}/motion/{clip}",
             get(serve_motion_clip),
         )
+        // Video jobs
+        .route("/video-gen/jobs", get(list_jobs).post(create_job))
+        .route("/video-gen/jobs/{id}", get(get_job).delete(delete_job))
+        .with_state(deployment.clone())
+}
+
+/// Public routes — no auth. Legacy VideoJob serve endpoints only.
+pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+    Router::new()
+        .route("/video-gen/audio/{job_id}", get(serve_audio))
+        .route("/video-gen/video/{job_id}", get(serve_video))
+        .route("/video-gen/final/{job_id}", get(serve_final_video))
         .with_state(deployment.clone())
 }
 
@@ -358,12 +360,20 @@ async fn generate_profile(
     Ok(Json(refreshed))
 }
 
-/// GET /api/video-gen/avatars/:id/reference.png — public
+/// GET /api/video-gen/avatars/:id/reference.png — auth-required
 ///
 /// Path keeps the historical `.png` suffix for backwards compatibility, but the
 /// actual file may be PNG or JPEG (validated at upload). We sniff bytes to emit
 /// the correct `Content-Type` header.
-async fn serve_reference(Path(id): Path<Uuid>) -> Result<Response, ApiError> {
+///
+/// Access control: caller must be a member of the avatar's org (or admin).
+async fn serve_reference(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Extension(ctx): Extension<AccessContext>,
+) -> Result<Response, ApiError> {
+    let pool = &deployment.db().pool;
+    require_avatar_org_access(&ctx, pool, id).await?;
     let path = avatar_dir(id).join("reference.png");
     let data = fs::read(&path)
         .await
@@ -373,7 +383,7 @@ async fn serve_reference(Path(id): Path<Uuid>) -> Result<Response, ApiError> {
         .unwrap_or("image/png");
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, "public, max-age=3600")
+        .header(header::CACHE_CONTROL, "private, max-age=3600")
         .body(Body::from(data))
         .unwrap_or_else(|_| Response::new(Body::empty())))
 }
@@ -685,7 +695,14 @@ async fn render_motion(
 }
 
 /// GET /api/video-gen/avatars/:id/motion/<clip> — public
-async fn serve_motion_clip(Path((id, clip)): Path<(Uuid, String)>) -> Result<Response, ApiError> {
+async fn serve_motion_clip(
+    State(deployment): State<DeploymentImpl>,
+    Path((id, clip)): Path<(Uuid, String)>,
+    Extension(ctx): Extension<AccessContext>,
+) -> Result<Response, ApiError> {
+    let pool = &deployment.db().pool;
+    require_avatar_org_access(&ctx, pool, id).await?;
+
     // Strict whitelist: alnum + underscore/dash, then literal `.mp4`. Rejects
     // backslash, NUL, leading dots, anything with a slash or `..`, etc.
     static MOTION_CLIP_RE: once_cell::sync::Lazy<regex::Regex> =
@@ -700,7 +717,7 @@ async fn serve_motion_clip(Path((id, clip)): Path<(Uuid, String)>) -> Result<Res
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "video/mp4")
         .header(header::ACCEPT_RANGES, "bytes")
-        .header(header::CACHE_CONTROL, "public, max-age=86400")
+        .header(header::CACHE_CONTROL, "private, max-age=86400")
         .body(Body::from(data))
         .unwrap_or_else(|_| Response::new(Body::empty())))
 }
@@ -796,8 +813,15 @@ async fn elevenlabs_tts(api_key: &str, voice_id: &str, text: &str) -> anyhow::Re
     anyhow::bail!("tts failed: voice {voice_id} not supported by any model")
 }
 
-/// GET /api/video-gen/avatars/:id/shots/:slot.png — public
-async fn serve_shot(Path((id, slot)): Path<(Uuid, String)>) -> Result<Response, ApiError> {
+/// GET /api/video-gen/avatars/:id/shots/:slot.png — auth-required
+async fn serve_shot(
+    State(deployment): State<DeploymentImpl>,
+    Path((id, slot)): Path<(Uuid, String)>,
+    Extension(ctx): Extension<AccessContext>,
+) -> Result<Response, ApiError> {
+    let pool = &deployment.db().pool;
+    require_avatar_org_access(&ctx, pool, id).await?;
+
     // Slot must match the canonical taxonomy to avoid path traversal.
     let allowed = avatar_engine::SHOT_SLOTS.iter().any(|s| s.key == slot);
     if !allowed {
@@ -809,7 +833,7 @@ async fn serve_shot(Path((id, slot)): Path<(Uuid, String)>) -> Result<Response, 
         .map_err(|_| ApiError::NotFound(format!("shot {slot} for avatar {id}")))?;
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "image/png")
-        .header(header::CACHE_CONTROL, "public, max-age=86400")
+        .header(header::CACHE_CONTROL, "private, max-age=86400")
         .body(Body::from(data))
         .unwrap_or_else(|_| Response::new(Body::empty())))
 }

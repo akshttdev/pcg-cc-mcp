@@ -51,35 +51,38 @@ test.describe("Avatar Engine — access control", () => {
   });
 });
 
-test.describe("Avatar Engine — defense in depth (public routes)", () => {
-  test("path traversal on motion clip filename is refused", async ({ request }) => {
-    // Public route: no auth required, but the regex must reject `..` in the
-    // clip filename. Avatar UUID is real-shaped so we get past Path<Uuid>.
+test.describe("Avatar Engine — asset isolation (auth-gated serve)", () => {
+  // Serve endpoints moved from public_router to router in Phase 4.4. The
+  // path-traversal regex still exists as defense in depth, but auth check
+  // fires first now, so unauth requests can't see the validation outcome.
+  test("unauthenticated GET reference returns 401", async ({ request }) => {
     const resp = await request.get(
-      `/api/video-gen/avatars/${ANY_UUID}/motion/bad..clip.mp4`
+      `/api/video-gen/avatars/${ANY_UUID}/reference.png`
     );
-    expect(resp.status()).toBe(400);
+    expect(resp.status()).toBe(401);
   });
 
-  test("path with slash in clip filename is refused", async ({ request }) => {
-    // The route extracts the filename as a single segment so a `/` in `clip`
-    // would normally be impossible — but URL-encoded `%2f` could slip through.
-    // Either the regex rejects it (preferred) or the router decodes and
-    // routes it elsewhere (also fine, since the regex catches what reaches us).
+  test("unauthenticated GET shot returns 401", async ({ request }) => {
     const resp = await request.get(
-      `/api/video-gen/avatars/${ANY_UUID}/motion/bad%2Fclip.mp4`
+      `/api/video-gen/avatars/${ANY_UUID}/shots/front`
     );
-    expect([400, 404]).toContain(resp.status());
+    expect(resp.status()).toBe(401);
   });
 
-  test("path-traversal regex accepts valid clip names (still 404 since file is absent)", async ({
-    request,
-  }) => {
+  test("unauthenticated GET motion clip returns 401", async ({ request }) => {
     const resp = await request.get(
       `/api/video-gen/avatars/${ANY_UUID}/motion/intro_v1.mp4`
     );
-    // Valid name passes the regex; file doesn't exist → 404.
-    expect(resp.status()).toBe(404);
+    expect(resp.status()).toBe(401);
+  });
+
+  test("unauthenticated path-traversal attempt also returns 401 (auth gates the regex check)", async ({
+    request,
+  }) => {
+    const resp = await request.get(
+      `/api/video-gen/avatars/${ANY_UUID}/motion/bad..clip.mp4`
+    );
+    expect(resp.status()).toBe(401);
   });
 });
 
