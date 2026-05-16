@@ -63,11 +63,18 @@ pub async fn sync_account(
         .await?
         .ok_or(SyncWorkerError::AccountNotFound(account_id))?;
 
-    let connection_id = account
-        .integration_connection_id
-        .ok_or(SyncWorkerError::NoConnection(account.id))?;
+    // Local-folder accounts don't go through OAuth — the connector reads the
+    // path directly. Everything else needs a live access token via the
+    // unified manager (which refreshes when expired).
+    let access_token = if account.provider == "local" {
+        String::new()
+    } else {
+        let connection_id = account
+            .integration_connection_id
+            .ok_or(SyncWorkerError::NoConnection(account.id))?;
+        oauth_token_manager::get_access_token(pool, connection_id).await?
+    };
 
-    let access_token = oauth_token_manager::get_access_token(pool, connection_id).await?;
     let connector = storage::get_connector(&account.provider)?;
 
     CloudStorageAccount::mark_status(pool, account.id, "syncing").await?;
@@ -171,9 +178,19 @@ async fn apply_upsert(
             existing_id
         }
         None => {
-            // Create a fresh cloud_files row. storage_volume='dropbox' is the
-            // legacy bucket — the sync worker writes there for now until the
-            // CHECK constraint is broadened to include 'cloud_sync'.
+            // Create a fresh cloud_files row. For local-folder accounts the
+            // volume is the account's `sync_root_path` (resolved as a literal
+            // filesystem path in `utils::volume`); for the OAuth providers we
+            // keep the legacy "dropbox" bucket until the volume registry
+            // grows a per-provider entry.
+            let storage_volume = if account.provider == "local" {
+                account
+                    .sync_root_path
+                    .clone()
+                    .unwrap_or_else(|| "dropbox".to_string())
+            } else {
+                "dropbox".to_string()
+            };
             let created = CloudFile::create(
                 pool,
                 &CreateCloudFile {
@@ -182,7 +199,7 @@ async fn apply_upsert(
                     task_id: None,
                     file_name: change.name.clone(),
                     file_path: change.path.clone(),
-                    storage_volume: "dropbox".to_string(),
+                    storage_volume,
                     content_hash: change.content_hash.clone(),
                     file_size_bytes: change.size_bytes,
                     mime_type: change.mime_type.clone(),

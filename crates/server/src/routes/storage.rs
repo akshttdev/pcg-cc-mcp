@@ -7,6 +7,7 @@
 //! HTTP surface:
 //! - `GET    /storage/connect/:provider`         Start OAuth (redirect)
 //! - `GET    /storage/callback/:provider`        OAuth callback (exchange + persist)
+//! - `POST   /storage/accounts/local`            Register a local-folder account (no OAuth)
 //! - `GET    /storage/accounts`                  List org's connected accounts
 //! - `DELETE /storage/accounts/:id`              Disconnect (revoke + delete row)
 //! - `POST   /storage/accounts/:id/sync`         Force a sync now
@@ -124,6 +125,14 @@ impl From<CloudStorageAccount> for AccountView {
             created_at: a.created_at,
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterLocalRequest {
+    pub organization_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub sync_root_path: String,
+    pub display_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -316,6 +325,65 @@ async fn callback(
     )))
 }
 
+/// `POST /storage/accounts/local`
+///
+/// Register a master-node-local directory as a storage account. Unlike the
+/// OAuth providers, this never leaves the master node — the connector reads
+/// the path directly. The caller must be a member of `organization_id` and
+/// the path must already exist on this machine.
+async fn register_local(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<RegisterLocalRequest>,
+) -> Result<Json<ApiResponse<AccountView>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    access_context
+        .require_org_membership(pool, &payload.organization_id.to_string())
+        .await?;
+
+    let root = std::path::PathBuf::from(&payload.sync_root_path);
+    if !root.exists() {
+        return Err(ApiError::BadRequest(format!(
+            "sync_root_path does not exist on this master node: {}",
+            payload.sync_root_path
+        )));
+    }
+    if !root.is_dir() {
+        return Err(ApiError::BadRequest(format!(
+            "sync_root_path is not a directory: {}",
+            payload.sync_root_path
+        )));
+    }
+
+    // Use the path as the `account_email` slot so each registered folder
+    // gets its own row (the UNIQUE constraint is on org+provider+email).
+    // Org members can register multiple folders side by side this way.
+    let path_key = format!("local:{}", payload.sync_root_path);
+
+    let display = payload.display_name.clone().or_else(|| {
+        root.file_name()
+            .map(|s| s.to_string_lossy().to_string())
+    });
+
+    let account = CloudStorageAccount::upsert(
+        pool,
+        CreateCloudStorageAccount {
+            organization_id: payload.organization_id,
+            project_id: payload.project_id,
+            integration_connection_id: None,
+            provider: "local".into(),
+            account_email: Some(path_key),
+            display_name: display,
+            sync_root_path: Some(payload.sync_root_path),
+            metadata: None,
+        },
+    )
+    .await?;
+
+    Ok(Json(ApiResponse::success(AccountView::from(account))))
+}
+
 /// `GET /storage/accounts?organization_id=...`
 async fn list_accounts(
     Extension(access_context): Extension<AccessContext>,
@@ -399,6 +467,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/storage/connect/{provider}", get(connect))
         .route("/storage/callback/{provider}", get(callback))
+        .route("/storage/accounts/local", post(register_local))
         .route("/storage/accounts", get(list_accounts))
         .route(
             "/storage/accounts/{id}",

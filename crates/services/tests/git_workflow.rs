@@ -174,9 +174,10 @@ fn diff_added_binary_file_has_no_content() {
     // branch with binary file
     s.create_branch(&repo_path, "feature").unwrap();
     s.checkout_branch(&repo_path, "feature").unwrap();
-    // write binary with null byte
-    let mut f = fs::File::create(repo_path.join("bin.dat")).unwrap();
-    f.write_all(&[0u8, 1, 2, 3]).unwrap();
+    // write binary with null byte. `fs::write` opens+writes+closes the file
+    // synchronously — important on Windows where a still-open handle would
+    // leave `git add` staging an empty blob.
+    fs::write(repo_path.join("bin.dat"), [0u8, 1, 2, 3]).unwrap();
     let _ = s.commit(&repo_path, "add binary").unwrap();
 
     let s = GitService::new();
