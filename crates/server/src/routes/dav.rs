@@ -13,12 +13,12 @@
 //!   /<org-slug>/<proj-slug>/source/<rest>  → media_pipeline2/source/<proj-slug>/<rest>
 
 use axum::{
+    Router,
     body::Body,
     extract::{Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::Response,
     routing::any,
-    Router,
 };
 use base64::Engine as _;
 use deployment::Deployment;
@@ -30,7 +30,7 @@ use tokio::{
 use tokio_util::io::ReaderStream;
 use utils::assets::asset_dir;
 
-use crate::{middleware::access_control::get_current_user, DeploymentImpl};
+use crate::{DeploymentImpl, middleware::access_control::get_current_user};
 
 /// Volume name shown in macOS Finder
 pub const APN_VOLUME_NAME: &str = "PCG APN";
@@ -376,7 +376,7 @@ async fn handle_propfind_fs(
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::empty())
-                .unwrap()
+                .unwrap();
         }
     }
 
@@ -488,7 +488,7 @@ async fn handle_propfind_virtual(
                     return Response::builder()
                         .status(StatusCode::NOT_FOUND)
                         .body(Body::empty())
-                        .unwrap()
+                        .unwrap();
                 }
             }
             xml.push_str("</D:multistatus>");
@@ -653,7 +653,7 @@ async fn handle_get(req: Request, local_path: &std::path::Path, head_only: bool)
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::empty())
-                .unwrap()
+                .unwrap();
         }
     };
 

@@ -5,9 +5,9 @@
 //! AI automations (research, proposals, decks) are in `crm_deal_automations`.
 
 use axum::{
+    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post},
-    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -23,8 +23,8 @@ use uuid::Uuid;
 
 use super::{crm_deal_automations, crm_deal_transitions};
 use crate::{
-    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext, DeploymentImpl,
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext,
 };
 
 #[derive(Debug, Serialize)]

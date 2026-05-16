@@ -7,4 +7,24 @@ export type AgentFlow = { id: string, task_id: string, flow_type: FlowType, stat
 /**
  * JSON-serialized ClarificationRequest when status = NeedsClarification
  */
-clarification_request: string | null, created_at: string, updated_at: string, };
+clarification_request: string | null, 
+/**
+ * Link to CRM deal (for pipeline-triggered agent flows)
+ */
+crm_deal_id: string | null, 
+/**
+ * Link to project (for task-execution flows)
+ */
+project_id: string | null, 
+/**
+ * Agent auto-start can be cancelled before this deadline
+ */
+cancel_deadline: string | null, 
+/**
+ * Number of retry attempts for this flow
+ */
+retry_count: number, 
+/**
+ * Last error message from a failed execution attempt
+ */
+last_error: string | null, created_at: string, updated_at: string, };

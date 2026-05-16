@@ -4,17 +4,17 @@
 //! relationships between companies, contacts, proposals, orgs, and projects.
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{get, post},
-    Json, Router,
 };
-use db::models::entity_graph::{company_subgraph, sync_company_graph, EntitySubgraph};
+use db::models::entity_graph::{EntitySubgraph, company_subgraph, sync_company_graph};
 use deployment::Deployment;
 use serde::Serialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Serialize)]
 pub struct SyncResponse {

@@ -1,9 +1,9 @@
 //! HTTP handlers for intake CRUD and business report endpoints.
 
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     response::Redirect,
-    Extension, Json,
 };
 use db::{
     db_uuid::DbUuid,
@@ -19,12 +19,12 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use super::{
-    pipeline::run_intake_pipeline,
-    report::{run_phase2_from_company_intel, run_report_generation},
     EmailIntakePayload, GenerateReportRequest, Phase2ReportRequest, RevisionRequest,
     UploadIntakePayload,
+    pipeline::run_intake_pipeline,
+    report::{run_phase2_from_company_intel, run_report_generation},
 };
-use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 // ── Intake ingestion ─────────────────────────────────────────────────────────
 

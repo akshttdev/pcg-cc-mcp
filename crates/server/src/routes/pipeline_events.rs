@@ -7,10 +7,10 @@
 use std::{convert::Infallible, time::Duration};
 
 use axum::{
+    Router,
     extract::{Query, State},
     response::sse::{Event, KeepAlive, Sse},
     routing::get,
-    Router,
 };
 use deployment::Deployment;
 use futures::stream::{self, Stream};

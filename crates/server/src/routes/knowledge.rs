@@ -1,7 +1,7 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{get, post},
-    Json, Router,
 };
 use db::models::project_knowledge_source::{
     KnowledgeSourceType, ProjectKnowledgeCompleteness, ProjectKnowledgeSource,
@@ -12,7 +12,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 /// Grouped knowledge sources response
 #[derive(Debug, Serialize, TS)]

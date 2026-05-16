@@ -96,6 +96,7 @@ impl PlatformConnector for TwitterConnector {
         &self,
         code: &str,
         redirect_uri: &str,
+        _code_verifier: Option<&str>,
     ) -> Result<OAuthTokens, SocialError> {
         let params = [
             ("grant_type", "authorization_code"),

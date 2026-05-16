@@ -3,10 +3,10 @@
 /// Uses the `org_invitations` table created in the member management migration.
 /// Org admins can create invite links that grant org membership upon acceptance.
 use axum::{
+    Extension, Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::{get, post},
-    Extension, Router,
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use utils::response::ApiResponse;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Serialize)]
 pub struct OrgInvitationResponse {

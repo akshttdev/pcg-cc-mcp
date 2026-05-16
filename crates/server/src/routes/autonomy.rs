@@ -3,10 +3,10 @@
 //! REST endpoints for checkpoints, approval gates, and autonomy mode configuration.
 
 use axum::{
+    Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::{delete, get, post, put},
-    Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -27,7 +27,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ========== Request Types ==========
 

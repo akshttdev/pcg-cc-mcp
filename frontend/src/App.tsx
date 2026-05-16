@@ -260,6 +260,11 @@ const DeveloperSettings = lazy(() =>
 const ApnDriveSettings = lazy(
   () => import('@/pages/settings/ApnDriveSettings')
 );
+const StorageSettings = lazy(() =>
+  import('@/pages/settings/StorageSettings').then((m) => ({
+    default: m.StorageSettings,
+  }))
+);
 const TopsiAdminSettings = lazy(() =>
   import('@/pages/settings/TopsiAdminSettings').then((m) => ({
     default: m.TopsiAdminSettings,
@@ -1083,6 +1088,7 @@ function App() {
             />
             <Route path="network" element={<NetworkSettings />} />
             <Route path="apn-drive" element={<ApnDriveSettings />} />
+            <Route path="storage" element={<StorageSettings />} />
             <Route
               path="topsi"
               element={

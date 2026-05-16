@@ -2,15 +2,15 @@ use std::path::PathBuf;
 
 use anyhow;
 use axum::{
+    Extension, Json, Router,
     extract::{
-        ws::{WebSocket, WebSocketUpgrade},
         Query, State,
+        ws::{WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
     middleware::from_fn_with_state,
     response::{IntoResponse, Json as ResponseJson},
     routing::{delete, get, post},
-    Extension, Json, Router,
 };
 use db::models::{
     activity::{ActivityLog, ActorType, CreateActivityLog},
@@ -30,18 +30,18 @@ use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use serde::Deserialize;
 use serde_json::json;
 use services::services::container::{
-    cleanup_worktrees_direct, ContainerService, WorktreeCleanupData,
+    ContainerService, WorktreeCleanupData, cleanup_worktrees_direct,
 };
-use sqlx::{types::Json as SqlxJson, Error as SqlxError};
+use sqlx::{Error as SqlxError, types::Json as SqlxJson};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{
+    DeploymentImpl,
     error::ApiError,
     middleware::{access_control::AccessContext, load_task_middleware},
-    DeploymentImpl,
 };
 
 /// Broadcast a task event to all connected WebSocket clients
@@ -801,6 +801,60 @@ pub async fn update_task(
         };
         if let Err(e) = ActivityLog::create(&deployment.db().pool, &log_entry).await {
             tracing::warn!("Failed to log task update activity: {e}");
+        }
+    }
+
+    // Slack notifications for assignee change + completion. Soft-fail.
+    {
+        let pool = &deployment.db().pool;
+        let assignee_changed = old_assignee_id != task.assignee_id;
+        let just_completed =
+            old_status != task.status && task.status == db::models::task::TaskStatus::Done;
+
+        if assignee_changed || just_completed {
+            // Resolve org_id via the task's project (Task itself has no org_id).
+            let org_id =
+                match db::models::project::Project::find_by_id(pool, &task.project_id).await {
+                    Ok(Some(p)) => p.organization_id,
+                    _ => None,
+                };
+            if let Some(org_str) = org_id {
+                let org_db = db::db_uuid::DbUuid::from_string(org_str.clone());
+
+                if assignee_changed && task.assignee_id.is_some() {
+                    let payload = serde_json::json!({
+                        "task_title": task.title,
+                        "assignee": task.assignee_id,
+                        "project": task.project_id,
+                        "task_url": format!(
+                            "/organizations/{}/projects/{}/tasks/{}",
+                            org_str, task.project_id, task.id
+                        ),
+                    });
+                    let _ = services::services::slack::dispatch_event(
+                        pool,
+                        &org_db,
+                        db::models::slack_channel_route::SlackEventType::TaskAssigned,
+                        &payload,
+                    )
+                    .await;
+                }
+
+                if just_completed {
+                    let payload = serde_json::json!({
+                        "task_title": task.title,
+                        "project": task.project_id,
+                        "completed_by": access_context.user_id.to_string(),
+                    });
+                    let _ = services::services::slack::dispatch_event(
+                        pool,
+                        &org_db,
+                        db::models::slack_channel_route::SlackEventType::TaskCompleted,
+                        &payload,
+                    )
+                    .await;
+                }
+            }
         }
     }
 

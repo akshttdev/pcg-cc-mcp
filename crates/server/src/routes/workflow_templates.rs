@@ -1,10 +1,10 @@
 //! Workflow template routes — list templates and convert deals to projects
 
 use axum::{
+    Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::{get, post},
-    Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -24,7 +24,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 /// GET /api/workflow-templates — list all available templates
 async fn list_templates() -> Result<ResponseJson<ApiResponse<Vec<WorkflowTemplate>>>, ApiError> {

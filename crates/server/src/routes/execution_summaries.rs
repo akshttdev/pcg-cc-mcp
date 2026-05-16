@@ -1,9 +1,9 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use db::models::execution_summary::{ExecutionSummary, UpdateExecutionSummaryFeedback};
 use deployment::Deployment;

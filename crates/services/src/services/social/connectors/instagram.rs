@@ -29,8 +29,12 @@ impl InstagramConnector {
     pub fn new() -> Self {
         Self {
             client: Client::new(),
-            client_id: std::env::var("META_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("META_CLIENT_SECRET").unwrap_or_default(),
+            client_id: std::env::var("INSTAGRAM_APP_ID")
+                .or_else(|_| std::env::var("META_CLIENT_ID"))
+                .unwrap_or_default(),
+            client_secret: std::env::var("INSTAGRAM_APP_SECRET")
+                .or_else(|_| std::env::var("META_CLIENT_SECRET"))
+                .unwrap_or_default(),
         }
     }
 }
@@ -137,6 +141,7 @@ impl PlatformConnector for InstagramConnector {
         &self,
         code: &str,
         redirect_uri: &str,
+        _code_verifier: Option<&str>,
     ) -> Result<OAuthTokens, SocialError> {
         // Exchange code for short-lived token
         let url = format!(

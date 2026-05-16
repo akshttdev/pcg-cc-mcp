@@ -1,13 +1,13 @@
 use std::{convert::Infallible, time::Duration};
 
 use axum::{
+    Router,
     extract::{Path, Query, State},
     response::{
-        sse::{Event, Sse},
         Json as ResponseJson,
+        sse::{Event, Sse},
     },
     routing::{get, post, put},
-    Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -27,7 +27,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, pulse_publisher, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, pulse_publisher};
 
 /// Pulse Engine API URL (configured via PULSE_API_URL env var)
 fn pulse_api_url() -> String {

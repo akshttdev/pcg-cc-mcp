@@ -1,7 +1,7 @@
 //! SMS handling: incoming SMS, thread buffering, and SMS-during-call queuing.
 
 use super::{
-    media::{fetch_and_describe_media, ingest_sms_content, MediaResult},
+    media::{MediaResult, fetch_and_describe_media, ingest_sms_content},
     nora_integration::process_sms_with_nora,
     *,
 };

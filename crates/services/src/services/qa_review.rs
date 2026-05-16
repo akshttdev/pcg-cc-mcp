@@ -16,7 +16,7 @@ use db::models::{
     merge::Merge,
     project::Project,
     task::{
-        Task, TaskCollaborator, TaskStatus, ACTOR_TYPE_AGENT_WATCHER, WATCHER_ACTION_QA_FAIL,
+        ACTOR_TYPE_AGENT_WATCHER, Task, TaskCollaborator, TaskStatus, WATCHER_ACTION_QA_FAIL,
         WATCHER_ACTION_QA_NEEDS_CHANGES, WATCHER_ACTION_QA_PASS, WATCHER_ACTION_TRIGGERED,
         WATCHER_ACTION_WATCHING,
     },

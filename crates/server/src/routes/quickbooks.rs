@@ -4,10 +4,10 @@
 //! Each organization connects its own QBO account.
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     response::Redirect,
     routing::{delete, get, patch, post},
-    Json, Router,
 };
 use chrono::{Duration, Utc};
 use db::{
@@ -18,10 +18,13 @@ use db::{
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
+use services::services::quickbooks::{
+    FinancialSummary, SyncStats, financial_summary, push_invoice, run_qbo_sync,
+};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -399,29 +402,64 @@ async fn refresh_token(
 }
 
 /// POST /quickbooks/accounts/:id/sync
-/// Trigger a manual sync
+/// Trigger a manual sync — pulls Customers, Invoices, and Payments from QBO
+/// since the account's `last_sync_at`, then updates the local CRM/invoices.
 async fn trigger_sync(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
     Json(_req): Json<SyncRequest>,
+) -> Result<Json<ApiResponse<SyncStats>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
+
+    let stats = run_qbo_sync(pool, id_uuid)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    Ok(Json(ApiResponse::success(stats)))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PushInvoiceRequest {
+    pub invoice_id: Uuid,
+}
+
+/// POST /quickbooks/accounts/:id/push-invoice
+/// Push a PCG invoice up to QBO — creates the QBO Customer if needed and
+/// returns the QBO DocNumber once persisted.
+async fn push_invoice_handler(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+    Json(req): Json<PushInvoiceRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
     let id_uuid = DbUuid::parse(&id)
         .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
         .to_uuid();
-    let _account = QuickBooksAccount::find_by_id(pool, id_uuid)
-        .await
-        .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
-    // TODO: Implement actual sync logic - for now mark the sync attempt
-    QuickBooksAccount::update_sync_status(pool, id_uuid, "active")
+    let doc_number = push_invoice(pool, id_uuid, req.invoice_id)
         .await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     Ok(Json(ApiResponse::success(serde_json::json!({
-        "message": "Sync initiated",
-        "account_id": id,
+        "qbo_doc_number": doc_number,
+        "invoice_id": req.invoice_id,
     }))))
+}
+
+/// GET /quickbooks/summary?organization_id=...
+/// AR/AP + revenue trend aggregated from local invoices.
+async fn financial_summary_handler(
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<ApiResponse<FinancialSummary>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let summary = financial_summary(pool, query.organization_id)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    Ok(Json(ApiResponse::success(summary)))
 }
 
 /// GET /quickbooks/accounts/:id/entity-map
@@ -534,6 +572,11 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/quickbooks/accounts/{id}", delete(disconnect))
         .route("/quickbooks/accounts/{id}/refresh", post(refresh_token))
         .route("/quickbooks/accounts/{id}/sync", post(trigger_sync))
+        .route(
+            "/quickbooks/accounts/{id}/push-invoice",
+            post(push_invoice_handler),
+        )
+        .route("/quickbooks/summary", get(financial_summary_handler))
         .route(
             "/quickbooks/accounts/{id}/entity-map",
             get(list_entity_maps),

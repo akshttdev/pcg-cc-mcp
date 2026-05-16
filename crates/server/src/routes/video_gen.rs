@@ -1,12 +1,12 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use axum::{
+    Extension, Json, Router,
     body::Body,
     extract::{Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::Response,
     routing::get,
-    Extension, Json, Router,
 };
 use db::models::{
     avatar_profile::{AvatarProfile, CreateAvatarProfile, UpdateAvatarProfile},
@@ -17,7 +17,7 @@ use serde::Deserialize;
 use tokio::fs;
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::AccessContext};
 
 // ---------------------------------------------------------------------------
 // Helpers

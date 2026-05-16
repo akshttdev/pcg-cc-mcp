@@ -1,4 +1,5 @@
 use db::{
+    DBService,
     models::{
         agent_task_plan::{
             AgentTaskPlan, AgentTaskPlanError, CreateAgentTaskPlan, PlanStatus, PlanStep,
@@ -7,7 +8,6 @@ use db::{
             ArtifactType, CreateExecutionArtifact, ExecutionArtifact, ExecutionArtifactError,
         },
     },
-    DBService,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

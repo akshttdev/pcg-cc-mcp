@@ -18,7 +18,7 @@ use db::models::{
     workflow_run::{UpdateWorkflowRunOnComplete, WorkflowRun},
     workflow_staging::{CreateStagingRecord, WorkflowStagingRecord},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -27,10 +27,10 @@ use uuid::Uuid;
 pub const MAX_AUTO_APPROVE_RECORDS: i64 = 50;
 
 use services::services::workflow_execution::{
-    check_company_duplicate, check_contact_duplicate, check_deal_duplicate,
-    check_intra_batch_duplicate, check_task_duplicate, compute_confidence, execute_action_node,
-    execute_node_with_llm, extract_records_from_output, is_fallback_placeholder,
-    validate_record_against_schema, WorkflowDefinition, WorkflowNode,
+    WorkflowDefinition, WorkflowNode, check_company_duplicate, check_contact_duplicate,
+    check_deal_duplicate, check_intra_batch_duplicate, check_task_duplicate, compute_confidence,
+    execute_action_node, execute_node_with_llm, extract_records_from_output,
+    is_fallback_placeholder, validate_record_against_schema,
 };
 
 /// Result of executing a single node

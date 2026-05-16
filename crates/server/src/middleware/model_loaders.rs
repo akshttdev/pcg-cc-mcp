@@ -12,7 +12,7 @@ use deployment::Deployment;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, middleware::access_control::AccessContext};
 
 pub async fn load_project_middleware(
     State(deployment): State<DeploymentImpl>,

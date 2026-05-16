@@ -1,8 +1,8 @@
 use axum::{
+    Router,
     extract::{Path, Query, State},
     response::Json as ResponseJson,
     routing::get,
-    Router,
 };
 use db::models::{
     execution_slot::{ExecutionSlot, ProjectCapacity},
@@ -15,7 +15,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Serialize, TS)]
 pub struct ContainerInfo {

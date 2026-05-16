@@ -3,10 +3,12 @@
 //! Implements OAuth 2.0 and video publishing for TikTok.
 
 use async_trait::async_trait;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use db::models::social_account::SocialPlatform;
 use reqwest::Client;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 use crate::services::social::{
     EngagementMetrics, OAuthTokens, PlatformConnector, PlatformLimits, PlatformMention,
@@ -16,6 +18,13 @@ use crate::services::social::{
 const TIKTOK_AUTH_URL: &str = "https://www.tiktok.com/v2/auth/authorize/";
 const TIKTOK_TOKEN_URL: &str = "https://open.tiktokapis.com/v2/oauth/token/";
 const TIKTOK_API_BASE: &str = "https://open.tiktokapis.com/v2";
+
+/// Compute the PKCE S256 code_challenge for a given verifier.
+/// challenge = base64url-no-pad(sha256(verifier))
+fn pkce_s256_challenge(verifier: &str) -> String {
+    let digest = Sha256::digest(verifier.as_bytes());
+    URL_SAFE_NO_PAD.encode(digest)
+}
 
 pub struct TikTokConnector {
     client: Client,
@@ -71,13 +80,19 @@ impl PlatformConnector for TikTokConnector {
 
     async fn get_auth_url(&self, redirect_uri: &str, state: &str) -> Result<String, SocialError> {
         let scopes = "user.info.basic,video.publish,video.upload";
+        // PKCE: TikTok mandates code_challenge. Derive S256 challenge from the
+        // state token (which we already round-trip and look up by); the same
+        // state value is sent back as code_verifier in exchange_code.
+        let code_challenge = pkce_s256_challenge(state);
         let url = format!(
-            "{}?client_key={}&response_type=code&scope={}&redirect_uri={}&state={}",
+            "{}?client_key={}&response_type=code&scope={}&redirect_uri={}&state={}\
+             &code_challenge={}&code_challenge_method=S256",
             TIKTOK_AUTH_URL,
             urlencoding::encode(&self.client_key),
             urlencoding::encode(scopes),
             urlencoding::encode(redirect_uri),
-            urlencoding::encode(state)
+            urlencoding::encode(state),
+            urlencoding::encode(&code_challenge),
         );
         Ok(url)
     }
@@ -86,13 +101,18 @@ impl PlatformConnector for TikTokConnector {
         &self,
         code: &str,
         redirect_uri: &str,
+        code_verifier: Option<&str>,
     ) -> Result<OAuthTokens, SocialError> {
+        let verifier = code_verifier.ok_or_else(|| {
+            SocialError::AuthError("TikTok exchange_code requires code_verifier (PKCE)".into())
+        })?;
         let params = [
             ("client_key", self.client_key.as_str()),
             ("client_secret", self.client_secret.as_str()),
             ("code", code),
             ("grant_type", "authorization_code"),
             ("redirect_uri", redirect_uri),
+            ("code_verifier", verifier),
         ];
 
         let response = self
@@ -215,10 +235,27 @@ impl PlatformConnector for TikTokConnector {
                 SocialError::ValidationError("TikTok requires a video URL".into())
             })?;
 
+        // Title is capped at 150 chars; slice on character boundaries so a
+        // multi-byte UTF-8 codepoint doesn't panic the publish call.
+        let title: String = content.caption.chars().take(150).collect();
+
+        // Sandbox/unaudited apps must use SELF_ONLY. Once the app is audited,
+        // a post can override via platform_specific.tiktok.privacy_level —
+        // valid values: "PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS",
+        // "FOLLOWER_OF_CREATOR", "SELF_ONLY".
+        let privacy_level = content
+            .platform_specific
+            .as_ref()
+            .and_then(|v| v.get("tiktok"))
+            .and_then(|t| t.get("privacy_level"))
+            .and_then(|p| p.as_str())
+            .unwrap_or("SELF_ONLY")
+            .to_string();
+
         let body = serde_json::json!({
             "post_info": {
-                "title": &content.caption[..content.caption.len().min(150)],
-                "privacy_level": "SELF_ONLY",
+                "title": title,
+                "privacy_level": privacy_level,
                 "disable_duet": false,
                 "disable_comment": false,
                 "disable_stitch": false

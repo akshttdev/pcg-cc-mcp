@@ -12,8 +12,8 @@ pub(crate) mod pipeline;
 pub(crate) mod report;
 
 use axum::{
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 

@@ -5,8 +5,8 @@
 //! and transcript management.
 
 use axum::{
-    extract::{Path, State},
     Extension, Json,
+    extract::{Path, State},
 };
 use db::{
     db_uuid::DbUuid,
@@ -22,8 +22,8 @@ use utils::response::ApiResponse;
 
 use super::crm_deals::require_deal_org_access;
 use crate::{
-    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext, DeploymentImpl,
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext,
 };
 
 // ── Scout: Who-Is Research ────────────────────────────────────────────────────
@@ -601,7 +601,10 @@ pub async fn generate_phase1_business_report(
         );
         match call_llm(astra_system, &user_msg).await {
             Ok(analysis) => {
-                tracing::info!("[generate_phase1_business_report] Astra generated Phase 1 analysis for deal {}", deal_id);
+                tracing::info!(
+                    "[generate_phase1_business_report] Astra generated Phase 1 analysis for deal {}",
+                    deal_id
+                );
                 (Some(analysis), "ready")
             }
             Err(e) => {

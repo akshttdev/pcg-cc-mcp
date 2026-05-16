@@ -3,17 +3,18 @@
 //! Handles content CRUD, scheduling, and publishing operations.
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post},
-    Json, Router,
 };
 use db::models::social_post::{CreateSocialPost, SocialPost, UpdateSocialPost};
 use deployment::Deployment;
 use serde::Deserialize;
+use services::services::social::{PublishResult, Publisher};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Deserialize)]
 pub struct ListPostsQuery {
@@ -109,6 +110,20 @@ async fn get_due_posts(
     Ok(Json(ApiResponse::success(posts)))
 }
 
+/// POST /social/posts/:id/publish - Publish a post immediately, bypassing the scheduler
+async fn publish_post_now(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<PublishResult>>>, ApiError> {
+    let pool = deployment.db().pool.clone();
+    let publisher = Publisher::new(pool);
+    let results = publisher
+        .publish_post(id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Publish failed: {e}")))?;
+    Ok(Json(ApiResponse::success(results)))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/social/posts", get(list_posts))
@@ -117,4 +132,5 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/social/posts/{id}", get(get_post))
         .route("/social/posts/{id}", patch(update_post))
         .route("/social/posts/{id}", delete(delete_post))
+        .route("/social/posts/{id}/publish", post(publish_post_now))
 }

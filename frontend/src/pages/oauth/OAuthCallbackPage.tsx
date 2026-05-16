@@ -1,15 +1,23 @@
+import { AlertCircle, CheckCircle2, Mail, RefreshCw } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Loader } from '@/components/ui/loader';
-import { AlertCircle, CheckCircle2, Mail, RefreshCw } from 'lucide-react';
 
 const PROVIDER_INFO = {
   gmail: {
     name: 'Gmail',
-    headline: 'Using Gmail as master credentials unlocks unified sign-ins for social platforms.',
+    headline:
+      'Using Gmail as master credentials unlocks unified sign-ins for social platforms.',
     accent: 'text-[#EA4335]',
     badgeClass: 'bg-[#EA4335] text-white',
   },
@@ -36,6 +44,12 @@ interface EmailAccountPayload {
   provider: string;
 }
 
+// Module-level cache of in-flight OAuth exchanges, keyed by `${provider}:${code}`.
+// Persists across component remounts (e.g. when ProtectedRoute re-renders during
+// auth refresh). OAuth codes are single-use, so a second exchange of the same
+// code returns invalid_grant — we de-dupe by attaching to the in-flight promise.
+const inflightExchanges = new Map<string, Promise<EmailAccountPayload>>();
+
 export function OAuthCallbackPage() {
   const { provider: providerParam } = useParams<{ provider: string }>();
   const [searchParams] = useSearchParams();
@@ -43,15 +57,25 @@ export function OAuthCallbackPage() {
   const providerKey = (providerParam || '').toLowerCase() as SupportedProvider;
   const providerInfo = PROVIDER_INFO[providerKey];
   const [status, setStatus] = useState<Status>('processing');
-  const [statusMessage, setStatusMessage] = useState('Completing account connection…');
-  const [statusDetail, setStatusDetail] = useState('We are finalizing the OAuth handshake.');
+  const [statusMessage, setStatusMessage] = useState(
+    'Completing account connection…'
+  );
+  const [statusDetail, setStatusDetail] = useState(
+    'We are finalizing the OAuth handshake.'
+  );
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
   const redirectTimer = useRef<number>();
+  const exchangeStartedRef = useRef(false);
 
   // Parse owner from state — new format: "owner_type/owner_id:nonce", legacy: "project_uuid:nonce"
-  const { ownerType, ownerId, projectId: projectIdFromState } = useMemo(() => {
+  const {
+    ownerType,
+    ownerId,
+    projectId: projectIdFromState,
+  } = useMemo(() => {
     const stateParam = searchParams.get('state');
-    if (!stateParam) return { ownerType: 'project', ownerId: null, projectId: null };
+    if (!stateParam)
+      return { ownerType: 'project', ownerId: null, projectId: null };
     const withoutNonce = stateParam.split(':')[0];
     if (withoutNonce.includes('/')) {
       const [ot, oi] = withoutNonce.split('/');
@@ -62,18 +86,25 @@ export function OAuthCallbackPage() {
       };
     }
     // Legacy: bare UUID = project
-    return { ownerType: 'project', ownerId: withoutNonce, projectId: withoutNonce };
+    return {
+      ownerType: 'project',
+      ownerId: withoutNonce,
+      projectId: withoutNonce,
+    };
   }, [searchParams]);
 
   useEffect(() => {
     if (!providerInfo) {
       setStatus('error');
       setStatusMessage('Unsupported provider');
-      setStatusDetail('This OAuth callback route only supports Gmail and Zoho at the moment.');
+      setStatusDetail(
+        'This OAuth callback route only supports Gmail and Zoho at the moment.'
+      );
       return;
     }
 
-    const providerError = searchParams.get('error') || searchParams.get('error_description');
+    const providerError =
+      searchParams.get('error') || searchParams.get('error_description');
     if (providerError) {
       setStatus('error');
       setStatusMessage('Provider declined authorization');
@@ -86,38 +117,50 @@ export function OAuthCallbackPage() {
     if (!code || !state) {
       setStatus('error');
       setStatusMessage('Missing OAuth parameters');
-      setStatusDetail('We did not receive both the authorization code and state. Please restart the connection flow.');
+      setStatusDetail(
+        'We did not receive both the authorization code and state. Please restart the connection flow.'
+      );
       return;
     }
 
+    const dedupeKey = `${providerKey}:${code}`;
     let cancelled = false;
 
-    const finalizeOAuth = async () => {
-      try {
+    let promise = inflightExchanges.get(dedupeKey);
+    if (!promise) {
+      promise = (async () => {
         const query = new URLSearchParams({ code, state });
-        const response = await fetch(`/api/email/oauth/${providerKey}/callback?${query.toString()}`, {
-          method: 'GET',
-          credentials: 'include',
-        });
-
+        const response = await fetch(
+          `/api/email/oauth/${providerKey}/callback?${query.toString()}`,
+          { method: 'GET', credentials: 'include' }
+        );
         if (!response.ok) {
           const errorBody = await response.json().catch(() => ({}));
-          throw new Error(errorBody.message || `Server responded with ${response.status}.`);
+          throw new Error(
+            errorBody.message || `Server responded with ${response.status}.`
+          );
         }
-
         const result: ApiResponse<EmailAccountPayload> = await response.json();
         if (!result.success) {
-          throw new Error(result.message || 'Unable to complete account connection.');
+          throw new Error(
+            result.message || 'Unable to complete account connection.'
+          );
         }
-
-        if (cancelled) {
-          return;
+        if (!result.data) {
+          throw new Error('Account payload missing from response.');
         }
+        return result.data;
+      })();
+      inflightExchanges.set(dedupeKey, promise);
+    }
+    exchangeStartedRef.current = true;
 
-        setConnectedEmail(result.data?.email_address ?? null);
+    promise
+      .then((data) => {
+        if (cancelled) return;
+        setConnectedEmail(data.email_address ?? null);
         setStatus('success');
         setStatusMessage('Account connected');
-
         if (ownerType === 'agent' || ownerType === 'organization') {
           setStatusDetail('Redirecting to Agent Settings…');
           redirectTimer.current = window.setTimeout(() => {
@@ -132,10 +175,9 @@ export function OAuthCallbackPage() {
             navigate(`/crm?${params.toString()}`, { replace: true });
           }, 1800);
         }
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
         setStatus('error');
         setStatusMessage('Unable to complete authorization');
         setStatusDetail(
@@ -143,10 +185,7 @@ export function OAuthCallbackPage() {
             ? error.message
             : 'An unknown error occurred while contacting the PCG API.'
         );
-      }
-    };
-
-    finalizeOAuth();
+      });
 
     return () => {
       cancelled = true;
@@ -178,16 +217,22 @@ export function OAuthCallbackPage() {
               <Mail className="h-6 w-6" />
             </div>
             <div>
-              <CardTitle className="text-2xl">Finalize Email Connection</CardTitle>
+              <CardTitle className="text-2xl">
+                Finalize Email Connection
+              </CardTitle>
               <CardDescription className="text-slate-300">
-                {providerInfo ? providerInfo.headline : 'Complete the OAuth flow.'}
+                {providerInfo
+                  ? providerInfo.headline
+                  : 'Complete the OAuth flow.'}
               </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {providerInfo && (
-            <Badge className={providerInfo.badgeClass}>{providerInfo.name}</Badge>
+            <Badge className={providerInfo.badgeClass}>
+              {providerInfo.name}
+            </Badge>
           )}
 
           <div className="rounded-2xl border border-white/5 bg-white/5 p-6">
@@ -205,7 +250,9 @@ export function OAuthCallbackPage() {
                 <p className="text-xl font-semibold">{statusMessage}</p>
                 <p className="text-sm text-slate-300">{statusDetail}</p>
                 {connectedEmail && (
-                  <p className="text-sm text-white/90">Connected account: {connectedEmail}</p>
+                  <p className="text-sm text-white/90">
+                    Connected account: {connectedEmail}
+                  </p>
                 )}
               </div>
             )}
@@ -223,20 +270,23 @@ export function OAuthCallbackPage() {
             <div className="text-xs uppercase tracking-wide text-slate-400">
               Owner:{' '}
               {ownerId ? (
-                <span className="text-white font-mono">{ownerType}/{ownerId.slice(0, 8)}…</span>
+                <span className="text-white font-mono">
+                  {ownerType}/{ownerId.slice(0, 8)}…
+                </span>
               ) : (
                 <span className="text-slate-500">Not detected</span>
               )}
             </div>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => navigate('/')}
-                className="bg-white/10 text-white hover:bg-white/20">
+              <Button
+                variant="secondary"
+                onClick={() => navigate('/')}
+                className="bg-white/10 text-white hover:bg-white/20"
+              >
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Dashboard
               </Button>
-              <Button onClick={handleBackToCrm}>
-                Return to CRM
-              </Button>
+              <Button onClick={handleBackToCrm}>Return to CRM</Button>
             </div>
           </div>
         </CardContent>

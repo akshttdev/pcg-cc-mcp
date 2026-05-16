@@ -5,6 +5,8 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::db_uuid::DbUuid;
+
 #[derive(Debug, Error)]
 pub enum SocialPostError {
     #[error(transparent)]
@@ -44,7 +46,9 @@ pub enum PostStatus {
 #[ts(export)]
 pub struct SocialPost {
     pub id: Uuid,
-    pub project_id: Uuid,
+    // DbUuid: legacy BLOB column FKs to projects.id (TEXT). Same pattern as
+    // email_messages and social_accounts.
+    pub project_id: DbUuid,
     pub social_account_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
     pub content_type: String,
@@ -156,7 +160,9 @@ impl SocialPost {
             "#,
         )
         .bind(id)
-        .bind(data.project_id)
+        // project_id stored as TEXT to match projects.id FK target (BLOB column,
+        // TEXT-stored values — see DbUuid trick used in email_messages too).
+        .bind(data.project_id.to_string())
         .bind(data.social_account_id)
         .bind(data.task_id)
         .bind(&content_type)
@@ -200,7 +206,7 @@ impl SocialPost {
             LIMIT ?2
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(limit)
         .fetch_all(pool)
         .await?;
@@ -220,7 +226,7 @@ impl SocialPost {
                 ORDER BY scheduled_for ASC
                 "#,
             )
-            .bind(pid)
+            .bind(pid.to_string())
             .fetch_all(pool)
             .await?
         } else {
@@ -265,7 +271,7 @@ impl SocialPost {
             ORDER BY queue_position ASC, created_at DESC
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(category)
         .fetch_all(pool)
         .await?;
@@ -284,7 +290,7 @@ impl SocialPost {
             ORDER BY last_recycled_at ASC NULLS FIRST
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .fetch_all(pool)
         .await?;
 

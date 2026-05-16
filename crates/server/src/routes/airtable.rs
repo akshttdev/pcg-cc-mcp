@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -19,8 +19,8 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use services::services::{
     airtable_service::{
-        build_record_url, get_record_name, AirtableBaseInfo, AirtableRecord, AirtableService,
-        AirtableTable,
+        AirtableBaseInfo, AirtableRecord, AirtableService, AirtableTable, build_record_url,
+        get_record_name,
     },
     config::save_config_to_file,
 };

@@ -1,9 +1,9 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::Json as ResponseJson,
     routing::get,
-    Json, Router,
 };
 use db::models::comment::{CreateTaskComment, TaskComment};
 use deployment::Deployment;
@@ -11,7 +11,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Deserialize)]
 pub struct TaskIdPath {

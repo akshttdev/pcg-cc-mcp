@@ -1,10 +1,10 @@
 use axum::{
+    Json, Router,
     body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::Response,
     routing::{get, post},
-    Json, Router,
 };
 use db::models::execution_artifact::ExecutionArtifact;
 use deployment::Deployment;
@@ -17,7 +17,7 @@ use tokio_util::io::ReaderStream;
 use utils::assets::asset_dir;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 /// Resolve a file_path from the database.
 /// If it's a relative path, resolve it against the asset directory (dev_assets/).

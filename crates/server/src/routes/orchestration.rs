@@ -5,14 +5,14 @@
 use std::{convert::Infallible, time::Duration};
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::{
-        sse::{Event, KeepAlive},
         Sse,
+        sse::{Event, KeepAlive},
     },
     routing::{get, post},
-    Json, Router,
 };
 use db::models::orchestration_task::{
     CreateOrchestrationTask, OrchestrationTask, OrchestrationTaskStatus, OrchestrationTaskType,
@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ── Request/Response Types ────────────────────────────────────────────────────
 
@@ -58,15 +58,15 @@ pub struct OrchestrationTasksResponse {
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route(
-            "/orchestration/:flow_id/tasks",
+            "/orchestration/{flow_id}/tasks",
             get(list_tasks).post(create_task),
         )
-        .route("/orchestration/:flow_id/tasks/:task_id", get(get_task))
+        .route("/orchestration/{flow_id}/tasks/{task_id}", get(get_task))
         .route(
-            "/orchestration/:flow_id/tasks/:task_id/kill",
+            "/orchestration/{flow_id}/tasks/{task_id}/kill",
             post(kill_task),
         )
-        .route("/orchestration/:flow_id/stream", get(task_stream))
+        .route("/orchestration/{flow_id}/stream", get(task_stream))
         .with_state(deployment.clone())
 }
 

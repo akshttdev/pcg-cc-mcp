@@ -101,7 +101,8 @@ impl Scheduler {
         preferred_date: Option<DateTime<Utc>>,
     ) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
         // Get existing scheduled posts for the same project
-        let existing = SocialPost::find_scheduled(&self.pool, Some(post.project_id)).await?;
+        let existing =
+            SocialPost::find_scheduled(&self.pool, Some(post.project_id.to_uuid())).await?;
 
         let start_date = preferred_date.unwrap_or_else(Utc::now);
 

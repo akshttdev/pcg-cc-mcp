@@ -4,16 +4,16 @@
 //! and checking sync status.
 
 use axum::{
+    Extension, Router,
     extract::State,
     response::Json as ResponseJson,
     routing::{get, post},
-    Extension, Router,
 };
 use deployment::Deployment;
 use serde::Serialize;
 use utils::response::ApiResponse;
 
-use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Serialize)]
 pub struct SyncStatus {

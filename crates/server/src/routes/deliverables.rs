@@ -1,7 +1,7 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{get, patch, post},
-    Json, Router,
 };
 use cinematics::{CinematicsConfig, CinematicsService, Cinematographer};
 use db::{
@@ -17,7 +17,7 @@ use db::{
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

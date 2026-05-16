@@ -1,18 +1,19 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use nora::agent::{
     NoraRequest, NoraRequestType, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority,
 };
 use rmcp::{
+    ErrorData, ServerHandler,
     handler::server::tool::{Parameters, ToolRouter},
     model::{
         CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
     },
-    schemars, tool, tool_handler, tool_router, ErrorData, ServerHandler,
+    schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::SqlitePool;
 
 use crate::routes::nora::NoraManager;
@@ -185,6 +186,24 @@ pub struct NoraCoordinationStatsRequest {
 
     #[schemars(description = "Time range for statistics")]
     pub time_range: Option<String>,
+}
+
+/// MCP request for "what's on my schedule"
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NoraScheduleRequest {
+    #[schemars(description = "Organization ID whose calendar to query")]
+    pub organization_id: String,
+
+    #[schemars(
+        description = "Window: 'today', 'tomorrow', 'this_week', 'next_7_days'. Defaults to 'today'."
+    )]
+    pub window: Option<String>,
+
+    #[schemars(description = "Filter to events with this CRM contact id (matched attendee)")]
+    pub crm_contact_id: Option<String>,
+
+    #[schemars(description = "Maximum number of events to return (default 25, max 100)")]
+    pub limit: Option<i32>,
 }
 
 /// MCP request for rapid prototyping playbook
@@ -627,6 +646,57 @@ impl NoraServer {
     }
 
     #[tool(
+        description = "Look up the user's schedule from their connected calendars. Returns normalized events from `calendar_events` (synced from Google Calendar / Outlook every 15 min). Supports windows like 'today' / 'tomorrow' / 'this_week' / 'next_7_days', and an optional crm_contact_id filter to answer questions like 'when am I next meeting Acme?'."
+    )]
+    async fn nora_schedule(
+        &self,
+        Parameters(NoraScheduleRequest {
+            organization_id,
+            window,
+            crm_contact_id,
+            limit,
+        }): Parameters<NoraScheduleRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        use db::{db_uuid::DbUuid, models::calendar_event::CalendarEvent};
+
+        let limit = limit.unwrap_or(25).clamp(1, 100);
+
+        // crm_contact_id branch ignores the time window — useful for
+        // "when am I next meeting <person>?" type queries.
+        if let Some(contact_id) = crm_contact_id.filter(|s| !s.is_empty()) {
+            let Ok(uuid) = DbUuid::parse(&contact_id) else {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    json!({ "success": false, "error": "Invalid crm_contact_id" }).to_string(),
+                )]));
+            };
+            return match CalendarEvent::list_for_contact(&self.pool, &uuid, limit).await {
+                Ok(events) => Ok(CallToolResult::success(vec![Content::text(
+                    schedule_response(&events, "by_contact"),
+                )])),
+                Err(e) => Ok(CallToolResult::error(vec![Content::text(
+                    json!({ "success": false, "error": e.to_string() }).to_string(),
+                )])),
+            };
+        }
+
+        let Ok(uuid) = DbUuid::parse(&organization_id) else {
+            return Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": "Invalid organization_id" }).to_string(),
+            )]));
+        };
+
+        let (from, to) = window_bounds(window.as_deref().unwrap_or("today"));
+        match CalendarEvent::list_for_org(&self.pool, &uuid, Some(&from), Some(&to), limit).await {
+            Ok(events) => Ok(CallToolResult::success(vec![Content::text(
+                schedule_response(&events, "by_window"),
+            )])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": e.to_string() }).to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
         description = "Run Nora's rapid prototyping playbook. She syncs live context, ensures the project exists, and produces an executive summary of next steps."
     )]
     async fn nora_rapid_playbook(
@@ -686,7 +756,62 @@ impl ServerHandler for NoraServer {
                 name: "nora-executive-mcp".to_string(),
                 version: "1.0.0".to_string(),
             },
-            instructions: Some("Nora Executive Assistant MCP provides AI-powered executive functions. Available tools: 'nora_chat' (general conversation), 'nora_coordinate_tasks' (task management), 'nora_strategic_planning' (strategic analysis), 'nora_performance_analysis' (performance insights), 'nora_voice_synthesis' (British accent TTS), 'nora_coordination_stats' (system statistics). Nora is a professional British executive assistant who can help with strategic planning, task coordination, performance analysis, and decision support.".to_string()),
+            instructions: Some("Nora Executive Assistant MCP provides AI-powered executive functions. Available tools: 'nora_chat' (general conversation), 'nora_coordinate_tasks' (task management), 'nora_strategic_planning' (strategic analysis), 'nora_performance_analysis' (performance insights), 'nora_voice_synthesis' (British accent TTS), 'nora_coordination_stats' (system statistics), 'nora_schedule' (calendar lookup — what's on today / when am I next meeting <person>?), 'nora_rapid_playbook' (rapid prototyping). Nora is a professional British executive assistant who can help with strategic planning, task coordination, performance analysis, decision support, and scheduling.".to_string()),
         }
     }
+}
+
+/// Translate a friendly window keyword into ISO-8601 UTC `[from, to)` bounds.
+/// Unknown keywords fall back to "today".
+fn window_bounds(window: &str) -> (String, String) {
+    let now = chrono::Utc::now();
+    let today = now.date_naive();
+    let (start_date, end_date) = match window {
+        "tomorrow" => {
+            let d = today + chrono::Duration::days(1);
+            (d, d + chrono::Duration::days(1))
+        }
+        "this_week" => {
+            // ISO week starts Monday
+            let weekday = today.weekday().num_days_from_monday() as i64;
+            let monday = today - chrono::Duration::days(weekday);
+            (monday, monday + chrono::Duration::days(7))
+        }
+        "next_7_days" => (today, today + chrono::Duration::days(7)),
+        // "today" or anything else
+        _ => (today, today + chrono::Duration::days(1)),
+    };
+    (
+        format!("{start_date}T00:00:00Z"),
+        format!("{end_date}T00:00:00Z"),
+    )
+}
+
+/// Render a `CalendarEvent` slice into the JSON shape Nora's chat layer
+/// expects: a tight summary plus the full rows for any follow-up logic.
+fn schedule_response(events: &[db::models::calendar_event::CalendarEvent], mode: &str) -> String {
+    let summary: Vec<Value> = events
+        .iter()
+        .map(|e| {
+            json!({
+                "id": e.id.as_str(),
+                "title": e.title,
+                "start_at": e.start_at,
+                "end_at": e.end_at,
+                "location": e.location,
+                "meeting_url": e.meeting_url,
+                "status": e.status,
+                "provider": e.provider,
+                "crm_contact_ids": serde_json::from_str::<Value>(&e.crm_contact_ids)
+                    .unwrap_or_else(|_| json!([])),
+            })
+        })
+        .collect();
+    json!({
+        "success": true,
+        "mode": mode,
+        "count": events.len(),
+        "events": summary,
+    })
+    .to_string()
 }

@@ -1,14 +1,14 @@
 use anyhow::{self, Error as AnyhowError};
 use deployment::{Deployment, DeploymentError};
-use server::{routes, DeploymentImpl};
+use server::{DeploymentImpl, routes};
 use sqlx::Error as SqlxError;
 use strip_ansi_escapes::strip;
 use thiserror::Error;
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, prelude::*};
 use utils::{
     assets::asset_dir,
     browser::open_browser,
-    external_services::{initialize_external_services, ExternalServicesConfig},
+    external_services::{ExternalServicesConfig, initialize_external_services},
     port_file::write_port_file,
     sentry::sentry_layer,
 };
@@ -312,6 +312,19 @@ async fn main() -> Result<(), VibeKanbanError> {
         schedule_shutdown.clone(),
     );
 
+    // Spawn OAuth token refresh worker (every 15 min, refreshes tokens expiring < 1hr)
+    routes::integrations::spawn_token_refresh_loop(deployment.db().pool.clone());
+
+    // Spawn cloud storage sync worker (every 15 min, runs OneDrive/Dropbox/GDrive deltas)
+    services::services::storage::sync_worker::spawn_sync_loop(deployment.db().pool.clone());
+
+    // Spawn calendar sync worker (every 15 min, runs Google + Outlook delta syncs
+    // and creates CRM activities for any matched attendees)
+    services::services::calendar::spawn_sync_loop(deployment.db().pool.clone());
+
+    // Spawn social publisher worker (every 5 min, publishes due scheduled posts)
+    services::services::social::publisher::spawn_publisher_loop(deployment.db().pool.clone());
+
     // Create shutdown registry (must be before workers that use it)
     let registry = server::workers::ShutdownRegistry::new();
 
@@ -379,6 +392,13 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Nora inbox poller — monitors nora@powerclubglobal.com, routes to intake pipeline
     registry
         .spawn_worker(server::workers::background_tasks::NoraInboxPoller::new(
+            deployment.db().pool.clone(),
+        ))
+        .await;
+
+    // Email sync worker — pulls Gmail (and future Zoho/IMAP) accounts on cadence
+    registry
+        .spawn_worker(server::workers::background_tasks::EmailSyncWorker::new(
             deployment.db().pool.clone(),
         ))
         .await;

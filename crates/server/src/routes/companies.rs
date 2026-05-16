@@ -1,7 +1,7 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, post},
-    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -18,8 +18,8 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
-    error::ApiError, helpers::uuid_params::parse_db_uuid_param, routes::nora::get_nora_instance,
-    DeploymentImpl,
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    routes::nora::get_nora_instance,
 };
 
 #[derive(Debug, Deserialize)]

@@ -5,6 +5,8 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::db_uuid::DbUuid;
+
 #[derive(Debug, Error)]
 pub enum SocialAccountError {
     #[error(transparent)]
@@ -90,7 +92,9 @@ pub enum AccountStatus {
 #[ts(export)]
 pub struct SocialAccount {
     pub id: Uuid,
-    pub project_id: Uuid,
+    // DbUuid because this column stores TEXT to match the projects.id FK target.
+    // Plain Uuid only decodes 16-byte BLOB cells; DbUuid handles both formats.
+    pub project_id: DbUuid,
     pub platform: String,
     pub account_type: String,
     pub platform_account_id: String,
@@ -98,7 +102,14 @@ pub struct SocialAccount {
     pub display_name: Option<String>,
     pub profile_url: Option<String>,
     pub avatar_url: Option<String>,
+    // Legacy plaintext tokens — populated only for accounts created before
+    // the OAuth Token Manager migration (20260428). New accounts leave these
+    // NULL and read tokens via `integration_connection_id`.
+    #[serde(skip_serializing)]
+    #[ts(skip)]
     pub access_token: Option<String>,
+    #[serde(skip_serializing)]
+    #[ts(skip)]
     pub refresh_token: Option<String>,
     pub token_expires_at: Option<DateTime<Utc>>,
     pub follower_count: Option<i64>,
@@ -110,6 +121,11 @@ pub struct SocialAccount {
     pub last_error: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// FK into `integration_connections` for OAuth-managed tokens.
+    /// When set, callers should use `oauth_token_manager::get_access_token`
+    /// to obtain a fresh, decrypted token rather than reading `access_token`.
+    #[ts(optional)]
+    pub integration_connection_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -172,7 +188,9 @@ impl SocialAccount {
             "#,
         )
         .bind(id)
-        .bind(data.project_id)
+        // social_accounts.project_id is a legacy BLOB column whose FK targets
+        // projects.id (TEXT, 36-char UUID). Bind as text so the FK matches.
+        .bind(data.project_id.to_string())
         .bind(&platform)
         .bind(&account_type)
         .bind(&data.platform_account_id)
@@ -205,7 +223,7 @@ impl SocialAccount {
         let accounts = sqlx::query_as::<_, SocialAccount>(
             r#"SELECT * FROM social_accounts WHERE project_id = ?1 ORDER BY platform, username"#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .fetch_all(pool)
         .await?;
 
@@ -221,7 +239,7 @@ impl SocialAccount {
         let accounts = sqlx::query_as::<_, SocialAccount>(
             r#"SELECT * FROM social_accounts WHERE project_id = ?1 AND platform = ?2"#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(&platform_str)
         .fetch_all(pool)
         .await?;

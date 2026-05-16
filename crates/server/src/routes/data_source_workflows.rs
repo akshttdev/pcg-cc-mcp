@@ -1,7 +1,7 @@
 use axum::{
+    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{get, post, put},
-    Extension, Json, Router,
 };
 use db::models::{
     data_source::DataSource,
@@ -12,18 +12,18 @@ use db::models::{
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 pub use services::services::workflow_execution::{
-    build_schema_prompt_text, check_company_duplicate, check_contact_duplicate,
-    check_deal_duplicate, check_intra_batch_duplicate, check_task_duplicate, compute_confidence,
-    execute_action_node, execute_node_with_llm, extract_records_from_output,
-    is_fallback_placeholder, validate_record_against_schema, NodePosition, WorkflowConnection,
-    WorkflowDefinition, WorkflowNode,
+    NodePosition, WorkflowConnection, WorkflowDefinition, WorkflowNode, build_schema_prompt_text,
+    check_company_duplicate, check_contact_duplicate, check_deal_duplicate,
+    check_intra_batch_duplicate, check_task_duplicate, compute_confidence, execute_action_node,
+    execute_node_with_llm, extract_records_from_output, is_fallback_placeholder,
+    validate_record_against_schema,
 };
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 // Legacy step type for backwards compat with run_workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]

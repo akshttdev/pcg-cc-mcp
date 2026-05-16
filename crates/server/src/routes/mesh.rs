@@ -3,14 +3,14 @@
 //! Reads from the ApnPeerManager singleton which maintains a live NATS-based
 //! peer map under the single Pythia Master Node identity (apn_814d37f4).
 
-use axum::{extract::State, response::Json as ResponseJson, routing::get, Router};
+use axum::{Router, extract::State, response::Json as ResponseJson, routing::get};
 use chrono::{DateTime, Utc};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{apn_peer_manager, error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, apn_peer_manager, error::ApiError};
 
 /// Mesh network statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,9 +1,9 @@
 use axum::{
+    Extension, Json, Router,
     extract::{Path, State},
     middleware::from_fn_with_state,
     response::Json as ResponseJson,
     routing::{get, put},
-    Extension, Json, Router,
 };
 use db::models::{
     cms_faq_item::{CmsFaqItem, CreateCmsFaqItem, ReorderFaqItems, UpdateCmsFaqItem},
@@ -13,7 +13,7 @@ use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::require_auth, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
 
 pub async fn list_faq_items(
     Extension(site): Extension<CmsSite>,

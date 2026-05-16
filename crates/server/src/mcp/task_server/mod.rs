@@ -5,8 +5,10 @@ mod deps;
 #[allow(dead_code)]
 mod helpers;
 mod knowledge;
+mod media_ops;
 mod policy;
 mod project_ops;
+mod social_ops;
 mod task_ops;
 mod topology;
 mod types;
@@ -16,13 +18,14 @@ use std::future::Future;
 use db::models::{project::Project, project_knowledge_source::ProjectKnowledgeSource, task::Task};
 use helpers::*;
 use rmcp::{
+    ErrorData, ServerHandler,
     handler::server::tool::ToolRouter,
     model::{
         Annotated, Implementation, ListResourceTemplatesResult, ProtocolVersion,
         RawResourceTemplate, ReadResourceRequestParam, ReadResourceResult, ResourceContents,
         ResourceTemplate, ServerCapabilities, ServerInfo,
     },
-    tool_handler, tool_router, ErrorData, ServerHandler,
+    tool_handler, tool_router,
 };
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -173,14 +176,17 @@ impl ServerHandler for TaskServer {
             },
             instructions: Some(
                 "PCG Dashboard MCP v2 — Atlas-level project management for AI agents. \
-                 26 tools + 6 MCP resources. Use `list_projects` to discover project IDs. \
+                 35 tools + 6 MCP resources. Use `list_projects` to discover project IDs. \
                  Tools: list_projects, list_tasks, create_task, get_task, update_task, delete_task, \
                  assign_task, add_comment, list_project_members, \
                  evaluate_policy, bulk_create_tasks, bulk_update_tasks, search_tasks, \
                  manage_task_dependencies, check_dependencies, unified_search, scaffold_project, \
                  add_knowledge, list_knowledge, get_knowledge_completeness, \
                  manage_knowledge, get_topology, get_topology_issues, find_topology_path, \
-                 get_vibe_budget, list_agents. \
+                 get_vibe_budget, list_agents, \
+                 list_social_accounts, list_social_posts, get_social_post, create_social_post, \
+                 publish_social_post, post_to_social, \
+                 list_media_assets, get_media_asset, upload_media_from_url. \
                  Resources: orcha://projects/{project_id}[/tasks|/knowledge|/topology|/health]"
                     .to_string(),
             ),

@@ -4,9 +4,9 @@
 //! 1 VIBE = $0.01 USD  (VIBE_USD_VALUE in model_pricing.rs)
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{get, patch},
-    Json, Router,
 };
 use db::models::invoice::{CreateInvoice, Invoice, UpdateInvoice};
 use deployment::Deployment;
@@ -14,7 +14,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, helpers::uuid_params::parse_db_uuid_param, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param};
 
 const VIBE_PER_USD: f64 = 100.0; // 1 USD = 100 VIBE  (since 1 VIBE = $0.01)
 
@@ -133,10 +133,31 @@ async fn move_invoice_status(
         .execute(pool)
         .await?;
 
-    Invoice::find_by_id(pool, id_uuid)
+    let invoice = Invoice::find_by_id(pool, id_uuid)
         .await?
-        .map(|i| Json(ApiResponse::success(i)))
-        .ok_or_else(|| ApiError::NotFound("Invoice not found".into()))
+        .ok_or_else(|| ApiError::NotFound("Invoice not found".into()))?;
+
+    // Slack notify on paid. Soft-fail.
+    if body.status == "paid" {
+        if let Some(org_uuid) = invoice.organization_id {
+            let payload = serde_json::json!({
+                "invoice_number": invoice.invoice_number,
+                "amount_usd": invoice.amount_usd,
+                "client_name": serde_json::Value::Null,
+                "month_total_usd": serde_json::Value::Null,
+            });
+            let org_db = db::db_uuid::DbUuid::from_string(org_uuid.to_string());
+            let _ = services::services::slack::dispatch_event(
+                pool,
+                &org_db,
+                db::models::slack_channel_route::SlackEventType::InvoicePaid,
+                &payload,
+            )
+            .await;
+        }
+    }
+
+    Ok(Json(ApiResponse::success(invoice)))
 }
 
 /// DELETE /api/invoices/:id

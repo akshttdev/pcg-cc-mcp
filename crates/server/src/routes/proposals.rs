@@ -1,7 +1,7 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{get, patch},
-    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -12,7 +12,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ── Query params ──────────────────────────────────────────────────────────────
 
@@ -98,10 +98,37 @@ async fn move_proposal_status(
     let id_uuid = DbUuid::parse(&id)
         .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
         .to_uuid();
-    Proposal::move_status(&d.db().pool, id_uuid, &body.status)
+    let pool = &d.db().pool;
+    let proposal = Proposal::move_status(pool, id_uuid, &body.status)
         .await?
-        .map(|p| Json(ApiResponse::success(p)))
-        .ok_or_else(|| ApiError::NotFound("Proposal not found".into()))
+        .ok_or_else(|| ApiError::NotFound("Proposal not found".into()))?;
+
+    // Slack notify on terminal states. Soft-fail.
+    if let Some(org_uuid) = proposal.organization_id {
+        let event = match body.status.as_str() {
+            "approved" | "contract_signed" => {
+                Some(db::models::slack_channel_route::SlackEventType::ProposalApproved)
+            }
+            "declined" => Some(db::models::slack_channel_route::SlackEventType::ProposalRejected),
+            _ => None,
+        };
+        if let Some(event) = event {
+            let amount_usd = (proposal.quote_amount_vibe as f64) / 100.0; // 1 VIBE = $0.01
+            let payload = serde_json::json!({
+                "client_name": proposal.title,
+                "deal_value_usd": amount_usd,
+                "deliverables_count": serde_json::Value::Null,
+                "project_url": proposal.project_id.map(|p| {
+                    format!("/organizations/{}/projects/{}", org_uuid, p)
+                }),
+                "reason": serde_json::Value::Null,
+            });
+            let org_db = DbUuid::from_string(org_uuid.to_string());
+            let _ = services::services::slack::dispatch_event(pool, &org_db, event, &payload).await;
+        }
+    }
+
+    Ok(Json(ApiResponse::success(proposal)))
 }
 
 /// DELETE /api/proposals/:id
