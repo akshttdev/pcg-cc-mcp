@@ -63,11 +63,18 @@ pub async fn sync_account(
         .await?
         .ok_or(SyncWorkerError::AccountNotFound(account_id))?;
 
-    let connection_id = account
-        .integration_connection_id
-        .ok_or(SyncWorkerError::NoConnection(account.id))?;
+    // Local-folder accounts don't go through OAuth — the connector reads the
+    // path directly. Everything else needs a live access token via the
+    // unified manager (which refreshes when expired).
+    let access_token = if account.provider == "local" {
+        String::new()
+    } else {
+        let connection_id = account
+            .integration_connection_id
+            .ok_or(SyncWorkerError::NoConnection(account.id))?;
+        oauth_token_manager::get_access_token(pool, connection_id).await?
+    };
 
-    let access_token = oauth_token_manager::get_access_token(pool, connection_id).await?;
     let connector = storage::get_connector(&account.provider)?;
 
     CloudStorageAccount::mark_status(pool, account.id, "syncing").await?;

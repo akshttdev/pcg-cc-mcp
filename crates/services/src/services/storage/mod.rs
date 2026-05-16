@@ -118,6 +118,7 @@ pub fn get_connector(provider: &str) -> Result<Box<dyn StorageConnector>, Storag
         "onedrive" => Ok(Box::new(connectors::onedrive::OneDriveConnector::new())),
         "dropbox" => Ok(Box::new(connectors::dropbox::DropboxConnector::new())),
         "gdrive" => Ok(Box::new(connectors::gdrive::GoogleDriveConnector::new())),
+        "local" => Ok(Box::new(connectors::local::LocalFolderConnector::new())),
         other => Err(StorageError::UnsupportedProvider(other.to_string())),
     }
 }
