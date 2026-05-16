@@ -34,6 +34,7 @@ pub mod agent_wallets;
 pub mod agents;
 pub mod automations;
 pub mod autonomy;
+pub mod avatar_engine;
 pub mod board_shares;
 pub mod bot_bridge;
 pub mod cinematics;

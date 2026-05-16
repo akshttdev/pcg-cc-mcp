@@ -2,12 +2,13 @@ use std::{collections::HashMap, path::PathBuf};
 
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::Response,
-    routing::get,
+    routing::{get, post},
     Extension, Json, Router,
 };
+use base64::Engine as _;
 use db::models::{
     avatar_profile::{AvatarProfile, CreateAvatarProfile, UpdateAvatarProfile},
     video_job::{CreateVideoJob, VideoJob},
@@ -17,7 +18,7 @@ use serde::Deserialize;
 use tokio::fs;
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::AccessContext, DeploymentImpl};
+use crate::{error::ApiError, middleware::AccessContext, routes::avatar_engine, DeploymentImpl};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,6 +38,14 @@ fn video_dir() -> PathBuf {
     PathBuf::from("dev_assets/video_gen/video")
 }
 
+fn avatar_dir(avatar_id: Uuid) -> PathBuf {
+    PathBuf::from("dev_assets/avatars").join(avatar_id.to_string())
+}
+
+fn avatar_public_base(avatar_id: Uuid) -> String {
+    format!("/api/video-gen/avatars/{avatar_id}")
+}
+
 // ---------------------------------------------------------------------------
 // Routers
 // ---------------------------------------------------------------------------
@@ -50,6 +59,20 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/video-gen/avatars/{id}",
             get(get_avatar).patch(update_avatar).delete(delete_avatar),
         )
+        // Avatar Profile Engine
+        .route(
+            "/video-gen/avatars/{id}/upload-reference",
+            post(upload_reference).layer(DefaultBodyLimit::max(20 * 1024 * 1024)), // 20MB
+        )
+        .route(
+            "/video-gen/avatars/{id}/generate-profile",
+            post(generate_profile),
+        )
+        .route(
+            "/video-gen/avatars/{id}/init-talking-head",
+            post(init_talking_head),
+        )
+        .route("/video-gen/avatars/{id}/render-motion", post(render_motion))
         // Video jobs
         .route("/video-gen/jobs", get(list_jobs).post(create_job))
         .route("/video-gen/jobs/{id}", get(get_job).delete(delete_job))
@@ -62,6 +85,16 @@ pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/video-gen/audio/{job_id}", get(serve_audio))
         .route("/video-gen/video/{job_id}", get(serve_video))
         .route("/video-gen/final/{job_id}", get(serve_final_video))
+        // Avatar engine asset serving (HeyGen / Hedra need fetchable URLs)
+        .route(
+            "/video-gen/avatars/{id}/reference.png",
+            get(serve_reference),
+        )
+        .route("/video-gen/avatars/{id}/shots/{slot}", get(serve_shot))
+        .route(
+            "/video-gen/avatars/{id}/motion/{clip}",
+            get(serve_motion_clip),
+        )
         .with_state(deployment.clone())
 }
 
@@ -133,6 +166,661 @@ async fn delete_avatar(
     } else {
         Err(ApiError::NotFound(format!("avatar {}", id)))
     }
+}
+
+// ---------------------------------------------------------------------------
+// Avatar Profile Engine — upload reference + trigger generation
+// ---------------------------------------------------------------------------
+
+/// POST /api/video-gen/avatars/:id/upload-reference
+///
+/// Accepts multipart form-data with a single `image` field. Persists the bytes
+/// to `dev_assets/avatars/<id>/reference.png` and stamps the URL on the avatar
+/// record.
+async fn upload_reference(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Extension(_ctx): Extension<AccessContext>,
+    mut multipart: Multipart,
+) -> Result<Json<AvatarProfile>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // Confirm the avatar exists up-front.
+    let _ = AvatarProfile::find(pool, id)
+        .await
+        .map_err(ApiError::Database)?
+        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+
+    let mut bytes: Option<Vec<u8>> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("multipart: {e}")))?
+    {
+        if field.name() == Some("image") {
+            let data = field
+                .bytes()
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("read image bytes: {e}")))?;
+            bytes = Some(data.to_vec());
+            break;
+        }
+    }
+    let bytes = bytes.ok_or_else(|| ApiError::BadRequest("missing `image` field".to_string()))?;
+
+    let dir = avatar_dir(id);
+    fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("mkdir: {e}")))?;
+    let reference_path = dir.join("reference.png");
+    fs::write(&reference_path, &bytes)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("write reference: {e}")))?;
+
+    let url = format!("{}/reference.png", avatar_public_base(id));
+    AvatarProfile::set_reference_image(pool, id, &url)
+        .await
+        .map_err(ApiError::Database)?;
+
+    let refreshed = AvatarProfile::find(pool, id)
+        .await
+        .map_err(ApiError::Database)?
+        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+    Ok(Json(refreshed))
+}
+
+/// POST /api/video-gen/avatars/:id/generate-profile
+///
+/// Spawns the async pipeline. Returns immediately with `profile_status = pending`.
+/// Clients poll the avatar GET endpoint to watch status flip to
+/// `generating` → `ready` (or `failed`).
+async fn generate_profile(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Extension(_ctx): Extension<AccessContext>,
+) -> Result<Json<AvatarProfile>, ApiError> {
+    let pool = deployment.db().pool.clone();
+
+    AvatarProfile::find(&pool, id)
+        .await
+        .map_err(ApiError::Database)?
+        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+
+    let reference_path = avatar_dir(id).join("reference.png");
+    if !reference_path.exists() {
+        return Err(ApiError::BadRequest(
+            "avatar has no reference image — upload one first via /upload-reference".to_string(),
+        ));
+    }
+
+    AvatarProfile::update_profile_status(&pool, id, "pending", None)
+        .await
+        .map_err(ApiError::Database)?;
+
+    let cfg = avatar_engine::PipelineConfig {
+        avatar_id: id,
+        reference_path,
+        shots_dir: avatar_dir(id).join("shots"),
+        public_base_path: avatar_public_base(id),
+    };
+
+    let pipeline_pool = pool.clone();
+    tokio::spawn(async move {
+        avatar_engine::run_pipeline(pipeline_pool, cfg).await;
+    });
+
+    let refreshed = AvatarProfile::find(&pool, id)
+        .await
+        .map_err(ApiError::Database)?
+        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+    Ok(Json(refreshed))
+}
+
+/// POST /api/video-gen/avatars/:id/init-talking-head
+///
+/// Uploads the avatar's `front` shot (or `reference` if no profile yet) to
+/// HeyGen's talking-photo endpoint and stamps the returned `talking_photo_id`
+/// onto the avatar so subsequent `/video-gen/jobs` calls can render videos.
+async fn init_talking_head(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Extension(_ctx): Extension<AccessContext>,
+) -> Result<Json<AvatarProfile>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    let _ = AvatarProfile::find(pool, id)
+        .await
+        .map_err(ApiError::Database)?
+        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+
+    let front = avatar_dir(id).join("shots").join("front.png");
+    let fallback = avatar_dir(id).join("reference.png");
+    let source = if front.exists() {
+        front
+    } else if fallback.exists() {
+        fallback
+    } else {
+        return Err(ApiError::BadRequest(
+            "avatar has no front shot or reference image — upload + generate profile first"
+                .to_string(),
+        ));
+    };
+
+    let bytes = fs::read(&source)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("read source image: {e}")))?;
+
+    let api_key = std::env::var("HEYGEN_API_KEY")
+        .map_err(|_| ApiError::InternalError("HEYGEN_API_KEY not set".to_string()))?;
+
+    let talking_photo_id = heygen_talking_photo::upload(&api_key, bytes)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("HeyGen upload failed: {e:#}")))?;
+
+    let updated = AvatarProfile::update(
+        pool,
+        id,
+        db::models::avatar_profile::UpdateAvatarProfile {
+            name: None,
+            slug: None,
+            identity_doc: None,
+            style_notes: None,
+            heygen_avatar_id: Some(talking_photo_id),
+            heygen_avatar_type: Some("talking_photo".to_string()),
+            elevenlabs_voice_id: None,
+            reference_image_url: None,
+            thumbnail_url: None,
+            default_background_url: None,
+            status: None,
+            bible_json: None,
+        },
+    )
+    .await
+    .map_err(ApiError::Database)?
+    .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+
+    Ok(Json(updated))
+}
+
+mod heygen_talking_photo {
+    use serde::Deserialize;
+
+    /// POST raw image bytes to HeyGen's talking-photo upload endpoint.
+    /// Returns the `talking_photo_id` that can be used in `/v2/video/generate`
+    /// as `character.talking_photo_id`.
+    pub async fn upload(api_key: &str, bytes: Vec<u8>) -> anyhow::Result<String> {
+        let client = reqwest::Client::new();
+        let resp = client
+            .post("https://upload.heygen.com/v1/talking_photo")
+            .header("X-Api-Key", api_key)
+            .header("Content-Type", "image/png")
+            .body(bytes)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("HeyGen talking_photo upload {status}: {body}");
+        }
+
+        #[derive(Deserialize)]
+        struct UploadResp {
+            data: UploadData,
+        }
+        #[derive(Deserialize)]
+        struct UploadData {
+            talking_photo_id: String,
+        }
+        let data: UploadResp = resp.json().await?;
+        Ok(data.data.talking_photo_id)
+    }
+}
+
+/// GET /api/video-gen/avatars/:id/reference.png — public
+async fn serve_reference(Path(id): Path<Uuid>) -> Result<Response, ApiError> {
+    let path = avatar_dir(id).join("reference.png");
+    let data = fs::read(&path)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("reference for avatar {}", id)))?;
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "image/png")
+        .header(header::CACHE_CONTROL, "public, max-age=3600")
+        .body(Body::from(data))
+        .unwrap_or_else(|_| Response::new(Body::empty())))
+}
+
+// ---------------------------------------------------------------------------
+// Full-body motion via fal.ai OmniHuman (image + audio → person speaking + moving)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct RenderMotionBody {
+    script_text: String,
+    #[serde(default)]
+    source_slot: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct MotionClipResponse {
+    motion_url: String,
+    duration_seconds: Option<f64>,
+    source_slot: String,
+    elapsed_ms: u128,
+}
+
+/// POST /api/video-gen/avatars/:id/render-motion
+///
+/// Takes a short script + which identity-sheet slot to use as the source frame
+/// (defaults to `full_body_front`). Pipeline:
+///   1. ElevenLabs TTS → MP3 → WAV
+///   2. base64 the source PNG + the WAV
+///   3. POST both to fal.ai `fal-ai/bytedance/omnihuman` (sync endpoint)
+///   4. Download the resulting MP4 → save under
+///      `dev_assets/avatars/<id>/motion/<slug>-<unix>.mp4`
+///   5. Return the public URL
+///
+/// Blocking call; OmniHuman generation typically takes 60-180s.
+async fn render_motion(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Extension(_ctx): Extension<AccessContext>,
+    Json(body): Json<RenderMotionBody>,
+) -> Result<Json<MotionClipResponse>, ApiError> {
+    let pool = &deployment.db().pool;
+    let avatar = AvatarProfile::find(pool, id)
+        .await
+        .map_err(ApiError::Database)?
+        .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
+
+    if body.script_text.trim().is_empty() {
+        return Err(ApiError::BadRequest("script_text is empty".to_string()));
+    }
+
+    let source_slot = body
+        .source_slot
+        .clone()
+        .unwrap_or_else(|| "full_body_front".to_string());
+    let source_path = avatar_dir(id)
+        .join("shots")
+        .join(format!("{source_slot}.png"));
+    if !source_path.exists() {
+        return Err(ApiError::BadRequest(format!(
+            "no shot {source_slot} on disk — generate the profile first"
+        )));
+    }
+
+    let fal_key = std::env::var("FAL_API_KEY")
+        .map_err(|_| ApiError::InternalError("FAL_API_KEY not set".to_string()))?;
+    let elevenlabs_key = std::env::var("ELEVENLABS_API_KEY")
+        .map_err(|_| ApiError::InternalError("ELEVENLABS_API_KEY not set".to_string()))?;
+
+    let started = std::time::Instant::now();
+
+    // 1. ElevenLabs TTS
+    let tts_bytes = elevenlabs_tts(
+        &elevenlabs_key,
+        &avatar.elevenlabs_voice_id,
+        &body.script_text,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("TTS failed: {e:#}")))?;
+
+    // Save MP3 to a temp file then convert to WAV (HeyGen/OmniHuman want PCM)
+    let unix = chrono::Utc::now().timestamp();
+    let motion_dir = avatar_dir(id).join("motion");
+    fs::create_dir_all(&motion_dir)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("mkdir motion: {e}")))?;
+    let mp3_path = motion_dir.join(format!("{source_slot}-{unix}.mp3"));
+    let wav_path = motion_dir.join(format!("{source_slot}-{unix}.wav"));
+    fs::write(&mp3_path, &tts_bytes)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("write mp3: {e}")))?;
+    let ffmpeg = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-i",
+            mp3_path.to_str().unwrap_or(""),
+            "-ar",
+            "44100",
+            "-ac",
+            "1",
+            "-f",
+            "wav",
+            wav_path.to_str().unwrap_or(""),
+        ])
+        .output()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("ffmpeg: {e}")))?;
+    if !ffmpeg.status.success() {
+        return Err(ApiError::InternalError(format!(
+            "ffmpeg mp3→wav failed: {}",
+            String::from_utf8_lossy(&ffmpeg.stderr)
+        )));
+    }
+
+    // 2. Read both files, upload to fal.ai's storage so OmniHuman can fetch them
+    let img_bytes = fs::read(&source_path)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("read source: {e}")))?;
+    let wav_bytes = fs::read(&wav_path)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("read wav: {e}")))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| ApiError::InternalError(format!("http client: {e}")))?;
+
+    let image_url = fal_storage_upload(
+        &client,
+        &fal_key,
+        &format!("avatar-{id}-{source_slot}.png"),
+        "image/png",
+        img_bytes,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("fal upload image: {e:#}")))?;
+
+    let audio_url = fal_storage_upload(
+        &client,
+        &fal_key,
+        &format!("avatar-{id}-{unix}.wav"),
+        "audio/wav",
+        wav_bytes.clone(),
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("fal upload audio: {e:#}")))?;
+
+    tracing::info!(
+        "motion render avatar={} slot={} uploaded → OmniHuman ({} bytes audio, image={}, audio={})",
+        id,
+        source_slot,
+        wav_bytes.len(),
+        image_url,
+        audio_url
+    );
+
+    // 3. Submit to fal.ai OmniHuman via queue API (more reliable than sync for long jobs)
+    let queue_resp = client
+        .post("https://queue.fal.run/fal-ai/bytedance/omnihuman")
+        .header("Authorization", format!("Key {fal_key}"))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "image_url": image_url,
+            "audio_url": audio_url,
+        }))
+        .send()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("OmniHuman submit: {e}")))?;
+
+    let submit_status = queue_resp.status();
+    let submit_text = queue_resp
+        .text()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("read submit: {e}")))?;
+    if !submit_status.is_success() {
+        return Err(ApiError::InternalError(format!(
+            "OmniHuman submit {submit_status}: {}",
+            &submit_text[..submit_text.len().min(500)]
+        )));
+    }
+
+    #[derive(Deserialize)]
+    struct QueueSubmit {
+        request_id: String,
+        status_url: String,
+        response_url: String,
+    }
+    let submit: QueueSubmit = serde_json::from_str(&submit_text).map_err(|e| {
+        ApiError::InternalError(format!("parse queue submit: {e}; body={submit_text}"))
+    })?;
+    tracing::info!(
+        "OmniHuman queued: request_id={} status_url={}",
+        submit.request_id,
+        submit.status_url
+    );
+    let status_url = submit.status_url;
+    let result_url = submit.response_url;
+
+    // Poll status — total budget ~10 min
+    let mut attempt = 0u32;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        attempt += 1;
+        let sresp = client
+            .get(&status_url)
+            .header("Authorization", format!("Key {fal_key}"))
+            .send()
+            .await
+            .map_err(|e| ApiError::InternalError(format!("poll: {e}")))?;
+        let stext = sresp
+            .text()
+            .await
+            .map_err(|e| ApiError::InternalError(format!("poll body: {e}")))?;
+        let sjson: serde_json::Value = match serde_json::from_str(&stext) {
+            Ok(v) => v,
+            Err(_) => {
+                // Transient non-JSON response (e.g. CDN edge error) — wait + retry
+                tracing::warn!(
+                    "OmniHuman poll {attempt}: non-JSON body, retrying. body[..200]={}",
+                    &stext[..stext.len().min(200)]
+                );
+                continue;
+            }
+        };
+        match sjson["status"].as_str() {
+            Some("COMPLETED") => {
+                tracing::info!("OmniHuman queue COMPLETED after {attempt} polls");
+                break;
+            }
+            Some("IN_QUEUE") | Some("IN_PROGRESS") => {
+                if attempt >= 120 {
+                    return Err(ApiError::InternalError(
+                        "OmniHuman timed out after 10 min".to_string(),
+                    ));
+                }
+                continue;
+            }
+            Some(other) => {
+                return Err(ApiError::InternalError(format!(
+                    "OmniHuman queue status: {other} (full: {sjson})"
+                )));
+            }
+            None => {
+                return Err(ApiError::InternalError(format!(
+                    "OmniHuman queue no status (full: {sjson})"
+                )));
+            }
+        }
+    }
+
+    // Fetch the completed result
+    let resp = client
+        .get(&result_url)
+        .header("Authorization", format!("Key {fal_key}"))
+        .send()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("result fetch: {e}")))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("read resp: {e}")))?;
+
+    #[derive(Deserialize)]
+    struct OmniResp {
+        video: OmniVideo,
+    }
+    #[derive(Deserialize)]
+    struct OmniVideo {
+        url: String,
+        #[serde(default)]
+        duration: Option<f64>,
+    }
+    let parsed: OmniResp = serde_json::from_str(&text).map_err(|e| {
+        ApiError::InternalError(format!(
+            "parse OmniHuman resp: {e}; body={}",
+            &text[..text.len().min(500)]
+        ))
+    })?;
+
+    // 4. Download the MP4
+    let mp4_bytes = client
+        .get(&parsed.video.url)
+        .send()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("download mp4: {e}")))?
+        .bytes()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("read mp4: {e}")))?;
+
+    let mp4_filename = format!("{source_slot}-{unix}.mp4");
+    let mp4_path = motion_dir.join(&mp4_filename);
+    fs::write(&mp4_path, &mp4_bytes)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("write mp4: {e}")))?;
+
+    let public_url = format!("{}/motion/{}", avatar_public_base(id), mp4_filename);
+    let elapsed_ms = started.elapsed().as_millis();
+    tracing::info!(
+        "motion render avatar={} slot={} done in {}ms ({} KB)",
+        id,
+        source_slot,
+        elapsed_ms,
+        mp4_bytes.len() / 1024
+    );
+
+    Ok(Json(MotionClipResponse {
+        motion_url: public_url,
+        duration_seconds: parsed.video.duration,
+        source_slot,
+        elapsed_ms,
+    }))
+}
+
+/// GET /api/video-gen/avatars/:id/motion/<clip> — public
+async fn serve_motion_clip(Path((id, clip)): Path<(Uuid, String)>) -> Result<Response, ApiError> {
+    // Defense in depth: only allow .mp4 files, no traversal
+    if !clip.ends_with(".mp4") || clip.contains('/') || clip.contains("..") {
+        return Err(ApiError::BadRequest("bad clip name".to_string()));
+    }
+    let path = avatar_dir(id).join("motion").join(&clip);
+    let data = fs::read(&path)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("motion {clip} for avatar {id}")))?;
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "video/mp4")
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(header::CACHE_CONTROL, "public, max-age=86400")
+        .body(Body::from(data))
+        .unwrap_or_else(|_| Response::new(Body::empty())))
+}
+
+/// Upload bytes to fal.ai's private storage. Returns a fal-hosted public URL
+/// that can be passed to any fal model as `image_url` / `audio_url`.
+///
+/// Two-step flow per fal docs:
+///   1. POST /storage/upload/initiate {file_name, content_type}
+///      → {upload_url, file_url}
+///   2. PUT bytes to upload_url
+///   3. Return file_url
+async fn fal_storage_upload(
+    client: &reqwest::Client,
+    fal_key: &str,
+    file_name: &str,
+    content_type: &str,
+    bytes: Vec<u8>,
+) -> anyhow::Result<String> {
+    #[derive(Deserialize)]
+    struct InitiateResp {
+        upload_url: String,
+        file_url: String,
+    }
+
+    let initiate: InitiateResp = client
+        .post("https://rest.alpha.fal.ai/storage/upload/initiate")
+        .header("Authorization", format!("Key {fal_key}"))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "file_name": file_name,
+            "content_type": content_type,
+        }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+
+    let put = client
+        .put(&initiate.upload_url)
+        .header("Content-Type", content_type)
+        .body(bytes)
+        .send()
+        .await?;
+    if !put.status().is_success() {
+        let status = put.status();
+        let body = put.text().await.unwrap_or_default();
+        anyhow::bail!("fal storage PUT {status}: {body}");
+    }
+
+    Ok(initiate.file_url)
+}
+
+/// Minimal ElevenLabs TTS — returns MP3 bytes. Distinct from the timestamped
+/// flavor used by produce_job; OmniHuman doesn't need word alignment.
+///
+/// Tries `eleven_turbo_v2_5` first (best for instant voice clones), falls
+/// back to `eleven_multilingual_v2` if the turbo model rejects the voice.
+async fn elevenlabs_tts(api_key: &str, voice_id: &str, text: &str) -> anyhow::Result<Vec<u8>> {
+    let client = reqwest::Client::new();
+    let url = format!("https://api.elevenlabs.io/v1/text-to-speech/{voice_id}");
+
+    for model_id in [
+        "eleven_turbo_v2_5",
+        "eleven_multilingual_v2",
+        "eleven_flash_v2_5",
+    ] {
+        let resp = client
+            .post(&url)
+            .header("xi-api-key", api_key)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "text": text,
+                "model_id": model_id,
+            }))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            return Ok(resp.bytes().await?.to_vec());
+        }
+        // Only retry on 400 voice_not_fine_tuned; bail on auth / quota / network.
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if status.as_u16() != 400 || !body.contains("voice_not_fine_tuned") {
+            anyhow::bail!("ElevenLabs TTS {status}: {body}");
+        }
+        tracing::warn!("voice {voice_id} rejected by {model_id}, trying next");
+    }
+    anyhow::bail!("ElevenLabs TTS: voice {voice_id} accepted by no model")
+}
+
+/// GET /api/video-gen/avatars/:id/shots/:slot.png — public
+async fn serve_shot(Path((id, slot)): Path<(Uuid, String)>) -> Result<Response, ApiError> {
+    // Slot must match the canonical taxonomy to avoid path traversal.
+    let allowed = avatar_engine::SHOT_SLOTS.iter().any(|s| s.key == slot);
+    if !allowed {
+        return Err(ApiError::BadRequest(format!("unknown slot {slot}")));
+    }
+    let path = avatar_dir(id).join("shots").join(format!("{slot}.png"));
+    let data = fs::read(&path)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("shot {slot} for avatar {id}")))?;
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "image/png")
+        .header(header::CACHE_CONTROL, "public, max-age=86400")
+        .body(Body::from(data))
+        .unwrap_or_else(|_| Response::new(Body::empty())))
 }
 
 // ---------------------------------------------------------------------------
