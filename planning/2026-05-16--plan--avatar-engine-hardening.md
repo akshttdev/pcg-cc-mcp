@@ -465,3 +465,81 @@ Pre-flight inventory of everything Phase 4.1 depends on:
 ## Session handoff
 
 Before clearing context for the next session: write `planning/SESSION-HANDOFF.md` with the current phase, what's left, and any decisions made on the open questions. Next Claude reads it first (per `CLAUDE.md`).
+
+---
+
+# Execution log — 2026-05-16 session
+
+## Shipped (3 PRs, all pushed)
+
+| PR | Branch | Scope | Status |
+|---|---|---|---|
+| **#68** | `feat/avatar-profile-engine` | Avatar Profile Engine + Phase 1 security + Phase 2 correctness + Phase 3 stretch (drop HeyGen + `APP_BASE_URL` fix) + 9 e2e tests | **Ready for review** |
+| **#69** | `feat/avatar-engine-billing` | Phase 4.1 — Org-level VIBE billing (pre-debit/settle/refund, per-user monthly caps, 10 unit tests) | Open, stacked on #68 |
+| **#70** | `feat/avatar-engine-asset-isolation` | Phase 4.4 — Auth-gate the 3 avatar serve endpoints; UUID-enumeration leak closed; +4 e2e tests | Open, stacked on #69 |
+
+URLs:
+- https://github.com/Powerclub-Global/pcg-cc-mcp/pull/68
+- https://github.com/Powerclub-Global/pcg-cc-mcp/pull/69
+- https://github.com/Powerclub-Global/pcg-cc-mcp/pull/70
+
+## Phase status
+
+| Phase | Status |
+|---|---|
+| 1.1 Access control + helper | ✅ shipped #68 |
+| 1.1.1 `created_by` fix | ✅ shipped #68 |
+| 1.2 Upload validation (`infer` crate) | ✅ shipped #68 |
+| 1.3 Path-traversal regex | ✅ shipped #68 |
+| 1.4 Error scrubbing | ✅ shipped #68 |
+| 2.1 Race-condition guard | ✅ shipped #68 |
+| 2.2 `Uuid → DbUuid` migration | ⚠️ partial — `Uuid::parse_str` for `org_id` query fixed; full model migration + 12 `Path<Uuid>→Path<String>` deferred (mechanical, no bug fixes) |
+| 2.3 `.unwrap()` removal | ✅ shipped #68 (6 sites cleaned, only the `Lazy<Regex>` compile-time unwrap remains) |
+| 2.4 Dead-branch fix (`partial` status) | ✅ shipped #68 (backend + frontend) |
+| 3.0 Drop new HeyGen surface | ✅ shipped #68 |
+| 3.0.1 `APP_BASE_URL` for local dev | ✅ shipped #68 |
+| 3.1 `render_motion` decomposition | ❌ deferred — blocking render_motion billing wiring |
+| 3.2 Per-engine reqwest client | ❌ deferred |
+| 3.3 Frontend tidy (`uploadReference` via `makeRequest`, `URL.createObjectURL` cleanup) | ❌ deferred |
+| 3.4 Migration tweaks (drop low-cardinality index, add CHECK constraint) | ❌ deferred |
+| 3.5 Memory + constants extraction | ❌ deferred |
+| 3.6 Reference-image fetch timeout | ❌ deferred |
+| **4.1 Org VIBE billing (generate-profile)** | ✅ shipped #69 |
+| 4.1 render_motion wiring | ❌ deferred to follow-up — needs Phase 3.1 decomposition first |
+| 4.1 Org admin CRUD `/api/organizations/:id/member-limits` | ❌ deferred — backend supports `OrgMemberVibeLimit::upsert`, admins manage via DB until UI lands |
+| 4.1 Frontend balance/estimate display | ❌ deferred |
+| 4.2 Recovery worker for orphaned `generating` rows | ❌ next session candidate (~2–3h) |
+| 4.3 Observability metrics | ❌ next session candidate (~2h) |
+| **4.4 Asset isolation (auth-gate serves)** | ✅ shipped #70 (substituted signed URLs with auth-gating since HeyGen path is gone) |
+| 4.5 Image-of-likeness consent records | ❌ next session candidate (~half day) |
+| Cross-tenant 403 e2e test | ❌ blocked on missing `createTestUser` fixture in e2e helpers |
+
+## Decisions locked this session
+
+1. Org-level VIBE billing (NOT per-user balances). Per-user caps inside the org set by admins.
+2. Pre-debit estimate, settle on completion, refund on failure.
+3. 2× upstream USD markup.
+4. `SHOT_SLOTS` locked for v1; no customization layer.
+5. HeyGen removed from NEW avatar engine surface (legacy VideoJob pipeline untouched).
+6. Asset isolation via auth-gating, not HMAC signed URLs (simpler, since no external consumer remains).
+7. `created_by` foundation for billing attribution.
+
+## Known dev-environment gotchas (not bugs in this PR)
+
+- **flox rustfmt ≠ team rustfmt** — every cargo build/check regenerates ~30 fmt-only changes in `crates/services/`. Discard with `git checkout -- crates/services/` before commits. The team's tip commits aren't `cargo fmt --check`-clean against the flox-pinned rustfmt.
+- **`/login` route returns 404 in the React app** — auth.setup.ts in e2e relies on it. My API-only test project (`--project=api`) sidesteps this; full browser-based suite needs the frontend route fixed.
+- **Migration version drift on dev DB** — DB has migrations applied from feature branches that don't exist in this branch (20260417*, 20260418*, 20260419*, 20260428*). `cargo sqlx migrate run` complains. Workaround: apply new migrations via raw `sqlite3` + insert tracking row OR delete orphans from `_sqlx_migrations` and let SQLx own everything.
+
+## Next-session candidates (in priority order)
+
+1. **Phase 4.2 — Recovery worker** (~2–3h). Adds `profile_pipeline_started_at` column + background poll for `WHERE profile_status = 'generating' AND started_at < now() - 30min` → transition to `failed`. Improves resilience after server crashes mid-pipeline.
+2. **Phase 4.3 — Observability** (~2h). Prometheus counters/histograms for pipeline_total, pipeline_duration_seconds, upstream_errors_total. Trace spans with `avatar_id` + `org_id`.
+3. **Phase 4.5 — Consent records** (~half day). `avatar_consent_records (avatar_id, uploader_user_id, uploaded_at, consent_attestation_text, ip_address, user_agent)`. Block `generate_profile` if no consent row.
+4. **Phase 3.1 — `render_motion` decomposition** (~3–4h). Unblocks render_motion billing wiring (in scope but couldn't fit).
+5. **Phase 2.2 full** — Mechanical UUID rule cleanup (~2–3h). Style-standards alignment, no bug fixes.
+6. **Org admin CRUD endpoint** for `/api/organizations/:id/member-limits` (~1h). Backend already supports the operation.
+7. **Cross-tenant 403 e2e** — depends on a `createTestUser` fixture that doesn't exist yet.
+
+## Open questions still pending answers
+
+None. The 5 open questions from session start are all resolved. The 3 sub-decisions on VIBE billing are also resolved.
