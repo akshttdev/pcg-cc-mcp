@@ -155,7 +155,11 @@ impl SceneAnalysisEngine {
             let fps = if let Some((n, d)) = fps_str.split_once('/') {
                 let num: f64 = n.parse().unwrap_or(30.0);
                 let den: f64 = d.parse().unwrap_or(1.0);
-                if den > 0.0 { num / den } else { 30.0 }
+                if den > 0.0 {
+                    num / den
+                } else {
+                    30.0
+                }
             } else {
                 fps_str.parse().unwrap_or(30.0)
             };

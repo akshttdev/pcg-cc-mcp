@@ -11,7 +11,7 @@ use sqlx::SqlitePool;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use super::{PublishContent, PublishResult, SocialError, get_connector};
+use super::{get_connector, PublishContent, PublishResult, SocialError};
 
 /// Publisher configuration
 pub struct PublisherConfig {

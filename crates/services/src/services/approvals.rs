@@ -4,12 +4,12 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use db::models::executor_session::ExecutorSession;
 use executors::logs::{
+    utils::patch::{extract_normalized_entry_from_patch, ConversationPatch},
     NormalizedEntry, NormalizedEntryType, ToolStatus,
-    utils::patch::{ConversationPatch, extract_normalized_entry_from_patch},
 };
 use sqlx::{Error as SqlxError, SqlitePool};
 use thiserror::Error;
-use tokio::sync::{RwLock, oneshot};
+use tokio::sync::{oneshot, RwLock};
 use utils::{
     approvals::{ApprovalPendingInfo, ApprovalRequest, ApprovalResponse, ToolApprovalStatus},
     log_msg::LogMsg,
