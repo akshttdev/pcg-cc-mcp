@@ -191,6 +191,7 @@ fn build_create_post(
         is_evergreen: None,
         recycle_after_days: None,
         created_by_agent_id: None,
+        deliverable_id: None,
     })
 }
 

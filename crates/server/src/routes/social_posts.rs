@@ -120,6 +120,8 @@ async fn publish_post_now(
         .await
         .map_err(|e| ApiError::InternalError(format!("Publish failed: {e}")))?;
     Ok(Json(ApiResponse::success(results)))
+}
+
 /// PATCH /social/posts/:id/status — FSM-guarded status transition
 async fn transition_post_status(
     State(deployment): State<DeploymentImpl>,

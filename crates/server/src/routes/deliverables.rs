@@ -1,7 +1,6 @@
 use axum::{
     extract::{Path, State},
     routing::{get, patch, post},
-    routing::{get, patch},
     Json, Router,
 };
 use cinematics::{CinematicsConfig, CinematicsService, Cinematographer};

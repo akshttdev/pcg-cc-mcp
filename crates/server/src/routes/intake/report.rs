@@ -593,14 +593,10 @@ pub async fn run_report_generation(
     );
     // Create human-review task: "Review Business Report: [person]"
     {
-        let person_name =
-            sqlx::query_scalar::<_, String>("SELECT full_name FROM persons WHERE id = ?")
-                .bind(person_id)
-                .fetch_optional(&pool)
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| "Unknown".into());
+        let person_name = contact
+            .full_name
+            .clone()
+            .unwrap_or_else(|| "Unknown".into());
 
         let title = format!("Review Business Report: {}", person_name);
         let desc = format!(
@@ -640,7 +636,10 @@ pub async fn run_report_generation(
         }
     }
 
-    info!("Report {} created for person {}", report_id_str, person_id);
+    info!(
+        "Report {} created for contact {}",
+        report_id_str, contact_id
+    );
     Ok(())
 }
 

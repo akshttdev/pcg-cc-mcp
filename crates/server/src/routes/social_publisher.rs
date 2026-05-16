@@ -11,6 +11,7 @@ use services::services::social::{get_connector, PublishContent};
 use sqlx::SqlitePool;
 use tokio::time::{interval, Duration};
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 const PUBLISH_INTERVAL_SECS: u64 = 15 * 60; // 15 minutes
 
@@ -140,7 +141,7 @@ async fn publish_post(
             .map_err(|e| anyhow::anyhow!("Account lookup failed: {}", e))?
     } else {
         // No account linked — try to find one for this project on LinkedIn
-        let accounts = SocialAccount::find_by_project(pool, post.project_id)
+        let accounts = SocialAccount::find_by_project(pool, Uuid::from(post.project_id.clone()))
             .await
             .map_err(|e| anyhow::anyhow!("Account list failed: {}", e))?;
         accounts
@@ -200,6 +201,10 @@ async fn publish_post(
         mentions,
         link: None,
         scheduled_for: post.scheduled_for,
+        platform_specific: post
+            .platform_specific
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok()),
     };
 
     let result = connector

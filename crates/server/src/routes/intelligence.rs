@@ -17,13 +17,11 @@ use axum::{
     extract::{Path, State},
     routing::{get, post},
     Extension, Json, Router,
-    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
     models::{
         crm_contact::CrmContact,
-        person::Person,
         project_knowledge_source::{
             KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource,
         },
@@ -39,7 +37,6 @@ use crate::{
     error::ApiError, helpers::uuid_params::parse_db_uuid_param,
     middleware::access_control::AccessContext, routes::nora::get_nora_instance, DeploymentImpl,
 };
-use crate::{error::ApiError, routes::nora::get_nora_instance, DeploymentImpl};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -313,7 +310,6 @@ async fn run_research_direct(
             .into_iter()
             .filter(|s| {
                 s.source_type == "entity" && s.source_id == contact.id.as_ref() && !s.is_stale
-                s.source_type == "entity" && s.source_id == person.id.as_ref() && !s.is_stale
             })
             .filter_map(|s| s.source_summary)
             .collect::<Vec<_>>()
@@ -2271,7 +2267,6 @@ async fn run_research_pass(
         let photo_url = parsed["photo_url"]
             .as_str()
             .filter(|s| !s.is_empty() && *s != "null");
-        let _location = parsed["location"]
         let location = parsed["location"]
             .as_str()
             .filter(|s| !s.is_empty() && *s != "null");
@@ -2332,6 +2327,7 @@ async fn run_research_pass(
             .bind(confidence_score)
             .execute(&pool)
             .await;
+        }
         // Upsert social profiles extracted from this pass
         if let Some(profiles) = parsed["social_profiles"].as_array() {
             for sp in profiles {
@@ -2377,7 +2373,7 @@ async fn run_research_pass(
                         last_synced_at = datetime('now','subsec'),
                         updated_at = datetime('now','subsec')",
                 )
-                .bind(person_id.to_string())
+                .bind(contact_id)
                 .bind(platform)
                 .bind(&handle)
                 .bind(&profile_url)
@@ -2458,7 +2454,7 @@ async fn run_research_pass(
                          description, company_url, company_type, is_primary, created_at)
                      VALUES (randomblob(16), ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now','subsec'))"
                 )
-                .bind(person_id.to_string())
+                .bind(contact_id)
                 .bind(&company_id)
                 .bind(role)
                 .bind(title)

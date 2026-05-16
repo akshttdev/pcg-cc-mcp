@@ -35,7 +35,6 @@ use topsi::{
     initialize_topsi, AccessScope, DetectedIssue, ProjectAccess, RecommendationBatch,
     TaskExecutionBridge, TopologySummary, TopsiAgent, TopsiConfig, TopsiError, TopsiRequest,
     TopsiRequestType, TopsiResponse, UserContext, VideoJobBridge,
-    TopsiRequestType, TopsiResponse, UserContext,
 };
 use ts_rs::TS;
 use uuid::Uuid;
@@ -170,6 +169,8 @@ impl VideoJobBridge for VideoProductionBridge {
                 script_text: script_text.to_string(),
                 background_url: background_url.map(|s| s.to_string()),
                 segments_json: segments_json.map(|s| s.to_string()),
+                width: None,
+                height: None,
             },
             None,
         )
@@ -191,6 +192,8 @@ impl VideoJobBridge for VideoProductionBridge {
                 &script,
                 bg.as_deref(),
                 segs.as_deref(),
+                1280,
+                720,
             )
             .await
             {

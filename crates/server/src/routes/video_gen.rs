@@ -15,15 +15,6 @@ use db::{
         avatar_profile::{AvatarProfile, CreateAvatarProfile, UpdateAvatarProfile},
         video_job::{CreateVideoJob, VideoJob},
     },
-    extract::{Path, Query, State},
-    http::{header, StatusCode},
-    response::Response,
-    routing::{delete, get, post},
-    Extension, Json, Router,
-};
-use db::models::{
-    avatar_profile::{AvatarProfile, CreateAvatarProfile, UpdateAvatarProfile},
-    video_job::{CreateVideoJob, VideoJob},
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -37,7 +28,6 @@ use crate::{
     routes::avatar_engine,
     DeploymentImpl,
 };
-use crate::{error::ApiError, middleware::AccessContext, DeploymentImpl};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -896,7 +886,6 @@ async fn create_job(
     Json(body): Json<CreateVideoJob>,
 ) -> Result<(StatusCode, Json<VideoJob>), ApiError> {
     let pool = deployment.db().pool.clone();
-    let _ctx = ctx;
     let created_by: Option<uuid::Uuid> = None;
 
     // Access control: caller must have access to the avatar this job uses.
@@ -1125,7 +1114,8 @@ async fn birthday_film(
         CreateVideoJob {
             avatar_profile_id: avatar_id,
             script_text: BODHI_SIGNAL_SCRIPT.to_string(),
-            background_url: None, // pure black — cinematic
+            background_url: None,
+            segments_json: None,
             width: Some(720),
             height: Some(1280),
         },
@@ -1354,12 +1344,6 @@ pub(crate) async fn produce_job(
 
     tracing::info!("video job {}: submitting to HeyGen", job_id);
     let avatar_type = avatar.heygen_avatar_type.as_str();
-    let heygen_video_id = heygen::generate_with_audio(
-        &hg_key,
-        heygen_avatar_id,
-        avatar_type,
-        &audio_url,
-        background_url,
     let heygen_video_id = video_gen::heygen::generate_with_audio(
         &hg_key,
         heygen_avatar_id,
@@ -2170,6 +2154,9 @@ mod tests {
             "short audio should yield no cuts, got {:?}",
             cuts
         );
+    }
+}
+
 /// HeyGen-native TTS pipeline for the birthday film — no ElevenLabs dependency.
 /// Uses HeyGen's built-in voice synthesis directly from the script text.
 async fn produce_birthday_film_heygen_tts(
