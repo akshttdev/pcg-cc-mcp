@@ -299,7 +299,7 @@ async fn generate_profile(
 ) -> Result<Json<AvatarProfile>, ApiError> {
     let pool = deployment.db().pool.clone();
 
-    require_avatar_org_access(&ctx, &pool, id).await?;
+    let avatar = require_avatar_org_access(&ctx, &pool, id).await?;
 
     let reference_path = avatar_dir(id).join("reference.png");
     if !reference_path.exists() {
@@ -308,6 +308,22 @@ async fn generate_profile(
         ));
     }
 
+    // Pre-debit VIBE estimate. On insufficient balance or per-user cap exceeded
+    // this returns 402 / 403 before we spawn anything.
+    let org_id = avatar.organization_id.ok_or_else(|| {
+        ApiError::BadRequest("avatar has no organization_id; cannot bill for generation".into())
+    })?;
+    let estimated_vibe = services::services::avatar_pricing::profile_pipeline_vibe_cost();
+    let charge_id = crate::helpers::billing::ensure_org_vibe_balance_and_debit(
+        &pool,
+        &org_id.to_string(),
+        ctx.user_id.as_str(),
+        estimated_vibe,
+        Some(id),
+        "avatar profile pipeline (16 shots + bible)",
+    )
+    .await?;
+
     // Atomic claim: only proceed if no other pipeline is in flight for this
     // avatar. Prevents two concurrent POSTs from each spawning a pipeline and
     // clobbering each other's shots on disk.
@@ -315,6 +331,8 @@ async fn generate_profile(
         .await
         .map_err(ApiError::Database)?;
     if !claimed {
+        // Roll back the pre-debit since the pipeline isn't going to run.
+        let _ = crate::helpers::billing::refund_org_vibe_charge(&pool, charge_id).await;
         return Err(ApiError::Conflict(
             "avatar profile generation already in progress".to_string(),
         ));
@@ -325,6 +343,7 @@ async fn generate_profile(
         reference_path,
         shots_dir: avatar_dir(id).join("shots"),
         public_base_path: avatar_public_base(id),
+        charge_id: Some(charge_id),
     };
 
     let pipeline_pool = pool.clone();

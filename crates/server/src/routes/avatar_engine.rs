@@ -158,12 +158,52 @@ pub struct PipelineConfig {
     pub reference_path: PathBuf,
     pub shots_dir: PathBuf,
     pub public_base_path: String,
+    /// Optional VIBE charge id for billing settle/refund. `None` skips
+    /// billing (legacy callers + tests).
+    pub charge_id: Option<Uuid>,
 }
 
 /// Run the full profile-generation pipeline. Updates `profile_status` along
 /// the way and persists `bible_json` + `portrait_set` on success.
+///
+/// If `cfg.charge_id` is set, the VIBE pre-debit is finalized at the end:
+/// settled at the full estimated cost on success, fully refunded on failure.
 pub async fn run_pipeline(pool: SqlitePool, cfg: PipelineConfig) {
-    if let Err(e) = run_pipeline_inner(&pool, &cfg).await {
+    let result = run_pipeline_inner(&pool, &cfg).await;
+
+    match (&result, cfg.charge_id) {
+        (Ok(_), Some(charge_id)) => {
+            // Settle at full estimated cost. Partial-success refinement (charge
+            // proportional to shots that landed) is a future improvement; today
+            // partial-success still bills full because the upstream API calls
+            // were paid for either way.
+            let actual = services::services::avatar_pricing::profile_pipeline_vibe_cost();
+            if let Err(e) =
+                crate::helpers::billing::settle_org_vibe_charge(&pool, charge_id, actual).await
+            {
+                tracing::error!(
+                    "failed to settle vibe charge {} for avatar {}: {:#}",
+                    charge_id,
+                    cfg.avatar_id,
+                    e
+                );
+            }
+        }
+        (Err(_), Some(charge_id)) => {
+            if let Err(e) = crate::helpers::billing::refund_org_vibe_charge(&pool, charge_id).await
+            {
+                tracing::error!(
+                    "failed to refund vibe charge {} for avatar {}: {:#}",
+                    charge_id,
+                    cfg.avatar_id,
+                    e
+                );
+            }
+        }
+        (_, None) => {} // billing skipped
+    }
+
+    if let Err(e) = result {
         tracing::error!(
             "avatar profile pipeline failed for {}: {:#}",
             cfg.avatar_id,

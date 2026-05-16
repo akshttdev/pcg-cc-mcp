@@ -8,6 +8,7 @@ pub mod aptos;
 pub mod artifacts;
 pub mod auth;
 pub mod autonomy;
+pub mod avatar_pricing;
 pub mod beat_analysis;
 pub mod bowser;
 pub mod config;

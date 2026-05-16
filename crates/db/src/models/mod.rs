@@ -61,6 +61,7 @@ pub mod notification;
 pub mod orchestration_context;
 pub mod orchestration_task;
 pub mod org_brand_profile;
+pub mod org_member_vibe_limit;
 pub mod org_onboarding;
 pub mod peer_node;
 pub mod peer_reward;
