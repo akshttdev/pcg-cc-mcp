@@ -13,6 +13,8 @@ pub enum SocialPostError {
     Database(#[from] sqlx::Error),
     #[error("Social post not found")]
     NotFound,
+    #[error("Invalid status transition from {0} to {1}")]
+    InvalidTransition(String, String),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
@@ -83,6 +85,14 @@ pub struct SocialPost {
     pub engagement_rate: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub conference_workflow_id: Option<Uuid>,
+    pub entity_id: Option<Uuid>,
+    // Delivery pipeline fields
+    pub deliverable_id: Option<Uuid>,
+    pub review_token: Option<String>,
+    pub review_note: Option<String>,
+    pub reviewed_by: Option<String>,
+    pub publish_attempt: i64,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -104,6 +114,7 @@ pub struct CreateSocialPost {
     pub is_evergreen: Option<bool>,
     pub recycle_after_days: Option<i64>,
     pub created_by_agent_id: Option<Uuid>,
+    pub deliverable_id: Option<Uuid>,
 }
 
 #[derive(Debug, Default, Deserialize, TS)]
@@ -153,9 +164,9 @@ impl SocialPost {
                 id, project_id, social_account_id, task_id, content_type,
                 caption, content_blocks, media_urls, hashtags, mentions,
                 platforms, platform_specific, scheduled_for, category,
-                is_evergreen, recycle_after_days, created_by_agent_id
+                is_evergreen, recycle_after_days, created_by_agent_id, deliverable_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
             RETURNING *
             "#,
         )
@@ -178,6 +189,7 @@ impl SocialPost {
         .bind(is_evergreen)
         .bind(data.recycle_after_days)
         .bind(data.created_by_agent_id)
+        .bind(data.deliverable_id)
         .fetch_one(pool)
         .await?;
 
@@ -250,6 +262,7 @@ impl SocialPost {
             SELECT * FROM social_posts
             WHERE status = 'scheduled'
             AND datetime(scheduled_for) <= datetime('now')
+            AND publish_attempt < 3
             ORDER BY scheduled_for ASC
             "#,
         )
@@ -257,6 +270,28 @@ impl SocialPost {
         .await?;
 
         Ok(posts)
+    }
+
+    pub async fn find_all_for_project(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Vec<Self>, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"SELECT * FROM social_posts WHERE project_id = ?1 ORDER BY COALESCE(scheduled_for, created_at) ASC"#,
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"SELECT * FROM social_posts ORDER BY COALESCE(scheduled_for, created_at) ASC"#,
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(Into::into)
     }
 
     pub async fn find_by_category(
@@ -466,6 +501,174 @@ impl SocialPost {
         }
 
         Ok(())
+    }
+
+    pub async fn find_by_deliverable(
+        pool: &SqlitePool,
+        deliverable_id: Uuid,
+    ) -> Result<Option<Self>, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            "SELECT * FROM social_posts WHERE deliverable_id = ?1 ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(deliverable_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    pub async fn advance_to_review(
+        pool: &SqlitePool,
+        id: Uuid,
+        media_url: &str,
+        asset_urls: &[String],
+    ) -> Result<Self, SocialPostError> {
+        // Generate a review token (random UUID string)
+        let token = Uuid::new_v4().to_string().replace('-', "");
+        let _ = media_url; // caller may pass the primary URL; all URLs go in asset_urls
+        let media_json = serde_json::to_string(asset_urls).unwrap_or_else(|_| "[]".to_string());
+        sqlx::query_as::<_, SocialPost>(
+            r#"
+            UPDATE social_posts SET
+                status = 'pending_review',
+                media_urls = ?2,
+                review_token = ?3,
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1 AND status = 'draft'
+            RETURNING *
+        "#,
+        )
+        .bind(id)
+        .bind(media_json)
+        .bind(token)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn find_by_review_token(
+        pool: &SqlitePool,
+        token: &str,
+    ) -> Result<Self, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>("SELECT * FROM social_posts WHERE review_token = ?1")
+            .bind(token)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn approve_post(
+        pool: &SqlitePool,
+        id: Uuid,
+        approved_by: &str,
+    ) -> Result<Self, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"
+            UPDATE social_posts SET
+                status = 'approved',
+                approved_by = ?2,
+                approved_at = datetime('now', 'subsec'),
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1 AND status = 'pending_review'
+            RETURNING *
+        "#,
+        )
+        .bind(id)
+        .bind(approved_by)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn request_changes(
+        pool: &SqlitePool,
+        id: Uuid,
+        note: &str,
+        reviewed_by: &str,
+    ) -> Result<Self, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"
+            UPDATE social_posts SET
+                status = 'draft',
+                review_note = ?2,
+                reviewed_by = ?3,
+                review_token = NULL,
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1 AND status = 'pending_review'
+            RETURNING *
+        "#,
+        )
+        .bind(id)
+        .bind(note)
+        .bind(reviewed_by)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn move_to_scheduled(pool: &SqlitePool, id: Uuid) -> Result<Self, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"
+            UPDATE social_posts SET
+                status = 'scheduled',
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1 AND status = 'approved' AND scheduled_for IS NOT NULL
+            RETURNING *
+        "#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn increment_publish_attempt(
+        pool: &SqlitePool,
+        id: Uuid,
+    ) -> Result<(), SocialPostError> {
+        sqlx::query("UPDATE social_posts SET publish_attempt = publish_attempt + 1, updated_at = datetime('now', 'subsec') WHERE id = ?1")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn transition_status(
+        pool: &SqlitePool,
+        id: Uuid,
+        new_status: &str,
+        by: Option<&str>,
+    ) -> Result<Self, SocialPostError> {
+        // FSM guard: validate allowed transitions
+        let current = Self::find_by_id(pool, id).await?;
+        let allowed: &[&str] = match current.status.as_str() {
+            "draft" => &["pending_review", "cancelled"],
+            "pending_review" => &["approved", "draft", "cancelled"],
+            "approved" => &["scheduled", "draft", "cancelled"],
+            "scheduled" => &["approved", "cancelled"],
+            "failed" => &["draft", "scheduled"],
+            _ => &[],
+        };
+        if !allowed.contains(&new_status) {
+            return Err(SocialPostError::InvalidTransition(
+                current.status.clone(),
+                new_status.to_string(),
+            ));
+        }
+        sqlx::query_as::<_, SocialPost>(r#"
+            UPDATE social_posts SET
+                status = ?2,
+                approved_by = CASE WHEN ?2 = 'approved' THEN COALESCE(?3, approved_by) ELSE approved_by END,
+                approved_at = CASE WHEN ?2 = 'approved' THEN datetime('now', 'subsec') ELSE approved_at END,
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1
+            RETURNING *
+        "#)
+        .bind(id)
+        .bind(new_status)
+        .bind(by)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
     }
 }
 

@@ -315,6 +315,9 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
 
+    // Spawn social post publish loop (checks every 15 minutes)
+    routes::social_publisher::spawn_social_publish_loop(deployment.db().pool.clone());
+
     // Spawn workflow schedule trigger loop (checks every 5 minutes)
     let schedule_shutdown = tokio_util::sync::CancellationToken::new();
     routes::data_source_workflows::spawn_workflow_schedule_loop(

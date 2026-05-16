@@ -1,4 +1,4 @@
-import { makeRequest, handleApiResponse } from './client';
+import { handleApiResponse, makeRequest } from './client';
 
 // ============================================
 // Social Command APIs
@@ -30,6 +30,7 @@ export interface SocialPostRecord {
   project_id: string;
   social_account_id?: string | null;
   task_id?: string | null;
+  deliverable_id?: string | null;
   content_type: string;
   caption?: string | null;
   content_blocks?: string | null;
@@ -49,6 +50,10 @@ export interface SocialPostRecord {
   created_by_agent_id?: string | null;
   approved_by?: string | null;
   approved_at?: string | null;
+  review_token?: string | null;
+  review_note?: string | null;
+  reviewed_by?: string | null;
+  publish_attempt: number;
   platform_post_id?: string | null;
   platform_url?: string | null;
   publish_error?: string | null;
@@ -174,13 +179,16 @@ export const socialApi = {
     return handleApiResponse<SocialPostRecord>(response);
   },
 
-  updatePost: async (id: string, data: Partial<{
-    caption: string;
-    status: string;
-    scheduled_for: string | null;
-    category: string;
-    platforms: string;
-  }>): Promise<SocialPostRecord> => {
+  updatePost: async (
+    id: string,
+    data: Partial<{
+      caption: string;
+      status: string;
+      scheduled_for: string | null;
+      category: string;
+      platforms: string;
+    }>
+  ): Promise<SocialPostRecord> => {
     const response = await makeRequest(`/api/social/posts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -190,18 +198,23 @@ export const socialApi = {
   },
 
   deletePost: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/social/posts/${id}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/social/posts/${id}`, {
+      method: 'DELETE',
+    });
     return handleApiResponse<void>(response);
   },
 
-  updateMention: async (id: string, data: Partial<{
-    status: string;
-    priority: string;
-    sentiment: string;
-    reply_content: string;
-    replied_by: string;
-    replied_at: string;
-  }>): Promise<SocialMentionRecord> => {
+  updateMention: async (
+    id: string,
+    data: Partial<{
+      status: string;
+      priority: string;
+      sentiment: string;
+      reply_content: string;
+      replied_by: string;
+      replied_at: string;
+    }>
+  ): Promise<SocialMentionRecord> => {
     const response = await makeRequest(`/api/social/inbox/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -210,12 +223,15 @@ export const socialApi = {
     return handleApiResponse<SocialMentionRecord>(response);
   },
 
-  updateAccount: async (id: string, data: Partial<{
-    status: string;
-    username: string;
-    display_name: string;
-    follower_count: number;
-  }>): Promise<SocialAccountRecord> => {
+  updateAccount: async (
+    id: string,
+    data: Partial<{
+      status: string;
+      username: string;
+      display_name: string;
+      follower_count: number;
+    }>
+  ): Promise<SocialAccountRecord> => {
     const response = await makeRequest(`/api/social/accounts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -225,8 +241,52 @@ export const socialApi = {
   },
 
   deleteAccount: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/social/accounts/${id}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/social/accounts/${id}`, {
+      method: 'DELETE',
+    });
     return handleApiResponse<void>(response);
+  },
+
+  transitionStatus: async (
+    id: string,
+    status: string,
+    by?: string,
+    note?: string
+  ): Promise<SocialPostRecord> => {
+    const response = await makeRequest(`/api/social/posts/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, by, note }),
+    });
+    return handleApiResponse<SocialPostRecord>(response);
+  },
+
+  uploadMedia: async (params: {
+    projectId: string;
+    file: File;
+    deliverableId?: string;
+    socialPostId?: string;
+    uploadedBy?: string;
+  }): Promise<{
+    id: string;
+    public_url: string;
+    filename: string;
+    mime_type: string;
+  }> => {
+    const sp = new URLSearchParams({ project_id: params.projectId });
+    if (params.deliverableId) sp.set('deliverable_id', params.deliverableId);
+    if (params.socialPostId) sp.set('social_post_id', params.socialPostId);
+    if (params.uploadedBy) sp.set('uploaded_by', params.uploadedBy);
+    const form = new FormData();
+    form.append('file', params.file);
+    const response = await makeRequest(
+      `/api/media/social-upload?${sp.toString()}`,
+      {
+        method: 'POST',
+        body: form,
+      }
+    );
+    return handleApiResponse(response);
   },
 };
 
@@ -292,14 +352,21 @@ export interface OAuthUrlResponse {
 }
 
 export const emailApi = {
-  listAccounts: async (projectId?: string, provider?: string, ownerType?: string, ownerId?: string): Promise<EmailAccountRecord[]> => {
+  listAccounts: async (
+    projectId?: string,
+    provider?: string,
+    ownerType?: string,
+    ownerId?: string
+  ): Promise<EmailAccountRecord[]> => {
     const searchParams = new URLSearchParams();
     if (projectId) searchParams.set('project_id', projectId);
     if (provider) searchParams.set('provider', provider);
     if (ownerType) searchParams.set('owner_type', ownerType);
     if (ownerId) searchParams.set('owner_id', ownerId);
     const query = searchParams.toString();
-    const response = await makeRequest(`/api/email/accounts${query ? `?${query}` : ''}`);
+    const response = await makeRequest(
+      `/api/email/accounts${query ? `?${query}` : ''}`
+    );
     return handleApiResponse<EmailAccountRecord[]>(response);
   },
 
@@ -308,7 +375,9 @@ export const emailApi = {
     return handleApiResponse<EmailAccountRecord>(response);
   },
 
-  createAccount: async (data: CreateEmailAccountRequest): Promise<EmailAccountRecord> => {
+  createAccount: async (
+    data: CreateEmailAccountRequest
+  ): Promise<EmailAccountRecord> => {
     const response = await makeRequest('/api/email/accounts', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -316,7 +385,10 @@ export const emailApi = {
     return handleApiResponse<EmailAccountRecord>(response);
   },
 
-  updateAccount: async (id: string, data: UpdateEmailAccountRequest): Promise<EmailAccountRecord> => {
+  updateAccount: async (
+    id: string,
+    data: UpdateEmailAccountRequest
+  ): Promise<EmailAccountRecord> => {
     const response = await makeRequest(`/api/email/accounts/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

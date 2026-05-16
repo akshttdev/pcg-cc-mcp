@@ -1,13 +1,13 @@
 use axum::{
-    Router,
-    http::{Method, StatusCode, header},
+    http::{header, Method, StatusCode},
     middleware,
     response::IntoResponse,
-    routing::{IntoMakeService, get},
+    routing::{get, IntoMakeService},
+    Router,
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-use crate::{DeploymentImpl, middleware as app_middleware};
+use crate::{middleware as app_middleware, DeploymentImpl};
 
 pub mod activity;
 pub mod agent_chat;
@@ -97,6 +97,7 @@ pub mod output_schemas;
 pub mod pcg_router;
 pub mod peer_rewards;
 pub mod permissions;
+pub mod persons;
 pub mod pipeline_events;
 pub mod project_boards;
 pub mod project_controllers;
@@ -114,8 +115,10 @@ pub mod sidebar;
 pub mod slack;
 pub mod social_accounts;
 pub mod social_inbox;
+pub mod social_media_upload;
 pub mod social_posts;
 pub mod storage;
+pub mod social_publisher;
 pub mod system_metrics;
 pub mod tags;
 pub mod task_artifacts;
@@ -171,6 +174,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(integrations::router(&deployment))
         .merge(github::router(&deployment))
         .merge(storage::router(&deployment))
+        .merge(social_media_upload::router(&deployment))
         .merge(email_accounts::router(&deployment))
         .merge(crm_contacts::router(&deployment))
         .merge(crm_pipelines::router(&deployment))
@@ -231,6 +235,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(topsi::topsi_routes())
         .merge(nora_classifier::router(&deployment))
         .merge(org_cloud::router(&deployment))
+        .merge(video_gen::router(&deployment))
         .merge(feedback::router(&deployment))
         .merge(agent_flows::router(&deployment))
         .merge(agent_flow_events::router(&deployment))
@@ -288,6 +293,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(meet::meet_routes(&deployment))
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))
+        .merge(social_posts::public_router(&deployment))
+        .merge(video_gen::public_router(&deployment))
         .merge(orcha::orcha_routes())
         .merge(media_library::public_router(&deployment))
         .merge(mesh::router(&deployment))

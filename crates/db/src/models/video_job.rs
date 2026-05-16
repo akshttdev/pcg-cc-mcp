@@ -44,6 +44,10 @@ pub struct CreateVideoJob {
     pub script_text: String,
     pub background_url: Option<String>,
     pub segments_json: Option<String>,
+    /// Output width in pixels. Defaults to 1280 (landscape). Use 720 for vertical 9:16.
+    pub width: Option<u32>,
+    /// Output height in pixels. Defaults to 720 (landscape). Use 1280 for vertical 9:16.
+    pub height: Option<u32>,
 }
 
 impl VideoJob {
