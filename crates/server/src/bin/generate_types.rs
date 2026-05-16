@@ -301,6 +301,30 @@ fn generate_types_content() -> String {
         db::models::contact_note::ContactNote::decl(),
         db::models::contact_research_pass::ContactResearchPass::decl(),
         db::models::contact_social_profile::ContactSocialProfile::decl(),
+        // Lux Creator Studio — deck authoring types
+        db::models::deck_document::DeckDocument::decl(),
+        db::models::deck_document::DeckSlide::decl(),
+        db::models::deck_document::DeckRevision::decl(),
+        db::models::deck_document::DeckSuggestion::decl(),
+        db::models::deck_document::Canvas::decl(),
+        db::models::deck_document::Color::decl(),
+        db::models::deck_document::Fill::decl(),
+        db::models::deck_document::GradientStop::decl(),
+        db::models::deck_document::Stroke::decl(),
+        db::models::deck_document::BBox::decl(),
+        db::models::deck_document::SlideElement::decl(),
+        db::models::deck_document::TextElement::decl(),
+        db::models::deck_document::TextRun::decl(),
+        db::models::deck_document::ImageElement::decl(),
+        db::models::deck_document::ShapeElement::decl(),
+        db::models::deck_document::GroupElement::decl(),
+        db::models::deck_document::DeckSnapshot::decl(),
+        db::models::deck_document::SlideSnapshot::decl(),
+        db::models::deck_document::CreateDeckDocument::decl(),
+        db::models::deck_document::UpdateDeckDocument::decl(),
+        db::models::deck_document::CreateDeckSlide::decl(),
+        db::models::deck_document::UpdateDeckSlide::decl(),
+        db::models::deck_document::CreateDeckSuggestion::decl(),
     ];
 
     let body = decls
@@ -446,11 +470,11 @@ fn main() {
             std::process::exit(1);
         }
     } else {
-        // Wipe existing shared
-        fs::remove_dir_all(shared_path).ok();
-
-        // Recreate folder
+        // Only remove the artifacts we own — don't wipe the whole shared/
+        // directory or we'll nuke hand-maintained files like `testids.ts`.
         fs::create_dir_all(shared_path).expect("cannot create shared");
+        fs::remove_file(&types_path).ok();
+        fs::remove_dir_all(&schemas_path).ok();
 
         // Write the file as before
         fs::write(&types_path, generated_types).expect("unable to write types.ts");
