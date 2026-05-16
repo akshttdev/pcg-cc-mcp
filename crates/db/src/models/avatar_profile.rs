@@ -25,6 +25,13 @@ pub struct AvatarProfile {
     pub error_message: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// JSON array of `{ slot, url, prompt, locked, generated_at }` entries — one per generated shot.
+    pub portrait_set: String,
+    /// Structured character bible JSON produced by the Claude vision pass.
+    pub bible_json: Option<String>,
+    /// Lifecycle of the profile-generation pipeline: `none`/`pending`/`generating`/`ready`/`failed`.
+    pub profile_status: String,
+    pub profile_error: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -57,6 +64,7 @@ pub struct UpdateAvatarProfile {
     pub thumbnail_url: Option<String>,
     pub default_background_url: Option<String>,
     pub status: Option<String>,
+    pub bible_json: Option<String>,
 }
 
 impl AvatarProfile {
@@ -150,6 +158,7 @@ impl AvatarProfile {
                thumbnail_url           = COALESCE(?, thumbnail_url),
                default_background_url  = COALESCE(?, default_background_url),
                status                  = COALESCE(?, status),
+               bible_json              = COALESCE(?, bible_json),
                updated_at              = datetime('now','subsec')
                WHERE id = ?"#,
         )
@@ -164,6 +173,7 @@ impl AvatarProfile {
         .bind(&input.thumbnail_url)
         .bind(&input.default_background_url)
         .bind(&input.status)
+        .bind(&input.bible_json)
         .bind(id)
         .execute(pool)
         .await?;
@@ -182,6 +192,88 @@ impl AvatarProfile {
         )
         .bind(status)
         .bind(error)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Update the profile-generation lifecycle status.
+    pub async fn update_profile_status(
+        pool: &SqlitePool,
+        id: Uuid,
+        profile_status: &str,
+        profile_error: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE avatar_profiles SET profile_status = ?, profile_error = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(profile_status)
+        .bind(profile_error)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Replace the full portrait_set JSON array (e.g. after a complete regeneration).
+    pub async fn set_portrait_set(
+        pool: &SqlitePool,
+        id: Uuid,
+        portrait_set_json: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE avatar_profiles SET portrait_set = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(portrait_set_json)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Persist the structured character bible.
+    pub async fn set_bible(
+        pool: &SqlitePool,
+        id: Uuid,
+        bible_json: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE avatar_profiles SET bible_json = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(bible_json)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Set thumbnail_url (typically the front shot once generated).
+    pub async fn set_thumbnail(
+        pool: &SqlitePool,
+        id: Uuid,
+        thumbnail_url: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE avatar_profiles SET thumbnail_url = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(thumbnail_url)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Set reference_image_url (typically right after multipart upload).
+    pub async fn set_reference_image(
+        pool: &SqlitePool,
+        id: Uuid,
+        reference_image_url: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE avatar_profiles SET reference_image_url = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(reference_image_url)
         .bind(id)
         .execute(pool)
         .await?;
