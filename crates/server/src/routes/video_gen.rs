@@ -74,10 +74,6 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/video-gen/avatars/{id}/generate-profile",
             post(generate_profile),
         )
-        .route(
-            "/video-gen/avatars/{id}/init-talking-head",
-            post(init_talking_head),
-        )
         .route("/video-gen/avatars/{id}/render-motion", post(render_motion))
         // Video jobs
         .route("/video-gen/jobs", get(list_jobs).post(create_job))
@@ -338,104 +334,6 @@ async fn generate_profile(
         .map_err(ApiError::Database)?
         .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
     Ok(Json(refreshed))
-}
-
-/// POST /api/video-gen/avatars/:id/init-talking-head
-///
-/// Uploads the avatar's `front` shot (or `reference` if no profile yet) to
-/// HeyGen's talking-photo endpoint and stamps the returned `talking_photo_id`
-/// onto the avatar so subsequent `/video-gen/jobs` calls can render videos.
-async fn init_talking_head(
-    State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
-    Extension(ctx): Extension<AccessContext>,
-) -> Result<Json<AvatarProfile>, ApiError> {
-    let pool = &deployment.db().pool;
-
-    require_avatar_org_access(&ctx, pool, id).await?;
-
-    let front = avatar_dir(id).join("shots").join("front.png");
-    let fallback = avatar_dir(id).join("reference.png");
-    let source = if front.exists() {
-        front
-    } else if fallback.exists() {
-        fallback
-    } else {
-        return Err(ApiError::BadRequest(
-            "avatar has no front shot or reference image — upload + generate profile first"
-                .to_string(),
-        ));
-    };
-
-    let bytes = fs::read(&source)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("read source image: {e}")))?;
-
-    let api_key = std::env::var("HEYGEN_API_KEY")
-        .map_err(|_| ApiError::InternalError("HEYGEN_API_KEY not set".to_string()))?;
-
-    let talking_photo_id = heygen_talking_photo::upload(&api_key, bytes)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("HeyGen upload failed: {e:#}")))?;
-
-    let updated = AvatarProfile::update(
-        pool,
-        id,
-        db::models::avatar_profile::UpdateAvatarProfile {
-            name: None,
-            slug: None,
-            identity_doc: None,
-            style_notes: None,
-            heygen_avatar_id: Some(talking_photo_id),
-            heygen_avatar_type: Some("talking_photo".to_string()),
-            elevenlabs_voice_id: None,
-            reference_image_url: None,
-            thumbnail_url: None,
-            default_background_url: None,
-            status: None,
-            bible_json: None,
-        },
-    )
-    .await
-    .map_err(ApiError::Database)?
-    .ok_or_else(|| ApiError::NotFound(format!("avatar {}", id)))?;
-
-    Ok(Json(updated))
-}
-
-mod heygen_talking_photo {
-    use serde::Deserialize;
-
-    /// POST raw image bytes to HeyGen's talking-photo upload endpoint.
-    /// Returns the `talking_photo_id` that can be used in `/v2/video/generate`
-    /// as `character.talking_photo_id`.
-    pub async fn upload(api_key: &str, bytes: Vec<u8>) -> anyhow::Result<String> {
-        let client = reqwest::Client::new();
-        let resp = client
-            .post("https://upload.heygen.com/v1/talking_photo")
-            .header("X-Api-Key", api_key)
-            .header("Content-Type", "image/png")
-            .body(bytes)
-            .send()
-            .await?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("HeyGen talking_photo upload {status}: {body}");
-        }
-
-        #[derive(Deserialize)]
-        struct UploadResp {
-            data: UploadData,
-        }
-        #[derive(Deserialize)]
-        struct UploadData {
-            talking_photo_id: String,
-        }
-        let data: UploadResp = resp.json().await?;
-        Ok(data.data.talking_photo_id)
-    }
 }
 
 /// GET /api/video-gen/avatars/:id/reference.png — public
