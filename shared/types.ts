@@ -1132,3 +1132,20 @@ export type CreateDeckSlide = { deck_id: string, slide_index: bigint, name?: str
 export type UpdateDeckSlide = { name?: string, layout_hint?: string, background?: Fill, elements?: Array<SlideElement>, notes?: string, locked?: boolean, };
 
 export type CreateDeckSuggestion = { deck_id: string, target_slide_id?: string, target_element_id?: string, op: string, payload: JsonValue, rationale?: string, run_id?: string, };
+export type AvatarProfile = { id: string, organization_id: string | null, created_by: string | null, name: string, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string, elevenlabs_voice_id: string, voice_sample_url: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, status: string, error_message: string | null, created_at: string, updated_at: string, 
+/**
+ * JSON array of `{ slot, url, prompt, locked, generated_at }` entries — one per generated shot.
+ */
+portrait_set: string, 
+/**
+ * Structured character bible JSON produced by the Claude vision pass.
+ */
+bible_json: string | null, 
+/**
+ * Lifecycle of the profile-generation pipeline: `none`/`pending`/`generating`/`ready`/`failed`.
+ */
+profile_status: string, profile_error: string | null, };
+
+export type CreateAvatarProfile = { organization_id: string | null, name: string, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string | null, elevenlabs_voice_id: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, };
+
+export type UpdateAvatarProfile = { name: string | null, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string | null, elevenlabs_voice_id: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, status: string | null, bible_json: string | null, };

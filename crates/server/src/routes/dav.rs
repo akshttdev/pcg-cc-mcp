@@ -376,7 +376,7 @@ async fn handle_propfind_fs(
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::empty())
-                .unwrap()
+                .unwrap();
         }
     }
 
@@ -488,7 +488,7 @@ async fn handle_propfind_virtual(
                     return Response::builder()
                         .status(StatusCode::NOT_FOUND)
                         .body(Body::empty())
-                        .unwrap()
+                        .unwrap();
                 }
             }
             xml.push_str("</D:multistatus>");
@@ -653,7 +653,7 @@ async fn handle_get(req: Request, local_path: &std::path::Path, head_only: bool)
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::empty())
-                .unwrap()
+                .unwrap();
         }
     };
 

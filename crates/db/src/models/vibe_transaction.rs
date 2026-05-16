@@ -21,6 +21,7 @@ pub enum VibeTransactionError {
 pub enum VibeSourceType {
     Agent,
     Project,
+    Organization,
 }
 
 impl std::fmt::Display for VibeSourceType {
@@ -28,6 +29,7 @@ impl std::fmt::Display for VibeSourceType {
         match self {
             VibeSourceType::Agent => write!(f, "agent"),
             VibeSourceType::Project => write!(f, "project"),
+            VibeSourceType::Organization => write!(f, "organization"),
         }
     }
 }
@@ -39,6 +41,7 @@ impl std::str::FromStr for VibeSourceType {
         match s.to_lowercase().as_str() {
             "agent" => Ok(VibeSourceType::Agent),
             "project" => Ok(VibeSourceType::Project),
+            "organization" => Ok(VibeSourceType::Organization),
             _ => Err(VibeTransactionError::InvalidSourceType(s.to_string())),
         }
     }

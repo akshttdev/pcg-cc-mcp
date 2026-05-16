@@ -358,7 +358,9 @@ impl BackgroundWorker for NoraInboxPoller {
                 }
             },
             _ => {
-                tracing::warn!("[NORA_INBOX] nora@powerclubglobal.com email account not found — poller disabled");
+                tracing::warn!(
+                    "[NORA_INBOX] nora@powerclubglobal.com email account not found — poller disabled"
+                );
                 return;
             }
         };

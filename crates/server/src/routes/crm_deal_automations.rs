@@ -601,7 +601,10 @@ pub async fn generate_phase1_business_report(
         );
         match call_llm(astra_system, &user_msg).await {
             Ok(analysis) => {
-                tracing::info!("[generate_phase1_business_report] Astra generated Phase 1 analysis for deal {}", deal_id);
+                tracing::info!(
+                    "[generate_phase1_business_report] Astra generated Phase 1 analysis for deal {}",
+                    deal_id
+                );
                 (Some(analysis), "ready")
             }
             Err(e) => {

@@ -35,3 +35,15 @@ export const deck = makeNamespace('deck');
 export const discovery = makeNamespace('discovery');
 export const pipelineSettings = makeNamespace('pipeline-settings');
 export const review = makeNamespace('review');
+
+export const avatars = {
+  page: 'avatars-page',
+  newAvatarCard: 'avatars-new-card',
+  newAvatarDropzone: 'avatars-new-dropzone',
+  newAvatarNameInput: 'avatars-new-name',
+  newAvatarSubmit: 'avatars-new-submit',
+  card: (id: string) => `avatars-card-${id}`,
+  generateProfile: (id: string) => `avatars-generate-profile-${id}`,
+  shot: (slot: string) => `avatars-shot-${slot}`,
+  bibleSection: 'avatars-bible',
+} as const;

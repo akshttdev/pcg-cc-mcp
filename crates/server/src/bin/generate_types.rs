@@ -325,6 +325,10 @@ fn generate_types_content() -> String {
         db::models::deck_document::CreateDeckSlide::decl(),
         db::models::deck_document::UpdateDeckSlide::decl(),
         db::models::deck_document::CreateDeckSuggestion::decl(),
+        // Avatar Profile Engine
+        db::models::avatar_profile::AvatarProfile::decl(),
+        db::models::avatar_profile::CreateAvatarProfile::decl(),
+        db::models::avatar_profile::UpdateAvatarProfile::decl(),
     ];
 
     let body = decls
