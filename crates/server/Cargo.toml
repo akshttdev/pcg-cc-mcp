@@ -20,6 +20,7 @@ utils = { path = "../utils" }
 services = { path = "../services" }
 nora = { path = "../nora" }
 cinematics = { path = "../cinematics" }
+video_gen = { path = "../video_gen" }
 topsi = { path = "../topsi" }
 discord-bot = { path = "../discord-bot" }
 discord-bots = { path = "../discord-bots" }

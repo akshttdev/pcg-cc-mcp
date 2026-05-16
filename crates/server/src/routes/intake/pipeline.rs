@@ -941,6 +941,11 @@ async fn ensure_crm_deal_for_person(
     let person =
         sqlx::query_as::<_, PersonRow>("SELECT COALESCE(full_name, 'Unknown') as full_name, company_name FROM crm_contacts WHERE CAST(id AS TEXT) = ?")
             .bind(person_id.to_string())
+    let person_id_str = person_id.hyphenated().to_string();
+    // persons.id is stored as BLOB — bind Uuid directly (encodes as 16-byte BLOB)
+    let person =
+        sqlx::query_as::<_, PersonRow>("SELECT full_name, company_name FROM persons WHERE id = ?")
+            .bind(person_id)
             .fetch_optional(pool)
             .await
             .ok()

@@ -17,11 +17,13 @@ use axum::{
     extract::{Path, State},
     routing::{get, post},
     Extension, Json, Router,
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
     models::{
         crm_contact::CrmContact,
+        person::Person,
         project_knowledge_source::{
             KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource,
         },
@@ -37,6 +39,7 @@ use crate::{
     error::ApiError, helpers::uuid_params::parse_db_uuid_param,
     middleware::access_control::AccessContext, routes::nora::get_nora_instance, DeploymentImpl,
 };
+use crate::{error::ApiError, routes::nora::get_nora_instance, DeploymentImpl};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -310,6 +313,7 @@ async fn run_research_direct(
             .into_iter()
             .filter(|s| {
                 s.source_type == "entity" && s.source_id == contact.id.as_ref() && !s.is_stale
+                s.source_type == "entity" && s.source_id == person.id.as_ref() && !s.is_stale
             })
             .filter_map(|s| s.source_summary)
             .collect::<Vec<_>>()
@@ -1754,6 +1758,21 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/crm/contacts/{id}/reports", get(list_person_reports))
         // Company intelligence
+        // Single-pass research (legacy / quick)
+        .route("/persons/{id}/research", post(trigger_research))
+        // Iterative Scout pass system
+        .route("/persons/{id}/research-passes", get(list_research_passes))
+        .route(
+            "/persons/{id}/research-passes/next",
+            post(trigger_next_research_pass),
+        )
+        // Business reports
+        .route("/persons/{id}/reports", get(list_person_reports))
+        // Status polling
+        .route(
+            "/persons/{id}/intelligence-status",
+            get(get_intelligence_status),
+        )
         .route(
             "/companies/{id}/intelligence-status",
             get(get_company_intelligence_status),
@@ -2253,6 +2272,7 @@ async fn run_research_pass(
             .as_str()
             .filter(|s| !s.is_empty() && *s != "null");
         let _location = parsed["location"]
+        let location = parsed["location"]
             .as_str()
             .filter(|s| !s.is_empty() && *s != "null");
 
@@ -2312,6 +2332,144 @@ async fn run_research_pass(
             .bind(confidence_score)
             .execute(&pool)
             .await;
+        // Upsert social profiles extracted from this pass
+        if let Some(profiles) = parsed["social_profiles"].as_array() {
+            for sp in profiles {
+                let platform = match sp["platform"].as_str() {
+                    Some(p) if !p.is_empty() => p,
+                    _ => continue,
+                };
+                let handle = sp["handle"].as_str().unwrap_or("").to_string();
+                let profile_url = sp["url"].as_str().unwrap_or("").to_string();
+                let follower_count = sp["follower_count"].as_i64();
+                let following_count = sp["following_count"].as_i64();
+                let bio = sp["bio"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null")
+                    .map(|s| s.to_string());
+                let verified: i32 = if sp["verified"].as_bool().unwrap_or(false) {
+                    1
+                } else {
+                    0
+                };
+                let engagement_rate = sp["engagement_rate"].as_f64();
+                let post_count = sp["post_count"].as_i64();
+                let content_themes = serde_json::to_string(&sp["content_themes"])
+                    .ok()
+                    .filter(|s| s != "null" && s != "[]");
+
+                let _ = sqlx::query(
+                    "INSERT INTO person_social_profiles
+                        (id, person_id, platform, handle, profile_url, follower_count, following_count,
+                         bio, verified, engagement_rate, post_count, content_themes, last_synced_at,
+                         created_at, updated_at)
+                     VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'), datetime('now','subsec'))
+                     ON CONFLICT(person_id, platform) DO UPDATE SET
+                        handle = COALESCE(NULLIF(excluded.handle, ''), handle),
+                        profile_url = COALESCE(NULLIF(excluded.profile_url, ''), profile_url),
+                        follower_count = COALESCE(excluded.follower_count, follower_count),
+                        following_count = COALESCE(excluded.following_count, following_count),
+                        bio = COALESCE(excluded.bio, bio),
+                        verified = excluded.verified,
+                        engagement_rate = COALESCE(excluded.engagement_rate, engagement_rate),
+                        post_count = COALESCE(excluded.post_count, post_count),
+                        content_themes = COALESCE(excluded.content_themes, content_themes),
+                        last_synced_at = datetime('now','subsec'),
+                        updated_at = datetime('now','subsec')",
+                )
+                .bind(person_id.to_string())
+                .bind(platform)
+                .bind(&handle)
+                .bind(&profile_url)
+                .bind(follower_count)
+                .bind(following_count)
+                .bind(&bio)
+                .bind(verified)
+                .bind(engagement_rate)
+                .bind(post_count)
+                .bind(&content_themes)
+                .execute(&pool)
+                .await;
+            }
+        }
+
+        // Upsert business affiliations extracted from this pass
+        if let Some(affiliations) = parsed["business_affiliations"].as_array() {
+            for aff in affiliations {
+                let company_name = match aff["company_name"].as_str() {
+                    Some(n) if !n.is_empty() => n,
+                    _ => continue,
+                };
+                let role = aff["role"].as_str().unwrap_or("contact");
+                let title = aff["title"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let start_date = aff["start_date"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let end_date = aff["end_date"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let description = aff["description"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let company_url = aff["company_url"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let company_type = aff["company_type"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+
+                // Try to find or create the company in the companies table
+                #[derive(sqlx::FromRow)]
+                struct CompanyRow {
+                    id: String,
+                }
+                let company_row = sqlx::query_as::<_, CompanyRow>(
+                    "SELECT CAST(id AS TEXT) as id FROM companies WHERE LOWER(name) = LOWER(?) LIMIT 1"
+                )
+                .bind(company_name)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten();
+
+                let company_id = if let Some(row) = company_row {
+                    row.id
+                } else {
+                    // Create minimal company record
+                    let new_id = uuid::Uuid::new_v4().to_string();
+                    let _ = sqlx::query(
+                        "INSERT OR IGNORE INTO companies (id, name, website, created_at, updated_at)
+                         VALUES (?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
+                    )
+                    .bind(&new_id)
+                    .bind(company_name)
+                    .bind(company_url.unwrap_or(""))
+                    .execute(&pool)
+                    .await;
+                    new_id
+                };
+
+                // Insert company role if not already exists
+                let _ = sqlx::query(
+                    "INSERT OR IGNORE INTO person_company_roles
+                        (id, person_id, company_id, role, title, start_date, end_date,
+                         description, company_url, company_type, is_primary, created_at)
+                     VALUES (randomblob(16), ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now','subsec'))"
+                )
+                .bind(person_id.to_string())
+                .bind(&company_id)
+                .bind(role)
+                .bind(title)
+                .bind(start_date)
+                .bind(end_date)
+                .bind(description)
+                .bind(company_url)
+                .bind(company_type)
+                .execute(&pool)
+                .await;
+            }
         }
     }
 
