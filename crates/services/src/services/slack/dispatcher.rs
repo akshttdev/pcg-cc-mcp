@@ -2,7 +2,9 @@
 //!
 //! Callers (deal-stage handler, invoice handler, …) just call:
 //!
-//!     dispatch_event(pool, &org_id, SlackEventType::DealStageChanged, &payload).await;
+//! ```ignore
+//! dispatch_event(pool, &org_id, SlackEventType::DealStageChanged, &payload).await;
+//! ```
 //!
 //! The dispatcher silently no-ops if the org has no Slack workspace connected
 //! or no route configured for this event — it never raises a hard error to
