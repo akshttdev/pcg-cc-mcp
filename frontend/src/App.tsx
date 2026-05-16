@@ -305,6 +305,9 @@ const LeadsPage = lazy(() =>
 const VideoStudioPage = lazy(() =>
   import('@/pages/video-studio').then((m) => ({ default: m.VideoStudioPage }))
 );
+const AvatarsPage = lazy(() =>
+  import('@/pages/avatars').then((m) => ({ default: m.AvatarsPage }))
+);
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -919,6 +922,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <VideoStudioPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/avatars"
+            element={
+              <ProtectedRoute>
+                <AvatarsPage />
               </ProtectedRoute>
             }
           />
