@@ -9127,6 +9127,7 @@ dependencies = [
  "json-patch 2.0.0",
  "lazy_static",
  "libc",
+ "mime_guess",
  "moka",
  "notify 8.2.0",
  "notify-debouncer-full",
@@ -9161,6 +9162,7 @@ dependencies = [
  "urlencoding",
  "utils",
  "uuid",
+ "walkdir",
  "xdg",
 ]
 

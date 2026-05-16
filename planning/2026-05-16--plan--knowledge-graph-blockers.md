@@ -9,7 +9,9 @@
 
 ## Goal
 
-Restore the **Organizational Knowledge Graph** to functional. Two unrelated pre-existing bugs on `main` are blocking the org Intelligence page and project knowledge views — they affect every project and every org, not just Inessa's new data. This PR fixes both as a tight, surgical change off `main`, intentionally scoped to NOT touch the avatar-engine PR's scope.
+Restore the **Organizational Knowledge Graph** to functional. Three unrelated pre-existing bugs on `main` are blocking it — affecting every project, every org, and every peer sync cycle. This PR fixes all three as a tight, surgical change off `main`, intentionally scoped to NOT touch the avatar-engine PR's scope.
+
+**Bug 1 (org SELECT drift)** was partially fixed on main between when this branch was originally cut and the most recent rebase — `find_by_user` is now correct, but `create` and `update` `RETURNING` clauses still miss the new columns. This PR completes that fix.
 
 Context: discovered while wiring the Inessa Wellness Brand Strategy doc into PCG Org's Knowledge Graph. Same fix is needed for Sirak Studios Master Node work on Knowledge Graph data sync.
 
@@ -98,6 +100,71 @@ FROM organizations ...
 ```
 
 No struct changes needed (struct is already correct). No migration needed (column exists). No frontend changes (TS types stay identical — the fields are already exported by ts-rs).
+
+---
+
+## Bug 3 — Sovereign sync can't open the local DB (silently breaks Master Node sync)
+
+### Symptom
+
+```
+[SOVEREIGN_SYNC] 📨 Peer sync from pythia-master-814d37f4 (v0.6.0) — 70 projects, 1326 tasks, 7 orgs, 86 boards, 8 folders, 25 users, 77 artifacts
+[SOVEREIGN_SYNC] Failed to import peer workflow data: Failed to open local DB for peer import
+[SOVEREIGN_SYNC] Failed to import peer org data: Failed to open local DB for peer org import
+[SOVEREIGN_SYNC] Failed to import peer artifact data: Failed to open local DB for peer artifact import
+[SOVEREIGN_SYNC] Failed to import peer CRM data: Failed to open local DB for peer CRM import
+[SOVEREIGN_SYNC] Sync cycle failed: Failed to open local DB for sync
+```
+
+Every sync cycle fails. Local DB never receives Master Node data. Knowledge Graph (and CRM, and project list) look empty on local dashboards relative to what the Master Node actually has.
+
+### Root cause
+
+In `crates/server/src/sovereign_storage.rs`, `SovereignStorageConfig::from_env` resolves the DB path by reading `DATABASE_URL` and stripping the `sqlite://` prefix:
+
+```rust
+let db_path_str = std::env::var("SOVEREIGN_STORAGE_DB_PATH")
+    .or_else(|_| std::env::var("DATABASE_URL"))
+    .unwrap_or_else(|_| "dev_assets/db.sqlite".to_string());
+let db_path_str = db_path_str
+    .strip_prefix("sqlite://")           // ← only handles double-slash form
+    .unwrap_or(&db_path_str)
+    .to_string();
+```
+
+But the project's standard `.env` uses `DATABASE_URL=sqlite:dev_assets/db.sqlite` — the modern single-colon SQLx form. The `strip_prefix("sqlite://")` doesn't match, so the unstripped string falls through, gets joined with `current_dir`, and produces a malformed path like `/cwd/sqlite:dev_assets/db.sqlite` — an actual file that doesn't exist. SQLite returns error 14 ("unable to open database file") and the silent-import failure cascades through every peer sync cycle indefinitely.
+
+### Fix
+
+Strip both forms — `sqlite://` first (legacy), then `sqlite:` (modern) — before joining with `current_dir`:
+
+```rust
+let db_path_str = db_path_str
+    .strip_prefix("sqlite://")
+    .or_else(|| db_path_str.strip_prefix("sqlite:"))
+    .unwrap_or(&db_path_str)
+    .to_string();
+```
+
+### Verified live
+
+After applying this fix to the running avatar-engine backend and restarting:
+
+```
+✅ Imported peer v0.6.0 CRM data: 0 pipelines, 1967 stages, 0 contacts, 0 deals, 0 activities
+✅ Sync v0.5.0! 507959 bytes → apn.storage.sync.<id> (73 projects, 1332 tasks, ...)
+📨 Peer sync from pythia-master-814d37f4 (v0.6.0) — 73 projects, 1340 tasks, 7 orgs, 25 users, 77 artifacts
+```
+
+Local DB count change after restart: projects 17 → 73, pipeline_stages 82 → 2049, tasks 0 → 1332. End-to-end propagation from Master Node confirmed.
+
+---
+
+## Bug 4 (out of scope — flagged for follow-up)
+
+`project_knowledge_sources`, `data_sources`, and `organization_brand_profiles` are NOT in the `SyncPayload` struct. Even with Bug 3 fixed, Knowledge Graph entries (the Inessa strategy doc artifact, TIACA's brand intel, anything in the org Intelligence page) will not propagate between the local dashboard and the Master Node.
+
+Extending `SyncPayload` + import handlers to cover these three tables should be coordinated with the Sirak Studios Master Node enhancement effort, not jammed into this PR. The Master Node also already streams `0 artifacts` while reporting `77 artifacts` in its payload — there appears to be a separate gap in the v0.5.0 artifact import handler, also out of scope here.
 
 ---
 
