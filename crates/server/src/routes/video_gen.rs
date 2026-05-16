@@ -1,24 +1,23 @@
+use std::{collections::HashMap, path::PathBuf};
+
 use axum::{
-    Extension, Router,
     body::Body,
     extract::{Path, Query, State},
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     response::Response,
     routing::{delete, get, post},
-    Json,
+    Extension, Json, Router,
 };
 use db::models::{
     avatar_profile::{AvatarProfile, CreateAvatarProfile, UpdateAvatarProfile},
     video_job::{CreateVideoJob, VideoJob},
 };
-use serde::Deserialize;
-use std::{collections::HashMap, path::PathBuf};
+use deployment::Deployment;
+use serde::{Deserialize, Serialize};
 use tokio::fs;
 use uuid::Uuid;
 
-use deployment::Deployment;
-
-use crate::{DeploymentImpl, error::ApiError, middleware::AccessContext};
+use crate::{error::ApiError, middleware::AccessContext, DeploymentImpl};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,6 +52,8 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         // Video jobs
         .route("/video-gen/jobs", get(list_jobs).post(create_job))
         .route("/video-gen/jobs/{id}", get(get_job).delete(delete_job))
+        // Cinematic film generator
+        .route("/video-gen/birthday-film", post(birthday_film))
         .with_state(deployment.clone())
 }
 
@@ -73,9 +74,7 @@ async fn list_avatars(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Vec<AvatarProfile>>, ApiError> {
     let pool = &deployment.db().pool;
-    let org_id = params
-        .get("org_id")
-        .and_then(|s| Uuid::parse_str(s).ok());
+    let org_id = params.get("org_id").and_then(|s| Uuid::parse_str(s).ok());
     let avatars = AvatarProfile::list(pool, org_id)
         .await
         .map_err(ApiError::Database)?;
@@ -162,7 +161,7 @@ async fn create_job(
     Json(body): Json<CreateVideoJob>,
 ) -> Result<(StatusCode, Json<VideoJob>), ApiError> {
     let pool = deployment.db().pool.clone();
-    let _ctx = ctx; // user is authenticated; skip FK binding until blob/uuid alignment resolved
+    let _ctx = ctx;
     let created_by: Option<uuid::Uuid> = None;
 
     // Look up the avatar for its voice ID
@@ -170,6 +169,10 @@ async fn create_job(
         .await
         .map_err(ApiError::Database)?
         .ok_or_else(|| ApiError::NotFound(format!("avatar {}", body.avatar_profile_id)))?;
+
+    // Capture dimensions before body is consumed by VideoJob::create
+    let width = body.width.unwrap_or(1280);
+    let height = body.height.unwrap_or(720);
 
     let job = VideoJob::create(&pool, body, created_by)
         .await
@@ -182,7 +185,17 @@ async fn create_job(
     let background_url = job.background_url.clone();
 
     tokio::spawn(async move {
-        if let Err(e) = produce_job(&pool2, job_id, &avatar, &script, background_url.as_deref()).await {
+        if let Err(e) = produce_job(
+            &pool2,
+            job_id,
+            &avatar,
+            &script,
+            background_url.as_deref(),
+            width,
+            height,
+        )
+        .await
+        {
             tracing::error!("video pipeline failed for job {}: {}", job_id, e);
             let _ = VideoJob::update_status(&pool2, job_id, "failed", Some(&e.to_string())).await;
         }
@@ -216,6 +229,196 @@ async fn delete_job(
     } else {
         Err(ApiError::NotFound(format!("job {}", id)))
     }
+}
+
+// ---------------------------------------------------------------------------
+// Birthday Film — ₿ODHI: THE SIGNAL
+// ---------------------------------------------------------------------------
+
+/// Sami Satoshi avatar profile UUID (active, HeyGen ID 07326f6a4ba54f5ab407f78fd9703cb2)
+const SAMI_SATOSHI_AVATAR_ID: &str = "528c5bf7-364c-40fd-a593-86d90ca7acaa";
+
+/// The full cinematic narration for "₿ODHI: THE SIGNAL"
+const BODHI_SIGNAL_SCRIPT: &str = "\
+Most people celebrate another year surviving the world.\n\
+But some are built to redesign it.\n\n\
+Empires aren't inherited.\n\
+They're engineered.\n\
+Line by line.\n\
+Signal by signal.\n\
+Node by node.\n\n\
+While others consumed the future...\n\
+One man chose to build it.\n\n\
+The weight of vision is heavy.\n\
+To dream beyond your time...\n\
+is to walk alone, long before others understand.\n\n\
+But history belongs to the people willing to carry the signal.\n\n\
+PowerClub Global. Alpha Protocol. Omega Wireless.\n\n\
+Happy birthday, Bodhi.\n\n\
+The network is just beginning.";
+
+#[derive(Debug, Serialize)]
+struct BirthdayFilmResponse {
+    job: VideoJob,
+    shot_plan: Vec<ShotBrief>,
+    message: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ShotBrief {
+    index: u8,
+    scene: &'static str,
+    visual_prompt: &'static str,
+    narration: &'static str,
+    duration_sec: u8,
+}
+
+/// 12-shot vertical storyboard for "₿ODHI: THE SIGNAL"
+fn bodhi_shot_plan() -> Vec<ShotBrief> {
+    vec![
+        ShotBrief {
+            index: 1,
+            scene: "The Awakening — Black void",
+            visual_prompt: "Black screen, a single golden Omega symbol slowly materializing from darkness, low golden glow pulsing, dramatic cinematic atmosphere, 9:16 vertical, Blade Runner 2049 aesthetic, no text",
+            narration: "Most people celebrate another year surviving the world.",
+            duration_sec: 5,
+        },
+        ShotBrief {
+            index: 2,
+            scene: "Miami 3AM — Ocean seawall",
+            visual_prompt: "Miami seawall at 3AM, massive waves crashing under a stormy sky, neon city reflections on wet pavement, cinematic rain, dramatic fog, golden and teal tones, 9:16 vertical portrait, ultra-cinematic",
+            narration: "But some are built to redesign it.",
+            duration_sec: 4,
+        },
+        ShotBrief {
+            index: 3,
+            scene: "The Builder — AI compute clusters",
+            visual_prompt: "Massive server racks powering on in a dark cathedral room, blinking amber and blue indicator lights, rising steam, god rays cutting through darkness, gold metallic sheen, ultra-cinematic 9:16",
+            narration: "Empires aren't inherited. They're engineered.",
+            duration_sec: 5,
+        },
+        ShotBrief {
+            index: 4,
+            scene: "Alpha Protocol globe — mesh network",
+            visual_prompt: "Holographic glowing Earth globe suspended in darkness, gold mesh network lines connecting cities worldwide, Alpha Protocol insignia, decentralized node pulses, cinematic 9:16 vertical, sci-fi luxury",
+            narration: "Line by line. Signal by signal. Node by node.",
+            duration_sec: 5,
+        },
+        ShotBrief {
+            index: 5,
+            scene: "Omega Node rack — gold glow",
+            visual_prompt: "Close-up of futuristic Omega Wireless server rack glowing gold, sovereign compute hardware, LoRa antennas on dark rooftop, Miami city lights in background bokeh, 9:16 vertical cinematic",
+            narration: "While others consumed the future...",
+            duration_sec: 4,
+        },
+        ShotBrief {
+            index: 6,
+            scene: "Sprinter van — highway night",
+            visual_prompt: "Blacked-out Mercedes Sprinter van with Omega gold logo, racing down a dark highway, tunnel light trails, motion blur, Miami neon reflections, rain-slicked roads, cinematic 9:16 portrait",
+            narration: "One man chose to build it.",
+            duration_sec: 4,
+        },
+        ShotBrief {
+            index: 7,
+            scene: "Motorcycle — tunnel rip",
+            visual_prompt: "Supermoto motorcycle ripping through a neon-lit tunnel, first-person low angle, speed blur, golden sparks, cinematic slow motion, dramatic depth of field, 9:16 vertical Tron aesthetic",
+            narration: "The weight of vision is heavy.",
+            duration_sec: 4,
+        },
+        ShotBrief {
+            index: 8,
+            scene: "Eclipse GST — neon streets",
+            visual_prompt: "1996 Mitsubishi Eclipse GST accelerating through rain-soaked neon streets at night, teal and purple reflections, cinematic car photography, motion blur, 9:16 vertical portrait ultra-luxury",
+            narration: "To dream beyond your time...",
+            duration_sec: 4,
+        },
+        ShotBrief {
+            index: 9,
+            scene: "Lone figure — rooftop ocean view",
+            visual_prompt: "Lone figure in black robe standing on a glass rooftop overlooking Miami before sunrise, city glowing below, ocean horizon, spiritual solitude, cinematic wide angle 9:16 vertical",
+            narration: "is to walk alone, long before others understand.",
+            duration_sec: 5,
+        },
+        ShotBrief {
+            index: 10,
+            scene: "Final ascension — Omega constellation",
+            visual_prompt: "Thousands of golden light nodes activating across a world map, forming the Omega Ω symbol constellation, digital gold rain transforming into stars, celestial AI halo, epic cinematic 9:16",
+            narration: "But history belongs to the people willing to carry the signal.",
+            duration_sec: 6,
+        },
+        ShotBrief {
+            index: 11,
+            scene: "Title card — Happy Birthday ₿odhi",
+            visual_prompt: "Cinematic title card on deep black background: HAPPY BIRTHDAY ₿ODHI in bold golden Bitcoin-B typography, glowing halo effect, particle light trails, 9:16 vertical luxury brand aesthetic",
+            narration: "Happy birthday, Bodhi.",
+            duration_sec: 5,
+        },
+        ShotBrief {
+            index: 12,
+            scene: "Brand outro — The network begins",
+            visual_prompt: "Three logos in golden light on black: Omega Wireless, Alpha Protocol, PowerClub Global. Tagline: BUILDING THE DECENTRALIZED FUTURE. Fade out to black, 9:16 cinematic brand card",
+            narration: "The network is just beginning.",
+            duration_sec: 5,
+        },
+    ]
+}
+
+/// POST /api/video-gen/birthday-film
+/// Fires the full "₿ODHI: THE SIGNAL" vertical cinematic reel via Sami Satoshi + ElevenLabs → HeyGen.
+/// Returns the video job + complete 12-shot production brief with ComfyUI/Midjourney prompts.
+async fn birthday_film(
+    State(deployment): State<DeploymentImpl>,
+    Extension(ctx): Extension<AccessContext>,
+) -> Result<Json<BirthdayFilmResponse>, ApiError> {
+    let pool = deployment.db().pool.clone();
+    let _ctx = ctx;
+
+    // Look up Sami Satoshi
+    let avatar_id = Uuid::parse_str(SAMI_SATOSHI_AVATAR_ID)
+        .map_err(|_| ApiError::InternalError("Invalid Sami Satoshi UUID".into()))?;
+    let avatar = AvatarProfile::find(&pool, avatar_id)
+        .await
+        .map_err(ApiError::Database)?
+        .ok_or_else(|| ApiError::NotFound("Sami Satoshi avatar not found".into()))?;
+
+    // Create the video job — vertical 9:16 (720×1280)
+    let job = VideoJob::create(
+        &pool,
+        CreateVideoJob {
+            avatar_profile_id: avatar_id,
+            script_text: BODHI_SIGNAL_SCRIPT.to_string(),
+            background_url: None, // pure black — cinematic
+            width: Some(720),
+            height: Some(1280),
+        },
+        None,
+    )
+    .await
+    .map_err(ApiError::Database)?;
+
+    // Spawn HeyGen native TTS pipeline (vertical 720×1280) — bypasses ElevenLabs entirely
+    let job_id = job.id;
+    let pool2 = pool.clone();
+    let script = job.script_text.clone();
+    let heygen_avatar_id = avatar
+        .heygen_avatar_id
+        .clone()
+        .ok_or_else(|| ApiError::InternalError("Sami Satoshi has no HeyGen avatar ID".into()))?;
+
+    tokio::spawn(async move {
+        if let Err(e) =
+            produce_birthday_film_heygen_tts(&pool2, job_id, &heygen_avatar_id, &script).await
+        {
+            tracing::error!("₿ODHI birthday film failed for job {}: {}", job_id, e);
+            let _ = VideoJob::update_status(&pool2, job_id, "failed", Some(&e.to_string())).await;
+        }
+    });
+
+    Ok(Json(BirthdayFilmResponse {
+        job,
+        shot_plan: bodhi_shot_plan(),
+        message: "₿ODHI: THE SIGNAL — vertical 9:16 cinematic reel is rendering. ElevenLabs narration → HeyGen vertical video. Poll /api/video-gen/jobs/{id} for status.".into(),
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +459,8 @@ async fn produce_job(
     avatar: &AvatarProfile,
     script: &str,
     background_url: Option<&str>,
+    width: u32,
+    height: u32,
 ) -> anyhow::Result<()> {
     let el_key = std::env::var("ELEVENLABS_API_KEY")?;
     let hg_key = std::env::var("HEYGEN_API_KEY")?;
@@ -285,11 +490,15 @@ async fn produce_job(
     let wav_path = audio_dir().join(format!("{}.wav", job_id));
     let ffmpeg_out = tokio::process::Command::new("ffmpeg")
         .args([
-            "-y", "-i",
+            "-y",
+            "-i",
             audio_path.to_str().unwrap(),
-            "-ar", "16000",   // 16 kHz — optimal for speech recognition
-            "-ac", "1",       // mono
-            "-f", "wav",
+            "-ar",
+            "16000", // 16 kHz — optimal for speech recognition
+            "-ac",
+            "1", // mono
+            "-f",
+            "wav",
             wav_path.to_str().unwrap(),
         ])
         .output()
@@ -301,7 +510,11 @@ async fn produce_job(
     }
 
     let wav_bytes = fs::read(&wav_path).await?;
-    tracing::info!("video job {}: WAV {} bytes, uploading to HeyGen CDN", job_id, wav_bytes.len());
+    tracing::info!(
+        "video job {}: WAV {} bytes, uploading to HeyGen CDN",
+        job_id,
+        wav_bytes.len()
+    );
 
     // Upload WAV to HeyGen CDN
     let audio_url = video_gen::heygen::upload_audio_wav(&hg_key, wav_bytes).await?;
@@ -316,9 +529,15 @@ async fn produce_job(
         .ok_or_else(|| anyhow::anyhow!("avatar has no heygen_avatar_id set"))?;
 
     tracing::info!("video job {}: submitting to HeyGen", job_id);
-    let heygen_video_id =
-        video_gen::heygen::generate_with_audio(&hg_key, heygen_avatar_id, &audio_url, background_url)
-            .await?;
+    let heygen_video_id = video_gen::heygen::generate_with_audio(
+        &hg_key,
+        heygen_avatar_id,
+        &audio_url,
+        background_url,
+        width,
+        height,
+    )
+    .await?;
 
     VideoJob::update_heygen_started(pool, job_id, &heygen_video_id).await?;
     tracing::info!(
@@ -354,8 +573,8 @@ async fn produce_job(
                 VideoJob::update_completed(
                     pool,
                     job_id,
-                    &video_url,  // final_video_url = HeyGen CDN
-                    &video_url,  // raw_video_url = same
+                    &video_url, // final_video_url = HeyGen CDN
+                    &video_url, // raw_video_url = same
                     status.thumbnail_url.as_deref(),
                     status.duration,
                 )
@@ -373,6 +592,94 @@ async fn produce_job(
                     anyhow::bail!("HeyGen timed out after 15 minutes");
                 }
                 // still processing
+            }
+        }
+    }
+}
+
+/// HeyGen-native TTS pipeline for the birthday film — no ElevenLabs dependency.
+/// Uses HeyGen's built-in voice synthesis directly from the script text.
+async fn produce_birthday_film_heygen_tts(
+    pool: &sqlx::SqlitePool,
+    job_id: Uuid,
+    heygen_avatar_id: &str,
+    script: &str,
+) -> anyhow::Result<()> {
+    let hg_key = std::env::var("HEYGEN_API_KEY")?;
+
+    tracing::info!(
+        "birthday film job {}: submitting to HeyGen native TTS (720×1280 vertical)",
+        job_id
+    );
+    VideoJob::update_status(pool, job_id, "avatar_generating", None).await?;
+
+    let heygen_video_id = video_gen::heygen::generate_with_text(
+        &hg_key,
+        heygen_avatar_id,
+        script,
+        Some("2lZkTvkzMXw1TFX4PKlb"), // Deep Authoritative — cinematic narrator
+        None,                         // pure black background
+        720,                          // vertical 9:16
+        1280,
+    )
+    .await?;
+
+    VideoJob::update_heygen_started(pool, job_id, &heygen_video_id).await?;
+    tracing::info!(
+        "birthday film job {}: HeyGen video_id = {}",
+        job_id,
+        heygen_video_id
+    );
+
+    // Poll until HeyGen completes (up to 20 min for longer scripts)
+    let mut attempts = 0u32;
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_secs(20)).await;
+        attempts += 1;
+
+        let status = video_gen::heygen::poll_status(&hg_key, &heygen_video_id).await?;
+        tracing::debug!(
+            "birthday film job {} poll {}: {}",
+            job_id,
+            attempts,
+            status.status
+        );
+
+        match status.status.as_str() {
+            "completed" => {
+                let video_url = status
+                    .video_url
+                    .ok_or_else(|| anyhow::anyhow!("HeyGen completed but no video_url"))?;
+
+                // Download and cache locally
+                let vid_bytes = reqwest::get(&video_url).await?.bytes().await?;
+                let vid_path = video_dir().join(format!("{}.mp4", job_id));
+                if let Some(parent) = vid_path.parent() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+                tokio::fs::write(&vid_path, &vid_bytes).await?;
+
+                VideoJob::update_completed(
+                    pool,
+                    job_id,
+                    &video_url,
+                    &video_url,
+                    status.thumbnail_url.as_deref(),
+                    status.duration,
+                )
+                .await?;
+
+                tracing::info!("₿ODHI birthday film {} COMPLETE: {}", job_id, video_url);
+                return Ok(());
+            }
+            "failed" => {
+                let err = status.error.unwrap_or_else(|| "HeyGen failed".into());
+                anyhow::bail!("HeyGen render failed: {}", err);
+            }
+            _ => {
+                if attempts >= 60 {
+                    anyhow::bail!("HeyGen timed out after 20 minutes");
+                }
             }
         }
     }

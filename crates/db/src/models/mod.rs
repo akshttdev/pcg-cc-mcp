@@ -11,6 +11,7 @@ pub mod airtable_base;
 pub mod airtable_record_link;
 pub mod approval_gate;
 pub mod artifact_review;
+pub mod avatar_profile;
 pub mod board_share;
 pub mod brand_intake_token;
 pub mod brand_profile;

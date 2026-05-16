@@ -5,9 +5,9 @@
 //! Every client, contractor, lead, team member, and partner is a Person.
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -29,7 +29,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 const VIBE_PER_USD: f64 = 100.0; // 1 USD = 100 VIBE (1 VIBE = $0.01)
 

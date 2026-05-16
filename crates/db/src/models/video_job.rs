@@ -36,6 +36,10 @@ pub struct CreateVideoJob {
     pub avatar_profile_id: Uuid,
     pub script_text: String,
     pub background_url: Option<String>,
+    /// Output width in pixels. Defaults to 1280 (landscape). Use 720 for vertical 9:16.
+    pub width: Option<u32>,
+    /// Output height in pixels. Defaults to 720 (landscape). Use 1280 for vertical 9:16.
+    pub height: Option<u32>,
 }
 
 impl VideoJob {
@@ -77,15 +81,19 @@ impl VideoJob {
         avatar_id: Option<Uuid>,
     ) -> Result<Vec<Self>, sqlx::Error> {
         match avatar_id {
-            Some(aid) => sqlx::query_as(
-                "SELECT * FROM video_jobs WHERE avatar_profile_id = ? ORDER BY created_at DESC",
-            )
-            .bind(aid)
-            .fetch_all(pool)
-            .await,
-            None => sqlx::query_as("SELECT * FROM video_jobs ORDER BY created_at DESC")
+            Some(aid) => {
+                sqlx::query_as(
+                    "SELECT * FROM video_jobs WHERE avatar_profile_id = ? ORDER BY created_at DESC",
+                )
+                .bind(aid)
                 .fetch_all(pool)
-                .await,
+                .await
+            }
+            None => {
+                sqlx::query_as("SELECT * FROM video_jobs ORDER BY created_at DESC")
+                    .fetch_all(pool)
+                    .await
+            }
         }
     }
 

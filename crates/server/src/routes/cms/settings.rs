@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use axum::{
-    Extension, Json, Router,
     extract::{Path, State},
     middleware::from_fn_with_state,
     response::Json as ResponseJson,
     routing::get,
+    Extension, Json, Router,
 };
 use db::models::{
     cms_site::CmsSite,
@@ -16,7 +16,7 @@ use serde::Serialize;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
+use crate::{error::ApiError, middleware::require_auth, DeploymentImpl};
 
 #[derive(Debug, Serialize, TS)]
 pub struct SettingsMap {

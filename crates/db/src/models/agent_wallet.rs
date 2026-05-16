@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool, sqlite::SqliteQueryResult};
+use sqlx::{sqlite::SqliteQueryResult, FromRow, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
 

@@ -1,12 +1,12 @@
 use std::path::Path as StdPath;
 
 use axum::{
-    Extension, Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     middleware::from_fn_with_state,
     response::Json as ResponseJson,
     routing::{get, patch, post, put},
+    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -31,12 +31,12 @@ use utils::{path::expand_tilde, response::ApiResponse};
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl,
     error::ApiError,
     middleware::{
         access_control::{AccessContext, ProjectRole},
         load_project_middleware,
     },
+    DeploymentImpl,
 };
 
 pub async fn get_projects(

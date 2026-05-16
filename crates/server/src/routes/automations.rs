@@ -8,7 +8,7 @@
 //!   5. Project marked complete → draft AR invoice
 
 use sqlx::SqlitePool;
-use tokio::time::{Duration, interval};
+use tokio::time::{interval, Duration};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -249,7 +249,7 @@ async fn automation_complete_project_draft_invoice(pool: &SqlitePool) -> Result<
 
 // ── REST API ──────────────────────────────────────────────────────────────────
 
-use axum::{Json, Router, routing::get};
+use axum::{routing::get, Json, Router};
 use serde::Serialize;
 use utils::response::ApiResponse;
 
@@ -270,7 +270,8 @@ fn automation_definitions() -> Vec<AutomationDefinition> {
         AutomationDefinition {
             id: "waiting_on_client_followup",
             name: "Waiting-on-Client Follow-up",
-            description: "Creates a follow-up task when a project is waiting on the client for 3+ days.",
+            description:
+                "Creates a follow-up task when a project is waiting on the client for 3+ days.",
             trigger: "Project status = waiting_on_client",
             action: "Create follow-up task assigned to account manager",
             schedule: "Hourly",
@@ -286,7 +287,8 @@ fn automation_definitions() -> Vec<AutomationDefinition> {
         AutomationDefinition {
             id: "sql_draft_proposal_task",
             name: "SQL → Draft Proposal Task",
-            description: "Creates a 'Draft proposal' task when a lead enters the SQL pipeline stage.",
+            description:
+                "Creates a 'Draft proposal' task when a lead enters the SQL pipeline stage.",
             trigger: "Lead enters SQL stage",
             action: "Create Draft Proposal task for lead owner",
             schedule: "Hourly",
@@ -294,7 +296,8 @@ fn automation_definitions() -> Vec<AutomationDefinition> {
         AutomationDefinition {
             id: "signed_proposal_create_project",
             name: "Signed Proposal → Create Project",
-            description: "Automatically provisions a new project when a proposal is marked contract_signed.",
+            description:
+                "Automatically provisions a new project when a proposal is marked contract_signed.",
             trigger: "Proposal status = contract_signed",
             action: "Create project and add contact as client member",
             schedule: "Hourly",
@@ -348,10 +351,15 @@ async fn automation_research_orphaned_companies(pool: &SqlitePool) {
         return;
     }
 
-    info!("Auto-research: queuing {} orphaned companies for Scout Phase I", companies.len());
+    info!(
+        "Auto-research: queuing {} orphaned companies for Scout Phase I",
+        companies.len()
+    );
 
     for c in companies {
-        let Ok(company_id) = Uuid::from_slice(&c.id) else { continue };
+        let Ok(company_id) = Uuid::from_slice(&c.id) else {
+            continue;
+        };
 
         // Mark as queued
         let _ = sqlx::query(
@@ -364,7 +372,10 @@ async fn automation_research_orphaned_companies(pool: &SqlitePool) {
         let pool2 = pool.clone();
         let name = c.name.clone();
         tokio::spawn(async move {
-            crate::routes::intelligence::run_company_research_direct(&pool2, company_id, &name, None).await;
+            crate::routes::intelligence::run_company_research_direct(
+                &pool2, company_id, &name, None,
+            )
+            .await;
         });
     }
 }

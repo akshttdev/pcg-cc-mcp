@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::{FromRow, SqlitePool, Type, types::Json};
+use sqlx::{types::Json, FromRow, SqlitePool, Type};
 use ts_rs::TS;
 use uuid::Uuid;
 

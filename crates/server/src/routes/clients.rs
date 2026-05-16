@@ -1,12 +1,14 @@
 use axum::{
-    Extension, Json, Router,
     extract::{Path, State},
     routing::{delete, get},
+    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
     models::{
-        client::{Client, ClientMember, ClientWithIntel, CreateClient, CreateClientMember, UpdateClient},
+        client::{
+            Client, ClientMember, ClientWithIntel, CreateClient, CreateClientMember, UpdateClient,
+        },
         project::Project,
         user::Organization,
     },
@@ -15,7 +17,7 @@ use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Check if user has access to an org (is member or admin)
 async fn require_org_access(
@@ -124,7 +126,12 @@ pub async fn link_company(
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, &client.organization_id).await?;
+    require_org_admin(
+        &deployment.db().pool,
+        &access_context,
+        &client.organization_id,
+    )
+    .await?;
 
     Client::set_company_link(
         &deployment.db().pool,
@@ -351,5 +358,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/clients/{id}/members/{uid}", delete(remove_client_member))
         .route("/clients/{id}/projects", get(list_client_projects))
-        .route("/clients/{id}/link-company", axum::routing::post(link_company))
+        .route(
+            "/clients/{id}/link-company",
+            axum::routing::post(link_company),
+        )
 }

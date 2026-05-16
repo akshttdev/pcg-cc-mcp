@@ -3,10 +3,10 @@
 //! REST endpoints for pause/resume, context injection, and handoffs.
 
 use axum::{
-    Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::{get, post},
+    Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -26,7 +26,7 @@ use services::services::execution_control::{
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ========== Request Types ==========
 

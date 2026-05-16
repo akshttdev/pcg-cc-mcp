@@ -6,10 +6,10 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
-    response::{Sse, sse::Event},
+    response::{sse::Event, Sse},
     routing::{get, post},
+    Json, Router,
 };
 use db::models::{
     agent::Agent,
@@ -20,15 +20,15 @@ use db::models::{
 use deployment::Deployment;
 use futures::stream::Stream;
 use nora::{
-    ProjectScopedContext,
-    brain::{ConversationMessage, LLMResponse, ToolCall, ToolResult, create_client_for_agent},
+    brain::{create_client_for_agent, ConversationMessage, LLMResponse, ToolCall, ToolResult},
     tools::ExecutiveTools,
+    ProjectScopedContext,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Request to chat with an agent
 #[derive(Debug, Deserialize, TS)]

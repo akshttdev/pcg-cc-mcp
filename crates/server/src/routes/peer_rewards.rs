@@ -1,7 +1,7 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     routing::get,
+    Json, Router,
 };
 use db::models::{peer_node::PeerNode, peer_reward::PeerReward};
 use deployment::Deployment;
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {

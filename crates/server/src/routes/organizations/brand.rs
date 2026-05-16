@@ -979,10 +979,10 @@ async fn run_brand_research(
                     .as_f64()
                     .unwrap_or(0.0)
                     * 100.0;
-                let fcp =
-                    ps_json["lighthouseResult"]["audits"]["first-contentful-paint"]["displayValue"]
-                        .as_str()
-                        .unwrap_or("?");
+                let fcp = ps_json["lighthouseResult"]["audits"]["first-contentful-paint"]
+                    ["displayValue"]
+                    .as_str()
+                    .unwrap_or("?");
                 pagespeed_context = format!(
                     "PageSpeed (mobile): Performance={:.0}/100, SEO={:.0}/100, FCP={}",
                     perf, seo, fcp

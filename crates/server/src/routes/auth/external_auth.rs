@@ -1,18 +1,18 @@
 // External authentication for federated identity (e.g., Jungleverse SSO)
 use axum::{
-    Json as ResponseJson,
     extract::State,
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
+    Json as ResponseJson,
 };
 use deployment::Deployment;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
 use super::auth_sqlite::{UserOrganization, UserProfile};
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 /// JWT claims from external provider (e.g., Jungleverse)
 #[derive(Debug, Serialize, Deserialize)]

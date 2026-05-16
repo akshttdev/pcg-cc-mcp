@@ -1,4 +1,4 @@
-use axum::{Json, Router, extract::Path, http::StatusCode, response::IntoResponse, routing::get};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
 use serde::Serialize;
 use serde_json::json;
 

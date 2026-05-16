@@ -1,11 +1,11 @@
-use axum::{Extension, Json, Router, extract::State, routing::get};
+use axum::{extract::State, routing::get, Extension, Json, Router};
 use db::models::project_knowledge_source::{ProjectHealthSummary, ProjectKnowledgeSource};
 use deployment::Deployment;
 use serde::Serialize;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]

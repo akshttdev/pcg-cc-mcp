@@ -121,6 +121,7 @@ pub mod topsi;
 pub mod twilio;
 pub mod users;
 pub mod vibe_treasury;
+pub mod video_gen;
 pub mod wallet;
 pub mod webhooks;
 pub mod wide_research;
@@ -219,6 +220,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(topsi::topsi_routes())
         .merge(nora_classifier::router(&deployment))
         .merge(org_cloud::router(&deployment))
+        .merge(video_gen::router(&deployment))
         .merge(feedback::router(&deployment))
         .merge(agent_flows::router(&deployment))
         .merge(agent_flow_events::router(&deployment))
@@ -273,6 +275,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))
         .merge(social_posts::public_router(&deployment))
+        .merge(video_gen::public_router(&deployment))
         .merge(orcha::orcha_routes())
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))

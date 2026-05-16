@@ -1,10 +1,10 @@
 use axum::{
-    Router,
     extract::{Request, State},
     http::StatusCode,
-    middleware::{Next, from_fn_with_state},
+    middleware::{from_fn_with_state, Next},
     response::{Json as ResponseJson, Response},
     routing::{get, post},
+    Router,
 };
 // Import new auth types (will be conditionally compiled when PostgreSQL is available)
 #[cfg(feature = "postgres")]
@@ -23,7 +23,7 @@ use services::services::{
 };
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // TODO: unused — comment out to suppress warning
 // /// Returns true if the server is running in a context where Secure cookies are appropriate.

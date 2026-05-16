@@ -5,14 +5,16 @@
 //! and transcript management.
 
 use axum::{
-    Extension, Json,
     extract::{Path, State},
+    Extension, Json,
 };
 use db::{
     db_uuid::DbUuid,
     models::{
         crm_deal::CrmDeal,
-        project_knowledge_source::{KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource},
+        project_knowledge_source::{
+            KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource,
+        },
     },
 };
 use deployment::Deployment;
@@ -20,8 +22,8 @@ use utils::response::ApiResponse;
 
 use super::crm_deals::require_deal_org_access;
 use crate::{
-    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext,
+    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext, DeploymentImpl,
 };
 
 // ── Scout: Who-Is Research ────────────────────────────────────────────────────
@@ -258,14 +260,19 @@ async fn register_deal_in_kg(pool: &sqlx::SqlitePool, deal_id: &DbUuid) {
     let contact = deal.contact_name.as_deref().unwrap_or("Unknown Contact");
 
     let summary = {
-        let mut parts = vec![
-            format!("Stage: {}", stage),
-            format!("Contact: {}", contact),
-        ];
-        if let Some(v) = deal.amount { parts.push(format!("Value: ${:.0}", v)); }
-        if let Some(p) = deal.probability { parts.push(format!("Probability: {}%", p)); }
-        if let Some(d) = &deal.expected_close_date { parts.push(format!("Expected Close: {}", d)); }
-        if let Some(d) = &deal.description { parts.push(format!("Notes: {}", &d[..d.len().min(200)])); }
+        let mut parts = vec![format!("Stage: {}", stage), format!("Contact: {}", contact)];
+        if let Some(v) = deal.amount {
+            parts.push(format!("Value: ${:.0}", v));
+        }
+        if let Some(p) = deal.probability {
+            parts.push(format!("Probability: {}%", p));
+        }
+        if let Some(d) = &deal.expected_close_date {
+            parts.push(format!("Expected Close: {}", d));
+        }
+        if let Some(d) = &deal.description {
+            parts.push(format!("Notes: {}", &d[..d.len().min(200)]));
+        }
         parts.join(" | ")
     };
 
@@ -320,7 +327,11 @@ async fn register_deal_in_kg(pool: &sqlx::SqlitePool, deal_id: &DbUuid) {
         .await;
     }
 
-    tracing::info!("[KG] Deal '{}' registered in knowledge graph (stage: {})", title, stage);
+    tracing::info!(
+        "[KG] Deal '{}' registered in knowledge graph (stage: {})",
+        title,
+        stage
+    );
 }
 
 /// Trigger company research if the company's intel status is idle
@@ -479,19 +490,33 @@ pub async fn generate_phase1_business_report(
     let mut raw_intel_parts: Vec<String> = Vec::new();
     if let Some(ref pi) = person_intel {
         let mut parts = Vec::new();
-        if let Some(ref name) = pi.full_name { parts.push(format!("Name: {}", name)); }
-        if let Some(ref email) = pi.email { parts.push(format!("Email: {}", email)); }
-        if let Some(ref title) = pi.job_title { parts.push(format!("Title: {}", title)); }
-        if let Some(ref s) = person_summary { parts.push(s.clone()); }
+        if let Some(ref name) = pi.full_name {
+            parts.push(format!("Name: {}", name));
+        }
+        if let Some(ref email) = pi.email {
+            parts.push(format!("Email: {}", email));
+        }
+        if let Some(ref title) = pi.job_title {
+            parts.push(format!("Title: {}", title));
+        }
+        if let Some(ref s) = person_summary {
+            parts.push(s.clone());
+        }
         if !parts.is_empty() {
             raw_intel_parts.push(format!("## Contact Intelligence\n{}", parts.join("\n")));
         }
     }
     if let Some(ref ci) = company_intel {
         let mut parts = Vec::new();
-        if let Some(ref industry) = ci.industry { parts.push(format!("Industry: {}", industry)); }
-        if let Some(ref desc) = ci.description { parts.push(format!("Overview: {}", desc)); }
-        if let Some(ref s) = company_summary { parts.push(s.clone()); }
+        if let Some(ref industry) = ci.industry {
+            parts.push(format!("Industry: {}", industry));
+        }
+        if let Some(ref desc) = ci.description {
+            parts.push(format!("Overview: {}", desc));
+        }
+        if let Some(ref s) = company_summary {
+            parts.push(s.clone());
+        }
         if !parts.is_empty() {
             raw_intel_parts.push(format!("## Company Intelligence\n{}", parts.join("\n")));
         }
@@ -514,7 +539,10 @@ pub async fn generate_phase1_business_report(
                 (Some(analysis), "ready")
             }
             Err(e) => {
-                tracing::warn!("[generate_phase1_business_report] Astra call failed, storing raw intel: {}", e);
+                tracing::warn!(
+                    "[generate_phase1_business_report] Astra call failed, storing raw intel: {}",
+                    e
+                );
                 // Fallback: store raw intel concatenation
                 let fallback = raw_intel_parts.join("\n\n");
                 (Some(fallback), "draft")
@@ -522,30 +550,38 @@ pub async fn generate_phase1_business_report(
         }
     };
 
-    let individual_profiles_json = person_intel.as_ref()
+    let individual_profiles_json = person_intel
+        .as_ref()
         .map(|pi| {
             let profile_parts: Vec<String> = [
                 pi.full_name.as_deref().map(|s| format!("Name: {}", s)),
                 pi.email.as_deref().map(|s| format!("Email: {}", s)),
                 pi.job_title.as_deref().map(|s| format!("Title: {}", s)),
                 pi.intelligence_summary.as_deref().map(|s| s.to_string()),
-            ].into_iter().flatten().collect();
-            serde_json::json!([{"name": contact_name, "profile": profile_parts.join("\n")}]).to_string()
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            serde_json::json!([{"name": contact_name, "profile": profile_parts.join("\n")}])
+                .to_string()
         })
         .unwrap_or_else(|| "[]".to_string());
 
     let company_overview = company_intel.as_ref().map(|c| {
         let mut parts = Vec::new();
-        if let Some(ref industry) = c.industry { parts.push(format!("**Industry:** {}", industry)); }
-        if let Some(ref desc) = c.description { parts.push(format!("**Overview:** {}", desc)); }
-        if let Some(ref summary) = c.intelligence_summary { parts.push(summary.clone()); }
+        if let Some(ref industry) = c.industry {
+            parts.push(format!("**Industry:** {}", industry));
+        }
+        if let Some(ref desc) = c.description {
+            parts.push(format!("**Overview:** {}", desc));
+        }
+        if let Some(ref summary) = c.intelligence_summary {
+            parts.push(summary.clone());
+        }
         parts.join("\n")
     });
 
-    let title = format!(
-        "Business Analytics: {} — {}",
-        company_display, contact_name
-    );
+    let title = format!("Business Analytics: {} — {}", company_display, contact_name);
     // BLOB-column binding: business_reports.id/person_id/company_id/crm_deal_id are BLOB
     let person_uuid = person_intel.as_ref().map(|p| p.id.to_uuid());
     let company_uuid = company_intel.as_ref().map(|c| c.id.to_uuid());

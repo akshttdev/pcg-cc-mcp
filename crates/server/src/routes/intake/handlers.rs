@@ -1,9 +1,9 @@
 //! HTTP handlers for intake CRUD and business report endpoints.
 
 use axum::{
-    Extension, Json,
     extract::{Path, State},
     response::Redirect,
+    Extension, Json,
 };
 use db::{
     db_uuid::DbUuid,
@@ -19,10 +19,12 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use super::{
-    EmailIntakePayload, GenerateReportRequest, Phase2ReportRequest, RevisionRequest, UploadIntakePayload,
-    pipeline::run_intake_pipeline, report::{run_report_generation, run_phase2_from_company_intel},
+    pipeline::run_intake_pipeline,
+    report::{run_phase2_from_company_intel, run_report_generation},
+    EmailIntakePayload, GenerateReportRequest, Phase2ReportRequest, RevisionRequest,
+    UploadIntakePayload,
 };
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 // ── Intake ingestion ─────────────────────────────────────────────────────────
 
@@ -631,7 +633,11 @@ pub async fn phase2_report_handler(
         )
         .await
         {
-            tracing::error!("Phase II report generation failed for company {}: {}", company_id_clone, e);
+            tracing::error!(
+                "Phase II report generation failed for company {}: {}",
+                company_id_clone,
+                e
+            );
         }
     });
 
@@ -644,8 +650,6 @@ pub async fn phase2_report_handler(
 
 /// GET /api/business-reports/:id/pdf
 /// Redirects to the business report page with ?print=true — browser handles print-to-PDF.
-pub async fn business_report_pdf_redirect(
-    Path(id): Path<String>,
-) -> Redirect {
+pub async fn business_report_pdf_redirect(Path(id): Path<String>) -> Redirect {
     Redirect::temporary(&format!("/business-reports/{}?print=true", id))
 }

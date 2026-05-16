@@ -1,10 +1,10 @@
 use axum::{
-    Router,
     extract::{Extension, Path, State},
     http::StatusCode,
     middleware,
     response::Json as ResponseJson,
     routing::{delete, get, post},
+    Router,
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -15,9 +15,9 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl,
     error::ApiError,
     middleware::{AccessContext, ProjectRole},
+    DeploymentImpl,
 };
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {

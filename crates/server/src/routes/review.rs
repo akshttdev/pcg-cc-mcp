@@ -6,9 +6,9 @@
 //! POST /api/artifacts/{artifact_id}/review-link — create/get artifact review token (auth)
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     routing::{get, patch, post},
+    Json, Router,
 };
 use db::models::{
     deliverable::Deliverable,
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use utils::{assets::asset_dir, response::ApiResponse};
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ── Response types ────────────────────────────────────────────────────────────
 

@@ -1,14 +1,14 @@
 use axum::{
-    Router,
     extract::{Path, Request, State},
-    middleware::{Next, from_fn_with_state},
+    middleware::{from_fn_with_state, Next},
     response::Response,
+    Router,
 };
 use db::models::cms_site::CmsSite;
 use deployment::Deployment;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
+use crate::{error::ApiError, middleware::require_auth, DeploymentImpl};
 
 pub mod faq_items;
 pub mod page_sections;

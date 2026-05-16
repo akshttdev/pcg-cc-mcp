@@ -3,16 +3,16 @@
 //! POST /internal/nora/chat  — call Nora with X-Admin-Key (no JWT required)
 //! POST /internal/topsi/chat — call Topsi with X-Admin-Key (no JWT required)
 
-use axum::{Json, Router, http::HeaderMap, routing::post};
+use axum::{http::HeaderMap, routing::post, Json, Router};
 use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 use serde::{Deserialize, Serialize};
 use topsi::{TopsiRequest, TopsiRequestType, UserContext};
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl,
     error::ApiError,
     routes::{nora::get_nora_instance, topsi::get_topsi_instance},
+    DeploymentImpl,
 };
 
 #[derive(Deserialize)]

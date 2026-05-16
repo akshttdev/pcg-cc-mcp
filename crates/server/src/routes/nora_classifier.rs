@@ -14,17 +14,17 @@
 //!   POST /nora-classifier/predictions/log      — ingest a prediction from the Discord bot
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{get, patch, post},
+    Json, Router,
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ─── DB row ──────────────────────────────────────────────────────────────────
 

@@ -12,9 +12,9 @@
 use std::path::PathBuf;
 
 use axum::{
-    Json, Router,
     extract::{Multipart, Path, Query, State},
     routing::{get, post},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -27,7 +27,7 @@ use tokio::io::AsyncWriteExt;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {

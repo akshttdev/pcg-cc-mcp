@@ -7,18 +7,18 @@ mod streaming;
 use std::path::PathBuf;
 
 use axum::{
-    BoxError, Extension, Json, Router,
     extract::{
-        Query, State,
         ws::{WebSocket, WebSocketUpgrade},
+        Query, State,
     },
     http::StatusCode,
     middleware::from_fn_with_state,
     response::{
-        IntoResponse, Json as ResponseJson, Sse,
         sse::{Event, KeepAlive},
+        IntoResponse, Json as ResponseJson, Sse,
     },
     routing::{get, post},
+    BoxError, Extension, Json, Router,
 };
 use chrono::{DateTime, Utc};
 use db::models::{
@@ -33,9 +33,9 @@ use db::models::{
 use deployment::Deployment;
 use executors::{
     actions::{
-        ExecutorAction, ExecutorActionType,
         coding_agent_follow_up::CodingAgentFollowUpRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
+        ExecutorAction, ExecutorActionType,
     },
     executors::BaseCodingAgent,
     profile::ExecutorProfileId,
@@ -57,8 +57,8 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl, error::ApiError, middleware::load_task_attempt_middleware,
-    routes::nora::emit_coordination_event,
+    error::ApiError, middleware::load_task_attempt_middleware,
+    routes::nora::emit_coordination_event, DeploymentImpl,
 };
 
 // --- Shared request/response types ---

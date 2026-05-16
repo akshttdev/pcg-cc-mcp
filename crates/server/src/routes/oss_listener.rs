@@ -15,11 +15,11 @@
 //!   PATCH /oss-updates/:id/dismiss             — dismiss a recommendation
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, patch, post},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,

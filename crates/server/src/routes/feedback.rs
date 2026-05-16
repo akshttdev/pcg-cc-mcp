@@ -2,7 +2,7 @@
 //!
 //! Creates tasks in the Bug Reports project for user feedback.
 
-use axum::{Extension, Router, extract::State, response::Json as ResponseJson, routing::post};
+use axum::{extract::State, response::Json as ResponseJson, routing::post, Extension, Router};
 use db::{
     constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID},
     db_uuid::DbUuid,
@@ -18,7 +18,7 @@ use serde_json::json;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new().route("/feedback", post(submit_feedback))
