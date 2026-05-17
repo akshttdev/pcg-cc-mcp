@@ -206,6 +206,83 @@ pub struct NoraScheduleRequest {
     pub limit: Option<i32>,
 }
 
+/// MCP request: aggregated AR/AP financial summary for an organization
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NoraFinancialSummaryRequest {
+    #[schemars(description = "Organization ID whose financials to aggregate")]
+    pub organization_id: String,
+}
+
+/// MCP request: look up a contact's QBO/AR status by name, company, or email
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NoraQboLookupContactRequest {
+    #[schemars(description = "Organization ID to scope the search")]
+    pub organization_id: String,
+
+    #[schemars(
+        description = "Free-text search: matches against email, full name, first+last, or company name (case-insensitive substring)"
+    )]
+    pub query: String,
+
+    #[schemars(description = "Maximum number of matching contacts to return (default 5, max 25)")]
+    pub limit: Option<i32>,
+}
+
+/// MCP request: list connected social accounts (YouTube, LinkedIn, etc.) for a project
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NoraListSocialAccountsRequest {
+    #[schemars(description = "Project UUID whose connected social accounts to list")]
+    pub project_id: String,
+}
+
+/// MCP request: create + publish a social post in one shot
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NoraPostToSocialRequest {
+    #[schemars(description = "Project UUID")]
+    pub project_id: String,
+
+    #[schemars(
+        description = "Social account UUIDs to publish to. Discover them with nora_list_social_accounts."
+    )]
+    pub account_ids: Vec<String>,
+
+    #[schemars(description = "Post caption / text body")]
+    pub caption: String,
+
+    #[schemars(
+        description = "Content type: post (default), story, reel, carousel, thread, video, article"
+    )]
+    pub content_type: Option<String>,
+
+    #[schemars(
+        description = "Media URLs (images, video) to attach. YouTube uploads currently buffer the entire file in memory — keep videos under ~100MB."
+    )]
+    pub media_urls: Option<Vec<String>>,
+
+    #[schemars(description = "Hashtags (without the leading `#`)")]
+    pub hashtags: Option<Vec<String>>,
+
+    #[schemars(description = "Usernames to @-mention (without the leading `@`)")]
+    pub mentions: Option<Vec<String>>,
+
+    #[schemars(
+        description = "Platform-specific extras as JSON (e.g. {\"tiktok\":{\"privacy_level\":\"PUBLIC_TO_EVERYONE\"}})"
+    )]
+    pub platform_specific: Option<Value>,
+}
+
+/// MCP request: trigger a QBO sync for an organization's active QuickBooks account
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NoraTriggerQboSyncRequest {
+    #[schemars(description = "Organization ID whose QuickBooks account to sync")]
+    pub organization_id: String,
+
+    #[schemars(
+        description = "Optional explicit quickbooks_account_id. If omitted, the org's first active account is used."
+    )]
+    pub quickbooks_account_id: Option<String>,
+}
+
 /// MCP request for rapid prototyping playbook
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct NoraRapidPlaybookRequest {
@@ -697,6 +774,228 @@ impl NoraServer {
     }
 
     #[tool(
+        description = "Aggregate AR/AP financial summary for an organization: outstanding receivables, overdue receivables, payables, 30/60/90-day revenue, and open/overdue invoice counts. Read from the local `invoices` table — reflects the state of the last QBO sync. Use this to answer 'how are we doing on cash?' / 'what's overdue?' style questions."
+    )]
+    async fn nora_financial_summary(
+        &self,
+        Parameters(NoraFinancialSummaryRequest { organization_id }): Parameters<
+            NoraFinancialSummaryRequest,
+        >,
+    ) -> Result<CallToolResult, ErrorData> {
+        let Ok(org_uuid) = uuid::Uuid::parse_str(&organization_id) else {
+            return Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": "Invalid organization_id" }).to_string(),
+            )]));
+        };
+
+        match services::services::quickbooks::financial_summary(&self.pool, org_uuid).await {
+            Ok(summary) => Ok(CallToolResult::success(vec![Content::text(
+                json!({ "success": true, "summary": summary }).to_string(),
+            )])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": e.to_string() }).to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        description = "Look up CRM contacts in an organization by name, company, or email and return each one's open AR balance, overdue total, and open invoice count. Use this for 'what's the AR balance for Acme?' / 'does Jane Doe owe us anything?' style questions. Returns up to `limit` matches ranked by largest outstanding balance."
+    )]
+    async fn nora_qbo_lookup_contact(
+        &self,
+        Parameters(NoraQboLookupContactRequest {
+            organization_id,
+            query,
+            limit,
+        }): Parameters<NoraQboLookupContactRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": "query must be non-empty" }).to_string(),
+            )]));
+        }
+
+        let Ok(org_uuid) = uuid::Uuid::parse_str(&organization_id) else {
+            return Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": "Invalid organization_id" }).to_string(),
+            )]));
+        };
+
+        let limit = limit.unwrap_or(5).clamp(1, 25);
+
+        match lookup_contact_balances(&self.pool, org_uuid, trimmed, limit).await {
+            Ok(matches) => Ok(CallToolResult::success(vec![Content::text(
+                json!({
+                    "success": true,
+                    "query": trimmed,
+                    "count": matches.len(),
+                    "matches": matches,
+                })
+                .to_string(),
+            )])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": e.to_string() }).to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        description = "Trigger a QuickBooks Online sync for an organization. Pulls Customers, Invoices, and Payments since the last sync into the local CRM/invoices tables. Use sparingly — sync also runs on a background timer. Returns counts of rows touched."
+    )]
+    async fn nora_trigger_qbo_sync(
+        &self,
+        Parameters(NoraTriggerQboSyncRequest {
+            organization_id,
+            quickbooks_account_id,
+        }): Parameters<NoraTriggerQboSyncRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        use db::models::quickbooks_account::QuickBooksAccount;
+
+        let Ok(org_uuid) = uuid::Uuid::parse_str(&organization_id) else {
+            return Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": "Invalid organization_id" }).to_string(),
+            )]));
+        };
+
+        let account_id = match quickbooks_account_id {
+            Some(raw) => match uuid::Uuid::parse_str(&raw) {
+                Ok(u) => u,
+                Err(_) => {
+                    return Ok(CallToolResult::error(vec![Content::text(
+                        json!({ "success": false, "error": "Invalid quickbooks_account_id" })
+                            .to_string(),
+                    )]));
+                }
+            },
+            None => match QuickBooksAccount::find_by_organization(&self.pool, org_uuid).await {
+                Ok(accounts) => {
+                    let active = accounts
+                        .into_iter()
+                        .find(|a| a.sync_enabled == 1 && a.status == "active");
+                    match active {
+                        Some(a) => a.id,
+                        None => {
+                            return Ok(CallToolResult::error(vec![Content::text(
+                                json!({
+                                    "success": false,
+                                    "error": "No active QuickBooks account connected for this organization",
+                                })
+                                .to_string(),
+                            )]));
+                        }
+                    }
+                }
+                Err(e) => {
+                    return Ok(CallToolResult::error(vec![Content::text(
+                        json!({ "success": false, "error": e.to_string() }).to_string(),
+                    )]));
+                }
+            },
+        };
+
+        match services::services::quickbooks::run_qbo_sync(&self.pool, account_id).await {
+            Ok(stats) => Ok(CallToolResult::success(vec![Content::text(
+                json!({
+                    "success": true,
+                    "quickbooks_account_id": account_id.to_string(),
+                    "stats": stats,
+                })
+                .to_string(),
+            )])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": e.to_string() }).to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        description = "List social media accounts (YouTube, LinkedIn, Instagram, Twitter, TikTok, Threads, Facebook, Bluesky, Pinterest) connected to a project. Returns each account's UUID, platform, username, and status. The returned UUIDs are what you pass as `account_ids` to nora_post_to_social. Always call this BEFORE nora_post_to_social so you target real accounts."
+    )]
+    async fn nora_list_social_accounts(
+        &self,
+        Parameters(NoraListSocialAccountsRequest { project_id }): Parameters<
+            NoraListSocialAccountsRequest,
+        >,
+    ) -> Result<CallToolResult, ErrorData> {
+        use db::models::social_account::SocialAccount;
+
+        let Ok(project_uuid) = uuid::Uuid::parse_str(&project_id) else {
+            return Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": "Invalid project_id" }).to_string(),
+            )]));
+        };
+
+        match SocialAccount::find_by_project(&self.pool, project_uuid).await {
+            Ok(accounts) => {
+                let summary: Vec<Value> = accounts
+                    .iter()
+                    .map(|a| {
+                        json!({
+                            "id": a.id.to_string(),
+                            "platform": a.platform,
+                            "username": a.username,
+                            "display_name": a.display_name,
+                            "status": a.status,
+                            "profile_url": a.profile_url,
+                            "follower_count": a.follower_count,
+                        })
+                    })
+                    .collect();
+                Ok(CallToolResult::success(vec![Content::text(
+                    json!({
+                        "success": true,
+                        "count": summary.len(),
+                        "accounts": summary,
+                    })
+                    .to_string(),
+                )]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": e.to_string() }).to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        description = "Create and publish a social post in one shot to the listed connected accounts (LinkedIn and YouTube fully wired; other platforms vary). The post is routed through the platform connector with stored OAuth tokens; per-platform results — including platform_post_id and platform_url — come back in the response. Returns success=false if every target account failed. Use nora_list_social_accounts first to discover account UUIDs."
+    )]
+    async fn nora_post_to_social(
+        &self,
+        Parameters(NoraPostToSocialRequest {
+            project_id,
+            account_ids,
+            caption,
+            content_type,
+            media_urls,
+            hashtags,
+            mentions,
+            platform_specific,
+        }): Parameters<NoraPostToSocialRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match publish_now(
+            &self.pool,
+            &project_id,
+            &account_ids,
+            caption,
+            content_type.as_deref(),
+            media_urls,
+            hashtags,
+            mentions,
+            platform_specific,
+        )
+        .await
+        {
+            Ok(value) => Ok(CallToolResult::success(vec![Content::text(
+                value.to_string(),
+            )])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(
+                json!({ "success": false, "error": e }).to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
         description = "Run Nora's rapid prototyping playbook. She syncs live context, ensures the project exists, and produces an executive summary of next steps."
     )]
     async fn nora_rapid_playbook(
@@ -756,7 +1055,7 @@ impl ServerHandler for NoraServer {
                 name: "nora-executive-mcp".to_string(),
                 version: "1.0.0".to_string(),
             },
-            instructions: Some("Nora Executive Assistant MCP provides AI-powered executive functions. Available tools: 'nora_chat' (general conversation), 'nora_coordinate_tasks' (task management), 'nora_strategic_planning' (strategic analysis), 'nora_performance_analysis' (performance insights), 'nora_voice_synthesis' (British accent TTS), 'nora_coordination_stats' (system statistics), 'nora_schedule' (calendar lookup — what's on today / when am I next meeting <person>?), 'nora_rapid_playbook' (rapid prototyping). Nora is a professional British executive assistant who can help with strategic planning, task coordination, performance analysis, decision support, and scheduling.".to_string()),
+            instructions: Some("Nora Executive Assistant MCP provides AI-powered executive functions. Available tools: 'nora_chat' (general conversation), 'nora_coordinate_tasks' (task management), 'nora_strategic_planning' (strategic analysis), 'nora_performance_analysis' (performance insights), 'nora_voice_synthesis' (British accent TTS), 'nora_coordination_stats' (system statistics), 'nora_schedule' (calendar lookup — what's on today / when am I next meeting <person>?), 'nora_financial_summary' (org AR/AP + revenue trend from QuickBooks-synced data), 'nora_qbo_lookup_contact' (find a contact's AR balance by name/company/email), 'nora_trigger_qbo_sync' (force a QuickBooks pull), 'nora_list_social_accounts' (discover connected social handles for a project), 'nora_post_to_social' (create + publish a post in one shot to YouTube/LinkedIn/etc.), 'nora_rapid_playbook' (rapid prototyping). Nora is a professional British executive assistant who can help with strategic planning, task coordination, performance analysis, decision support, scheduling, financial reporting, and direct social publishing.".to_string()),
         }
     }
 }
@@ -785,6 +1084,178 @@ fn window_bounds(window: &str) -> (String, String) {
         format!("{start_date}T00:00:00Z"),
         format!("{end_date}T00:00:00Z"),
     )
+}
+
+/// Parse the optional content_type string into the DB enum, defaulting to Post.
+fn parse_content_type(s: Option<&str>) -> db::models::social_post::ContentType {
+    use db::models::social_post::ContentType;
+    match s.map(|v| v.to_lowercase()).as_deref() {
+        Some("story") => ContentType::Story,
+        Some("reel") => ContentType::Reel,
+        Some("carousel") => ContentType::Carousel,
+        Some("thread") => ContentType::Thread,
+        Some("video") => ContentType::Video,
+        Some("article") => ContentType::Article,
+        _ => ContentType::Post,
+    }
+}
+
+/// Create a SocialPost then immediately route it through Publisher. Returns a
+/// JSON value matching the shape Nora's chat layer expects, or an error string.
+#[allow(clippy::too_many_arguments)]
+async fn publish_now(
+    pool: &SqlitePool,
+    project_id: &str,
+    account_ids: &[String],
+    caption: String,
+    content_type: Option<&str>,
+    media_urls: Option<Vec<String>>,
+    hashtags: Option<Vec<String>>,
+    mentions: Option<Vec<String>>,
+    platform_specific: Option<Value>,
+) -> Result<Value, String> {
+    use db::models::social_post::{CreateSocialPost, SocialPost};
+    use services::services::social::Publisher;
+
+    if account_ids.is_empty() {
+        return Err("account_ids must contain at least one social account UUID".into());
+    }
+
+    let project_uuid =
+        uuid::Uuid::parse_str(project_id).map_err(|_| "Invalid project_id".to_string())?;
+
+    let account_uuids: Vec<uuid::Uuid> = account_ids
+        .iter()
+        .map(|s| uuid::Uuid::parse_str(s).map_err(|_| format!("Invalid account UUID: {s}")))
+        .collect::<Result<_, _>>()?;
+
+    let post = SocialPost::create(
+        pool,
+        CreateSocialPost {
+            project_id: project_uuid,
+            social_account_id: None,
+            task_id: None,
+            content_type: Some(parse_content_type(content_type)),
+            caption: Some(caption),
+            content_blocks: None,
+            media_urls,
+            hashtags,
+            mentions,
+            platforms: account_uuids,
+            platform_specific,
+            scheduled_for: None,
+            category: None,
+            is_evergreen: None,
+            recycle_after_days: None,
+            created_by_agent_id: None,
+        },
+    )
+    .await
+    .map_err(|e| format!("Failed to create social post: {e}"))?;
+
+    let publisher = Publisher::new(pool.clone());
+    match publisher.publish_post(post.id).await {
+        Ok(results) => {
+            let entries: Vec<Value> = results
+                .iter()
+                .map(|r| {
+                    json!({
+                        "platform": r.platform.to_string(),
+                        "platform_post_id": r.platform_post_id,
+                        "platform_url": r.platform_url,
+                        "published_at": r.published_at.to_rfc3339(),
+                    })
+                })
+                .collect();
+            Ok(json!({
+                "success": !entries.is_empty(),
+                "post_id": post.id.to_string(),
+                "results": entries,
+            }))
+        }
+        Err(e) => Err(format!(
+            "Post created (id={}) but publish failed: {e}",
+            post.id
+        )),
+    }
+}
+
+/// One row from the contact-balance lookup: identity columns + AR aggregates.
+type ContactBalanceRow = (
+    String,         // id
+    Option<String>, // full_name
+    Option<String>, // first_name
+    Option<String>, // last_name
+    Option<String>, // email
+    Option<String>, // company_name
+    Option<f64>,    // ar_outstanding
+    Option<f64>,    // ar_overdue
+    Option<i64>,    // open_count
+    Option<i64>,    // overdue_count
+);
+
+/// Find org contacts matching `query` (email / name / company, case-insensitive
+/// substring) and aggregate their AR exposure from the local `invoices` table.
+async fn lookup_contact_balances(
+    pool: &SqlitePool,
+    organization_id: uuid::Uuid,
+    query: &str,
+    limit: i32,
+) -> Result<Vec<Value>, sqlx::Error> {
+    let org_text = organization_id.to_string();
+    let needle = format!("%{}%", query.to_lowercase());
+
+    let rows: Vec<ContactBalanceRow> = sqlx::query_as(
+        r#"
+        SELECT
+            c.id,
+            c.full_name,
+            c.first_name,
+            c.last_name,
+            c.email,
+            c.company_name,
+            COALESCE(SUM(CASE WHEN i.invoice_type = 'ar' AND i.status IN ('sent','viewed','partial','overdue') THEN i.amount_usd ELSE 0.0 END), 0.0) AS ar_outstanding,
+            COALESCE(SUM(CASE WHEN i.invoice_type = 'ar' AND i.status = 'overdue' THEN i.amount_usd ELSE 0.0 END), 0.0) AS ar_overdue,
+            COALESCE(SUM(CASE WHEN i.invoice_type = 'ar' AND i.status IN ('sent','viewed','partial','overdue') THEN 1 ELSE 0 END), 0) AS open_count,
+            COALESCE(SUM(CASE WHEN i.invoice_type = 'ar' AND i.status = 'overdue' THEN 1 ELSE 0 END), 0) AS overdue_count
+        FROM crm_contacts c
+        LEFT JOIN invoices i ON i.crm_contact_id = c.id
+        WHERE c.organization_id = ?1
+        AND (
+            LOWER(COALESCE(c.email, '')) LIKE ?2
+            OR LOWER(COALESCE(c.full_name, '')) LIKE ?2
+            OR LOWER(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')) LIKE ?2
+            OR LOWER(COALESCE(c.company_name, '')) LIKE ?2
+        )
+        GROUP BY c.id
+        ORDER BY ar_outstanding DESC, c.full_name ASC
+        LIMIT ?3
+        "#,
+    )
+    .bind(&org_text)
+    .bind(&needle)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let matches = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "contact_id": r.0,
+                "full_name": r.1,
+                "first_name": r.2,
+                "last_name": r.3,
+                "email": r.4,
+                "company_name": r.5,
+                "ar_outstanding_usd": r.6.unwrap_or(0.0),
+                "ar_overdue_usd": r.7.unwrap_or(0.0),
+                "open_invoice_count": r.8.unwrap_or(0),
+                "overdue_invoice_count": r.9.unwrap_or(0),
+            })
+        })
+        .collect();
+    Ok(matches)
 }
 
 /// Render a `CalendarEvent` slice into the JSON shape Nora's chat layer
