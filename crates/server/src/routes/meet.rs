@@ -64,6 +64,8 @@ struct ActiveMeetSession {
     tts_queue: Vec<Vec<u8>>,
     started_at: Instant,
     segment_count: i32,
+    // Tracks last time Nora spoke — used to suppress echo of her own TTS
+    nora_last_spoke_at: Option<Instant>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -307,6 +309,7 @@ pub async fn join_meet(
                 tts_queue: Vec::new(),
                 started_at: Instant::now(),
                 segment_count: 0,
+                nora_last_spoke_at: None,
             },
         );
     }
@@ -337,6 +340,66 @@ pub async fn receive_audio(
     let whisper_url =
         std::env::var("WHISPER_URL").unwrap_or_else(|_| "http://localhost:8101".to_string());
 
+    // Heartbeat the session so it isn't auto-ended as stale during slow STT
+    let _ = sqlx::query(
+        "UPDATE meeting_sessions SET updated_at = datetime('now','subsec') WHERE id = ? AND status = 'active'"
+    )
+    .bind(&session_id)
+    .execute(&pool)
+    .await;
+
+    // Auto-register + intro on first audio from any session not yet in memory.
+    // Do this BEFORE calling Whisper so the intro fires even if STT is temporarily broken.
+    {
+        let mut sessions = ACTIVE_MEETS.lock().await;
+        if !sessions.contains_key(&session_id) {
+            let count = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM meeting_segments WHERE meeting_session_id = ?",
+            )
+            .bind(&session_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(0) as i32;
+            let (tx, _) = broadcast::channel(32);
+            sessions.insert(
+                session_id.clone(),
+                ActiveMeetSession {
+                    session_id: session_id.clone(),
+                    meet_url: String::new(),
+                    project_id: String::new(),
+                    process: None,
+                    tx,
+                    tts_queue: Vec::new(),
+                    started_at: Instant::now(),
+                    segment_count: count,
+                    nora_last_spoke_at: None,
+                },
+            );
+            info!(
+                "[MEET {}] Auto-registered session on first audio",
+                &session_id[..session_id.len().min(8)]
+            );
+            // Synthesize intro in background — fires even if STT is slow/broken
+            let sid_intro = session_id.clone();
+            let sessions_intro = ACTIVE_MEETS.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(800)).await;
+                let intro = "Hello everyone, I'm Nora. I'll be listening in — just say my name if you'd like my input.";
+                info!(
+                    "[MEET {}] Synthesising intro (first audio)",
+                    &sid_intro[..8]
+                );
+                if let Some(audio) = synthesize_tts(intro).await {
+                    let mut sessions = sessions_intro.lock().await;
+                    if let Some(sess) = sessions.get_mut(&sid_intro) {
+                        sess.tts_queue.push(audio);
+                        info!("[MEET {}] Intro queued", &sid_intro[..8]);
+                    }
+                }
+            });
+        }
+    }
+
     let turn_t0 = std::time::Instant::now();
     let stt_t0 = std::time::Instant::now();
     let transcript = call_whisper(&whisper_url, &body).await;
@@ -352,11 +415,55 @@ pub async fn receive_audio(
         }
     };
 
+    // Filter Whisper hallucinations on silence/ambient noise
+    {
+        let t_lower = transcript.to_lowercase();
+        let hallucinations = [
+            "thank you.",
+            "thank you",
+            "thanks for watching!",
+            "thanks for watching.",
+            "you.",
+            "no.",
+            "uh",
+            "um",
+            "hmm",
+            "bye.",
+            "bye",
+            "yes.",
+            "yes",
+            "okay.",
+            "okay",
+            "subtitles by",
+            "subtitles were",
+            "www.",
+            ".com",
+        ];
+        let is_hallucination = hallucinations.iter().any(|h| t_lower == *h)
+            || transcript.chars().all(|c| !c.is_ascii_alphabetic())
+            || transcript.trim().len() < 3;
+        if is_hallucination {
+            return Json(json!({ "transcript": null })).into_response();
+        }
+    }
+
     info!(
         "[MEET {}] STT: {}",
         &session_id[..session_id.len().min(8)],
         transcript
     );
+
+    // Suppress echo: if Nora spoke in the last 6 seconds, the STT is likely picking up her own TTS
+    {
+        let sessions = ACTIVE_MEETS.lock().await;
+        if let Some(sess) = sessions.get(&session_id) {
+            if let Some(spoke_at) = sess.nora_last_spoke_at {
+                if spoke_at.elapsed().as_secs() < 6 {
+                    return Json(json!({ "transcript": null })).into_response();
+                }
+            }
+        }
+    }
 
     // Only engage Nora when she's directly addressed by name
     let addressed = transcript.to_lowercase().contains("nora");
@@ -364,7 +471,6 @@ pub async fn receive_audio(
     // Store participant segment + broadcast
     let participant_idx = {
         let mut sessions = ACTIVE_MEETS.lock().await;
-
         if let Some(sess) = sessions.get_mut(&session_id) {
             sess.segment_count += 1;
             let _ = sess.tx.send(TranscriptEvent {
@@ -375,15 +481,7 @@ pub async fn receive_audio(
             });
             sess.segment_count
         } else {
-            // Session not in memory (e.g. after server restart) — use DB to determine index
-            let count = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM meeting_segments WHERE meeting_session_id = ?",
-            )
-            .bind(&session_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap_or(0) as i32;
-            count + 1
+            1
         }
     };
     let _ = MeetingSegment::create(
@@ -422,7 +520,7 @@ pub async fn receive_audio(
                 session_id: format!("meet-{}", session_id),
                 request_type: NoraRequestType::TextInteraction,
                 content: format!(
-                    "[GOOGLE MEET — Audio only. Keep response to 2-3 sentences max. No markdown.]\n\n{}",
+                    "[GOOGLE MEET — You are attending a live meeting. Respond conversationally, 1-2 sentences, no greetings or sign-offs, no markdown.]\n\n{}",
                     transcript
                 ),
                 context: None,
@@ -509,6 +607,30 @@ pub async fn receive_audio(
         let mut sessions = ACTIVE_MEETS.lock().await;
         if let Some(sess) = sessions.get_mut(&session_id) {
             sess.tts_queue.push(audio);
+            sess.nora_last_spoke_at = Some(Instant::now());
+        } else {
+            // Bot is posting audio for a session created on another server instance
+            // (e.g. Docker meet-watcher created it, supervisor spawned bot pointing at localhost).
+            // Auto-register a minimal session so TTS can be delivered via next-tts polling.
+            let (tx, _) = broadcast::channel(32);
+            sessions.insert(
+                session_id.clone(),
+                ActiveMeetSession {
+                    session_id: session_id.clone(),
+                    meet_url: String::new(),
+                    project_id: String::new(),
+                    process: None,
+                    tx,
+                    tts_queue: vec![audio],
+                    started_at: Instant::now(),
+                    segment_count: nora_idx,
+                    nora_last_spoke_at: None,
+                },
+            );
+            info!(
+                "[MEET {}] Auto-registered orphaned session for TTS delivery",
+                &session_id[..session_id.len().min(8)]
+            );
         }
     } else {
         crate::nora_metrics::record_voice_stage("meet", "tts_error", tts_secs);
@@ -1110,9 +1232,11 @@ async fn elevenlabs_tts(text: &str, api_key: &str) -> Option<Vec<u8>> {
         .timeout(Duration::from_secs(30))
         .build()
         .ok()?;
+    // Request raw PCM (16-bit, mono, 24000 Hz) so we can wrap it in a proper WAV header.
+    // The default ElevenLabs response is MP3, which paplay cannot play as WAV.
     let resp = client
         .post(format!(
-            "https://api.elevenlabs.io/v1/text-to-speech/{}",
+            "https://api.elevenlabs.io/v1/text-to-speech/{}?output_format=pcm_24000",
             voice_id
         ))
         .header("xi-api-key", api_key)
@@ -1128,7 +1252,28 @@ async fn elevenlabs_tts(text: &str, api_key: &str) -> Option<Vec<u8>> {
     if !resp.status().is_success() {
         return None;
     }
-    Some(resp.bytes().await.ok()?.to_vec())
+    let pcm = resp.bytes().await.ok()?.to_vec();
+    // Wrap raw PCM in a standard 44-byte WAV header (16-bit, mono, 24000 Hz).
+    Some(pcm_to_wav(pcm, 24000))
+}
+
+fn pcm_to_wav(pcm: Vec<u8>, sample_rate: u32) -> Vec<u8> {
+    let data_len = pcm.len() as u32;
+    let mut wav = Vec::with_capacity(44 + pcm.len());
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_len).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes()); // chunk size
+    wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    wav.extend_from_slice(&1u16.to_le_bytes()); // mono
+    wav.extend_from_slice(&sample_rate.to_le_bytes());
+    wav.extend_from_slice(&(sample_rate * 2).to_le_bytes()); // byte rate
+    wav.extend_from_slice(&2u16.to_le_bytes()); // block align
+    wav.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+    wav.extend_from_slice(&pcm);
+    wav
 }
 
 async fn chatterbox_tts(text: &str, chatterbox_url: &str) -> Option<Vec<u8>> {
