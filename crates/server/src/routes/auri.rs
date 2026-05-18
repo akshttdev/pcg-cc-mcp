@@ -283,10 +283,11 @@ async fn execute_auri_task(
     github_token: &str,
     prompt: &str,
 ) -> Result<String, String> {
-    std::fs::create_dir_all(WORKSPACES_DIR)
+    let workspaces_dir = workspaces_dir();
+    std::fs::create_dir_all(&workspaces_dir)
         .map_err(|e| format!("Cannot create workspaces dir: {}", e))?;
 
-    let workspace = format!("{}/{}", WORKSPACES_DIR, &task_id[..8]);
+    let workspace = format!("{}/{}", workspaces_dir, &task_id[..8]);
     let branch_name = format!("auri/{}", &task_id[..8]);
 
     // Build authenticated remote URL
@@ -380,16 +381,17 @@ async fn execute_auri_task(
 
     // Run Claude Code
     let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
-    let output = Command::new(CLAUDE_BIN)
+    // HOME override: Auri needs a valid home for claude CLI config (~/.claude)
+    // Use AURI_HOME env var if set, otherwise fall back to /home/pythia (host path, volume-mounted)
+    let auri_home = std::env::var("AURI_HOME")
+        .unwrap_or_else(|_| std::env::var("HOME").unwrap_or_else(|_| "/home/pythia".into()));
+    let output = Command::new(claude_bin())
         .args(["--print", "--output-format", "json", "-p", prompt])
         .current_dir(&workspace)
         .env("ANTHROPIC_API_KEY", &api_key)
         .env("GH_TOKEN", github_token)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .env(
-            "HOME",
-            std::env::var("HOME").unwrap_or_else(|_| "/home/pythia".into()),
-        )
+        .env("HOME", &auri_home)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -546,7 +548,7 @@ async fn execute_auri_task(
         task_id
     );
 
-    let pr = Command::new(GH_BIN)
+    let pr = Command::new(gh_bin())
         .args([
             "pr",
             "create",

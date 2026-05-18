@@ -88,6 +88,11 @@ services:
       # GitHub PAT for Auri (coding agent) — clone/push/PR on behalf of PCG
       - GITHUB_PAT=${GITHUB_PAT:-}
       - GH_TOKEN=${GITHUB_PAT:-}
+      # Auri coding agent paths (volumes mounted below)
+      - CLAUDE_BIN=/home/pythia/.nvm/versions/node/v22.20.0/bin/claude
+      - GH_BIN=/home/pythia/.local/bin/gh
+      - AURI_WORKSPACES_DIR=/home/pythia/auri-workspaces
+      - AURI_HOME=/home/pythia
       # APN (Alpha Protocol Network) — native peer manager (bridge retired)
       - AUTO_START_APN=${AUTO_START_APN:-false}
       - APN_NODE_ID=${APN_NODE_ID:-apn_814d37f4}
@@ -102,6 +107,12 @@ services:
       - repos_data:/repos
       # Access backups for restore on container startup
       - ./backups:/app/backups
+      # Auri coding agent: expose host claude CLI, gh CLI, and workspace dir
+      - /home/pythia/.nvm:/home/pythia/.nvm:ro
+      - /home/pythia/.local/bin:/home/pythia/.local/bin:ro
+      - /home/pythia/.config/gh:/home/pythia/.config/gh:ro
+      - /home/pythia/.claude:/home/pythia/.claude:ro
+      - /home/pythia/auri-workspaces:/home/pythia/auri-workspaces:rw
       # Share frontend dist with nginx
       - frontend-dist:/app/frontend/dist
       # Share docs site with nginx

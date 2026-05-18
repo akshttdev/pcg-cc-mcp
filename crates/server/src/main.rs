@@ -363,9 +363,6 @@ async fn main() -> Result<(), VibeKanbanError> {
     // and creates CRM activities for any matched attendees)
     services::services::calendar::spawn_sync_loop(deployment.db().pool.clone());
 
-    // Spawn social publisher worker (every 5 min, publishes due scheduled posts)
-    services::services::social::publisher::spawn_publisher_loop(deployment.db().pool.clone());
-
     // Create shutdown registry (must be before workers that use it)
     let registry = server::workers::ShutdownRegistry::new();
 
