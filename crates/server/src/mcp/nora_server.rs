@@ -1140,13 +1140,16 @@ async fn publish_now(
             media_urls,
             hashtags,
             mentions,
-            platforms: account_uuids,
+            platforms: account_uuids.into_iter().map(|u| u.to_string()).collect(),
             platform_specific,
             scheduled_for: None,
             category: None,
             is_evergreen: None,
             recycle_after_days: None,
             created_by_agent_id: None,
+            deliverable_id: None,
+            assignee_id: None,
+            status: None,
         },
     )
     .await

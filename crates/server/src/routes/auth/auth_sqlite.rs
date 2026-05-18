@@ -218,7 +218,7 @@ pub async fn login(
         user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
-        id: user_id_str,
+        id: user_id_str.to_string(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,
