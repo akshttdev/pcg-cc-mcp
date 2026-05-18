@@ -15,14 +15,16 @@ export async function loginAsAdmin(page: Page) {
   if (!sessionId) throw new Error(`Login failed: ${JSON.stringify(body)}`);
 
   // Set the session cookie
-  await page.context().addCookies([{
-    name: 'session_id',
-    value: sessionId,
-    domain: 'localhost',
-    path: '/',
-    httpOnly: false,
-    secure: false,
-  }]);
+  await page.context().addCookies([
+    {
+      name: 'session_id',
+      value: sessionId,
+      domain: 'localhost',
+      path: '/',
+      httpOnly: false,
+      secure: false,
+    },
+  ]);
 
   return sessionId;
 }
@@ -33,21 +35,29 @@ export async function loginAndGoto(page: Page, path: string) {
   const sessionId = await loginAsAdmin(page);
 
   // Also set localStorage so AuthContext picks up session via either mechanism
-  await page.evaluate((sid) => localStorage.setItem('session_id', sid), sessionId);
+  await page.evaluate(
+    (sid) => localStorage.setItem('session_id', sid),
+    sessionId
+  );
 
-  // Navigate to the target path
-  await page.goto(`http://localhost:3000${path}`, { waitUntil: 'networkidle' });
+  // Navigate to the target path — use 'load' not 'networkidle'; SPA polling never settles
+  await page.goto(`http://localhost:3000${path}`, { waitUntil: 'load' });
 
   // Re-inject after navigation in case SPA cleared storage
-  await page.evaluate((sid) => localStorage.setItem('session_id', sid), sessionId);
-  await page.context().addCookies([{
-    name: 'session_id',
-    value: sessionId,
-    domain: 'localhost',
-    path: '/',
-    httpOnly: false,
-    secure: false,
-  }]);
+  await page.evaluate(
+    (sid) => localStorage.setItem('session_id', sid),
+    sessionId
+  );
+  await page.context().addCookies([
+    {
+      name: 'session_id',
+      value: sessionId,
+      domain: 'localhost',
+      path: '/',
+      httpOnly: false,
+      secure: false,
+    },
+  ]);
 
   await page.waitForTimeout(1500);
 }

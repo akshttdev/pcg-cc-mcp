@@ -66,6 +66,19 @@ export function SocialAnalyticsView({
 }) {
   const [days, setDays] = useState(30);
 
+  // Fetch org-owned published posts when on the org analytics view
+  const orgPostsQuery = useQuery({
+    queryKey: ['social', 'posts', 'org', orgId, 'published'],
+    queryFn: () =>
+      socialApi.listPostsFiltered({
+        organizationId: orgId!,
+        status: 'published',
+        limit: 200,
+      }),
+    enabled: !!orgId,
+    staleTime: 120_000,
+  });
+
   // Fetch published posts from every project for aggregate KPIs
   const postQueries = useQueries({
     queries: projectEntries.map((e) => ({
@@ -91,6 +104,12 @@ export function SocialAnalyticsView({
 
   const agg = useMemo(() => {
     const posts: (SocialPostRecord & { _project: string })[] = [];
+
+    // Org-owned posts go first when orgId is present
+    orgPostsQuery.data?.forEach((p) =>
+      posts.push({ ...p, _project: 'Org brand' })
+    );
+
     postQueries.forEach((q, i) => {
       q.data?.forEach((p) =>
         posts.push({ ...p, _project: projectEntries[i].name })
@@ -158,7 +177,7 @@ export function SocialAnalyticsView({
       byPlatform,
       totalPosts: posts.length,
     };
-  }, [postQueries, projectEntries]);
+  }, [orgPostsQuery.data, postQueries, projectEntries]);
 
   const fmt = (n: number) =>
     n >= 1_000_000
@@ -255,9 +274,13 @@ export function SocialAnalyticsView({
           <CardHeader className="pb-2 pt-3 px-4">
             <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Daily Impressions — Last {days} days
-              {projectEntries[0] && (
+              {(orgId || projectEntries[0]) && (
                 <span className="ml-1 normal-case font-normal">
-                  ({projectEntries[0].name})
+                  (
+                  {orgId && !firstProjectId
+                    ? 'Org brand'
+                    : projectEntries[0]?.name}
+                  )
                 </span>
               )}
             </CardTitle>

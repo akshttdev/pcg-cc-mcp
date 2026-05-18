@@ -15,9 +15,14 @@ pub async fn serve_frontend(uri: axum::extract::Path<String>) -> impl IntoRespon
     serve_file(path).await
 }
 
-/// Fallback handler for SPA routing — catches all unmatched routes
-pub async fn serve_frontend_fallback() -> impl IntoResponse {
-    serve_file("index.html").await
+/// Fallback handler for SPA routing — serves static assets if found, otherwise index.html
+pub async fn serve_frontend_fallback(uri: axum::http::Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+    if !path.is_empty() && Assets::get(path).is_some() {
+        serve_file(path).await
+    } else {
+        serve_file("index.html").await
+    }
 }
 
 pub async fn serve_frontend_root() -> impl IntoResponse {

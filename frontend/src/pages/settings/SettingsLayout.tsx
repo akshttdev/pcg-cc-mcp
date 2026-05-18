@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Bot,
   Boxes,
+  BrainCircuit,
   Building2,
   Cloud,
   Code2,
@@ -99,6 +100,13 @@ const settingsNavigation: SettingsNavItem[] = [
     label: 'Topsi Preferences',
     description: 'Tool confirmation and autonomy',
     scopes: ['user'],
+  },
+  {
+    path: 'my-intel',
+    icon: BrainCircuit,
+    label: 'My Intel',
+    description: 'Personal knowledge graph — companies, people, projects',
+    scopes: ['user', 'system'],
   },
   // ─── System Admin scope ──────────────────────────────────────
   {

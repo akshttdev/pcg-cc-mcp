@@ -18,9 +18,12 @@ import { SocialOverviewView } from './SocialOverviewView';
 function SocialTab({
   projectEntries,
   orgId,
+  platformFilter,
 }: {
   projectEntries: { id: string; name: string }[];
   orgId?: string;
+  /** External platform filter passed down from a parent filter bar */
+  platformFilter?: string[];
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const socialView = searchParams.get('sv') || 'overview';
@@ -71,7 +74,11 @@ function SocialTab({
         <SocialAccountsView projectEntries={projectEntries} orgId={orgId} />
       )}
       {socialView === 'content' && (
-        <SocialContentView projectEntries={projectEntries} orgId={orgId} />
+        <SocialContentView
+          projectEntries={projectEntries}
+          orgId={orgId}
+          externalPlatformFilter={platformFilter}
+        />
       )}
       {socialView === 'inbox' && (
         <SocialInboxView projectEntries={projectEntries} />

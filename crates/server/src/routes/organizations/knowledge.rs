@@ -51,14 +51,50 @@ pub async fn get_org_knowledge(
         source_summary: Option<String>,
         coverage_score: f64,
         is_stale: bool,
+        client_visible: bool,
         last_refreshed_at: chrono::DateTime<chrono::Utc>,
     }
     let knowledge_entries: Vec<KsRow> = sqlx::query_as(
-        "SELECT id, source_type, source_id, source_title, source_summary, coverage_score, is_stale, last_refreshed_at FROM project_knowledge_sources WHERE owner_type = 'organization' AND owner_id = ? AND is_active = 1 ORDER BY updated_at DESC"
+        "SELECT id, source_type, source_id, source_title, source_summary, coverage_score, is_stale, client_visible, last_refreshed_at \
+         FROM project_knowledge_sources \
+         WHERE owner_type = 'organization' AND owner_id = ? AND is_active = 1 \
+         ORDER BY updated_at DESC"
     )
     .bind(&org_id_hex)
     .fetch_all(pool)
     .await.unwrap_or_default();
+
+    // Project-level artifact entries (deliverables) from projects owned by this org
+    // These are the entries clients can see when client_visible=1
+    #[derive(sqlx::FromRow, serde::Serialize)]
+    struct ArtifactRow {
+        id: Uuid,
+        source_type: String,
+        source_id: String,
+        source_title: String,
+        source_summary: Option<String>,
+        coverage_score: f64,
+        client_visible: bool,
+        project_id: Uuid,
+        project_name: Option<String>,
+        last_refreshed_at: chrono::DateTime<chrono::Utc>,
+    }
+    let artifact_entries: Vec<ArtifactRow> = sqlx::query_as(
+        "SELECT ks.id, ks.source_type, ks.source_id, ks.source_title, ks.source_summary, \
+                ks.coverage_score, ks.client_visible, ks.project_id, p.name AS project_name, \
+                ks.last_refreshed_at \
+         FROM project_knowledge_sources ks \
+         JOIN projects p ON p.id = ks.project_id \
+         WHERE ks.owner_type = 'project' \
+           AND p.organization_id = ? \
+           AND ks.source_type = 'artifact' \
+           AND ks.is_active = 1 \
+         ORDER BY ks.updated_at DESC",
+    )
+    .bind(org_id.as_bytes().as_slice())
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
 
     // Brand profile summary
     #[derive(sqlx::FromRow, serde::Serialize)]
@@ -89,13 +125,18 @@ pub async fn get_org_knowledge(
             / knowledge_entries.len() as f64
     };
 
+    let client_visible_count = artifact_entries.iter().filter(|e| e.client_visible).count();
+
     Ok(Json(ApiResponse::success(json!({
         "data_sources": sources,
         "knowledge_entries": knowledge_entries,
+        "artifact_entries": artifact_entries,
         "brand_summary": brand_snap,
         "stats": {
             "data_source_count": sources.len(),
             "knowledge_entry_count": knowledge_entries.len(),
+            "artifact_count": artifact_entries.len(),
+            "client_visible_count": client_visible_count,
             "avg_coverage": avg_coverage,
         }
     }))))

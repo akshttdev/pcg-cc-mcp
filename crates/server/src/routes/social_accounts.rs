@@ -3,7 +3,7 @@
 //! Handles OAuth connections, account management, and platform integrations.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     response::Html,
     routing::{delete, get, patch, post},
     Json, Router,
@@ -18,12 +18,13 @@ use services::services::workflow_llm::WorkflowLLMService;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ListAccountsQuery {
     pub project_id: Option<Uuid>,
     pub organization_id: Option<String>,
+    pub user_id: Option<String>,
     pub platform: Option<String>,
     pub active_only: Option<bool>,
 }
@@ -31,11 +32,24 @@ pub struct ListAccountsQuery {
 /// GET /social/accounts - List social accounts
 async fn list_accounts(
     State(deployment): State<DeploymentImpl>,
+    Extension(access_context): Extension<AccessContext>,
     Query(query): Query<ListAccountsQuery>,
 ) -> Result<Json<ApiResponse<Vec<SocialAccount>>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let accounts = if let Some(org_id) = query.organization_id.as_deref() {
+    let accounts = if let Some(uid) = query.user_id.as_deref() {
+        let resolved_id = if uid == "me" {
+            access_context.user_id.as_str().to_string()
+        } else {
+            uid.to_string()
+        };
+        sqlx::query_as(
+            "SELECT * FROM social_accounts WHERE user_id = ?1 ORDER BY platform, username",
+        )
+        .bind(&resolved_id)
+        .fetch_all(pool)
+        .await?
+    } else if let Some(org_id) = query.organization_id.as_deref() {
         SocialAccount::find_by_organization(pool, org_id).await?
     } else if let Some(project_id) = query.project_id {
         SocialAccount::find_by_project(pool, project_id).await?

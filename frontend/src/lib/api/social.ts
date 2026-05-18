@@ -164,6 +164,7 @@ export const socialApi = {
   listPostsFiltered: async (params: {
     projectId?: string;
     organizationId?: string;
+    userId?: string;
     status?: string;
     category?: string;
     platform?: string;
@@ -172,6 +173,7 @@ export const socialApi = {
     const sp = new URLSearchParams();
     if (params.organizationId) sp.set('organization_id', params.organizationId);
     else if (params.projectId) sp.set('project_id', params.projectId);
+    if (params.userId) sp.set('user_id', params.userId);
     if (params.status) sp.set('status', params.status);
     if (params.category) sp.set('category', params.category);
     if (params.platform) sp.set('platform', params.platform);
@@ -368,7 +370,20 @@ export const socialApi = {
     const sp = new URLSearchParams();
     if (params.orgId) sp.set('organization_id', params.orgId);
     if (params.projectId) sp.set('project_id', params.projectId);
-    window.location.href = `/api/social/connect/${platform}?${sp}`;
+    const qs = sp.toString();
+    window.location.href = `/api/social/oauth/${platform}/connect${qs ? `?${qs}` : ''}`;
+  },
+
+  getPersonalAccounts: async (): Promise<SocialAccountRecord[]> => {
+    const response = await makeRequest('/api/social/accounts?user_id=me');
+    return handleApiResponse<SocialAccountRecord[]>(response);
+  },
+
+  getPlatformStatus: async (): Promise<
+    { platform: string; configured: boolean }[]
+  > => {
+    const response = await makeRequest('/api/social/platforms/status');
+    return handleApiResponse(response);
   },
 
   generateCaptions: async (params: {

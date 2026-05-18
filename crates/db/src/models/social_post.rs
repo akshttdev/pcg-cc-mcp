@@ -260,7 +260,7 @@ impl SocialPost {
     ) -> Result<Vec<Self>, SocialPostError> {
         let limit = limit.unwrap_or(200);
         let posts = sqlx::query_as::<_, SocialPost>(
-            r#"SELECT * FROM social_posts WHERE organization_id = ?1 ORDER BY created_at DESC LIMIT ?2"#,
+            r#"SELECT * FROM social_posts WHERE organization_id = ?1 AND project_id IS NULL ORDER BY created_at DESC LIMIT ?2"#,
         )
         .bind(organization_id)
         .bind(limit)

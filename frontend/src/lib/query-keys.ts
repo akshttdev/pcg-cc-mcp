@@ -392,6 +392,7 @@ export const mediaKeys = {
 
 export const knowledgeKeys = {
   project: (projectId: string) => ['projectKnowledge', projectId] as const,
+  mine: () => ['knowledge', 'mine'] as const,
 };
 
 // ── Autonomy ────────────────────────────────────────────────────────────────

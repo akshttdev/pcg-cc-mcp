@@ -30,19 +30,27 @@ interface ConnectAccountButtonProps {
   projectId?: string;
   orgId?: string;
   variant?: 'outline' | 'default';
+  className?: string;
 }
 
 export function ConnectAccountButton({
   projectId,
   orgId,
   variant = 'outline',
+  className,
 }: ConnectAccountButtonProps) {
   const [open, setOpen] = useState(false);
+  const isPersonal = !projectId && !orgId;
 
   return (
     <div className="relative">
-      <Button variant={variant} size="sm" onClick={() => setOpen((o) => !o)}>
-        + Connect Account
+      <Button
+        variant={variant}
+        size="sm"
+        className={className}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {isPersonal ? '+ Connect personal account' : '+ Connect Account'}
       </Button>
       {open && (
         <>

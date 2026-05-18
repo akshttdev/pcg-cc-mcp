@@ -6,6 +6,47 @@ import {
   resolveApiUrl,
 } from './client';
 
+// ── User Knowledge Graph ───────────────────────────────────────────────────────
+
+export interface UserKnowledgeSource {
+  id: string;
+  user_id: string;
+  source_type: string;
+  source_id: string;
+  source_title: string;
+  source_summary: string | null;
+  related_company_id: string | null;
+  related_person_id: string | null;
+  related_project_id: string | null;
+  coverage_score: number;
+  is_active: boolean;
+  is_stale: boolean;
+  last_refreshed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MyKnowledgeResponse {
+  by_type: Record<string, UserKnowledgeSource[]>;
+  total: number;
+  active: number;
+}
+
+export const knowledgeApi = {
+  getMyKnowledge: async (): Promise<MyKnowledgeResponse> => {
+    const response = await makeRequest('/api/knowledge/mine');
+    return handleApiResponse<MyKnowledgeResponse>(response);
+  },
+
+  refreshMySource: async (sourceId: string): Promise<string> => {
+    const response = await makeRequest(
+      `/api/knowledge/mine/${sourceId}/refresh`,
+      { method: 'POST' }
+    );
+    return handleApiResponse<string>(response);
+  },
+};
+
 // ── Intelligence ──────────────────────────────────────────────────────────────
 
 export interface IntelligenceStatus {

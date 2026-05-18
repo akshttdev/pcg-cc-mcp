@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   type DragEndEvent,
   KanbanBoard,

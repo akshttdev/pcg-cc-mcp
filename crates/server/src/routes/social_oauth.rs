@@ -11,20 +11,21 @@
 //!     → redirects to APP_BASE_URL/social?connected=<platform>
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     response::Redirect,
     routing::get,
-    Router,
+    Json, Router,
 };
 use db::models::social_account::SocialPlatform;
 use deployment::Deployment;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use services::services::social::get_connector;
 use sqlx::SqlitePool;
 use tracing::{error, info, warn};
+use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -135,6 +136,7 @@ pub struct CallbackQuery {
 ///
 /// Protected — requires JWT. Redirects user to platform OAuth consent screen.
 async fn connect(
+    Extension(access_context): Extension<AccessContext>,
     Path(platform): Path<String>,
     Query(q): Query<ConnectQuery>,
 ) -> Result<Redirect, ApiError> {
@@ -147,9 +149,10 @@ async fn connect(
     } else if let Some(org_id) = q.org_id {
         ("org".to_string(), org_id)
     } else {
-        return Err(ApiError::BadRequest(
-            "Either project_id or org_id is required".into(),
-        ));
+        (
+            "user".to_string(),
+            access_context.user_id.as_str().to_string(),
+        )
     };
 
     let connector =
@@ -250,10 +253,15 @@ async fn callback_inner(
 
     let pool = &deployment.db().pool;
 
-    // Determine project_id / organization_id from owner type
-    let (project_id_str, organization_id_str): (Option<String>, Option<String>) = match owner_type {
-        "project" => (Some(owner_id.to_string()), None),
-        "org" => (None, Some(owner_id.to_string())),
+    // Determine project_id / organization_id / user_id from owner type
+    let (project_id_str, organization_id_str, user_id_str): (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = match owner_type {
+        "project" => (Some(owner_id.to_string()), None, None),
+        "org" => (None, Some(owner_id.to_string()), None),
+        "user" => (None, None, Some(owner_id.to_string())),
         _ => {
             return Err(ApiError::BadRequest(format!(
                 "Unknown owner_type: {owner_type}"
@@ -266,6 +274,7 @@ async fn callback_inner(
         &platform,
         project_id_str.as_deref(),
         organization_id_str.as_deref(),
+        user_id_str.as_deref(),
         &profile.platform_account_id,
         profile.username.as_str(),
         profile.display_name.as_deref(),
@@ -293,6 +302,7 @@ async fn upsert_social_account(
     platform: &str,
     project_id: Option<&str>,
     organization_id: Option<&str>,
+    user_id: Option<&str>,
     platform_account_id: &str,
     username: &str,
     display_name: Option<&str>,
@@ -312,13 +322,14 @@ async fn upsert_social_account(
     let existing: Option<IdRow> = sqlx::query_as(
         "SELECT id FROM social_accounts \
          WHERE platform = ?1 AND platform_account_id = ?2 \
-           AND (project_id = ?3 OR organization_id = ?4) \
+           AND (project_id = ?3 OR organization_id = ?4 OR user_id = ?5) \
          LIMIT 1",
     )
     .bind(platform)
     .bind(platform_account_id)
     .bind(project_id)
     .bind(organization_id)
+    .bind(user_id)
     .fetch_optional(pool)
     .await?;
 
@@ -334,6 +345,7 @@ async fn upsert_social_account(
                 avatar_url = COALESCE(?7, avatar_url), \
                 profile_url = COALESCE(?8, profile_url), \
                 follower_count = COALESCE(?9, follower_count), \
+                user_id = COALESCE(?10, user_id), \
                 status = 'active', \
                 updated_at = datetime('now','subsec') \
              WHERE id = ?1",
@@ -347,6 +359,7 @@ async fn upsert_social_account(
         .bind(avatar_url)
         .bind(profile_url)
         .bind(follower_count)
+        .bind(user_id)
         .execute(pool)
         .await?;
     } else {
@@ -354,14 +367,15 @@ async fn upsert_social_account(
         let new_id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO social_accounts \
-                (id, project_id, organization_id, platform, account_type, \
+                (id, project_id, organization_id, user_id, platform, account_type, \
                  platform_account_id, username, display_name, profile_url, avatar_url, \
                  access_token, refresh_token, token_expires_at, follower_count, status) \
-             VALUES (?1, ?2, ?3, ?4, 'personal', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'active')",
+             VALUES (?1, ?2, ?3, ?4, ?5, 'personal', ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 'active')",
         )
         .bind(new_id) // Uuid → BLOB
         .bind(project_id)
         .bind(organization_id)
+        .bind(user_id)
         .bind(platform)
         .bind(platform_account_id)
         .bind(username)
@@ -379,6 +393,51 @@ async fn upsert_social_account(
     Ok(())
 }
 
+// ─── Platform status ─────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct PlatformStatus {
+    platform: &'static str,
+    configured: bool,
+}
+
+/// GET /social/platforms/status — returns which OAuth platforms have credentials configured.
+async fn platform_status() -> Json<ApiResponse<Vec<PlatformStatus>>> {
+    let platforms = vec![
+        PlatformStatus {
+            platform: "linkedin",
+            configured: std::env::var("LINKEDIN_CLIENT_ID").is_ok()
+                && std::env::var("LINKEDIN_CLIENT_SECRET").is_ok(),
+        },
+        PlatformStatus {
+            platform: "instagram",
+            configured: std::env::var("INSTAGRAM_APP_ID").is_ok()
+                && std::env::var("INSTAGRAM_APP_SECRET").is_ok(),
+        },
+        PlatformStatus {
+            platform: "twitter",
+            configured: std::env::var("TWITTER_CLIENT_ID").is_ok()
+                && std::env::var("TWITTER_CLIENT_SECRET").is_ok(),
+        },
+        PlatformStatus {
+            platform: "tiktok",
+            configured: std::env::var("TIKTOK_CLIENT_KEY").is_ok()
+                && std::env::var("TIKTOK_CLIENT_SECRET").is_ok(),
+        },
+        PlatformStatus {
+            platform: "youtube",
+            configured: std::env::var("YOUTUBE_CLIENT_ID").is_ok()
+                && std::env::var("YOUTUBE_CLIENT_SECRET").is_ok(),
+        },
+        PlatformStatus {
+            platform: "facebook",
+            configured: std::env::var("FACEBOOK_APP_ID").is_ok()
+                && std::env::var("FACEBOOK_APP_SECRET").is_ok(),
+        },
+    ];
+    Json(ApiResponse::success(platforms))
+}
+
 // ─── Routers ─────────────────────────────────────────────────────────────────
 
 /// Protected router — merge into protected_routes (JWT middleware applied by caller).
@@ -386,6 +445,7 @@ async fn upsert_social_account(
 pub fn protected_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/social/oauth/{platform}/connect", get(connect))
+        .route("/social/platforms/status", get(platform_status))
         .with_state(deployment.clone())
 }
 

@@ -1,14 +1,17 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Boxes,
   CheckCircle2,
   DollarSign,
   ExternalLink,
   FileText,
+  Globe,
   Loader2,
   Mail,
   Plug,
+  Plus,
   RefreshCw,
+  Share2,
   Trash2,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -16,18 +19,366 @@ import { Link } from 'react-router-dom';
 
 import { useUserSystem } from '@/components/config-provider';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   airtableApi,
   type EmailAccountRecord,
   emailApi,
   quickbooksApi,
+  socialApi,
 } from '@/lib/api';
-import { integrationKeys } from '@/lib/query-keys';
+import { type StorageAccountView, storageApi } from '@/lib/api/storage';
+import { integrationKeys, socialKeys } from '@/lib/query-keys';
 
 import { IntegrationCard } from '../../components/IntegrationCard';
+import { PLATFORM_BG, PLATFORM_COLORS, PLATFORM_ICONS } from '../../constants';
 import { CommunicationSection } from './CommunicationSection';
 import { DevelopmentSection } from './DevelopmentSection';
 import { QbFinancialSummary } from './QbFinancialSummary';
-import { SocialSection } from './SocialSection';
+
+// ─── Storage providers (OneDrive / Dropbox) ───────────────────────────────
+
+const STORAGE_PROVIDERS = [
+  {
+    id: 'onedrive' as const,
+    label: 'OneDrive',
+    accent: '#0078D4',
+    description:
+      'Access Microsoft OneDrive files as knowledge sources and shared asset storage.',
+  },
+  {
+    id: 'dropbox' as const,
+    label: 'Dropbox',
+    accent: '#0061FF',
+    description:
+      'Connect Dropbox folders as knowledge sources and asset storage for projects.',
+  },
+];
+
+function StorageProviderCards({ orgId }: { orgId: string }) {
+  const queryClient = useQueryClient();
+  const [connecting, setConnecting] = useState<string | null>(null);
+
+  const { data: accounts = [] } = useQuery<StorageAccountView[]>({
+    queryKey: ['storage-accounts', orgId],
+    queryFn: () => storageApi.list(orgId),
+    staleTime: 30_000,
+  });
+
+  const syncMut = useMutation({
+    mutationFn: (id: string) => storageApi.syncNow(id),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['storage-accounts', orgId] }),
+  });
+
+  const disconnectMut = useMutation({
+    mutationFn: (id: string) => storageApi.disconnect(id),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['storage-accounts', orgId] }),
+  });
+
+  const handleConnect = (provider: 'onedrive' | 'dropbox') => {
+    setConnecting(provider);
+    window.location.href = storageApi.connectUrl({
+      provider,
+      organization_id: orgId,
+      redirect_after: window.location.pathname + window.location.search,
+    });
+  };
+
+  return (
+    <>
+      {STORAGE_PROVIDERS.map((p) => {
+        const connected = accounts.filter((a) => a.provider === p.id);
+        const primary = connected[0];
+        const isActive = primary?.status === 'active';
+        const isError =
+          primary?.status === 'error' || primary?.status === 'expired';
+        return (
+          <IntegrationCard
+            key={p.id}
+            accent={p.accent}
+            icon={FileText}
+            name={p.label}
+            description={
+              primary
+                ? (primary.account_email ??
+                  primary.display_name ??
+                  p.description)
+                : p.description
+            }
+            status={
+              primary
+                ? isActive
+                  ? 'connected'
+                  : isError
+                    ? 'warning'
+                    : 'connected'
+                : 'disconnected'
+            }
+            actions={
+              primary ? (
+                <>
+                  <button
+                    className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1 disabled:opacity-50"
+                    onClick={() => syncMut.mutate(primary.id)}
+                    disabled={syncMut.isPending}
+                  >
+                    {syncMut.isPending ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                    Sync
+                  </button>
+                  <button
+                    className="h-7 px-2.5 text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 disabled:opacity-50"
+                    onClick={() =>
+                      confirm(`Disconnect ${p.label}?`) &&
+                      disconnectMut.mutate(primary.id)
+                    }
+                    disabled={disconnectMut.isPending}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Disconnect
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5 disabled:opacity-50"
+                  onClick={() => handleConnect(p.id)}
+                  disabled={connecting === p.id}
+                >
+                  {connecting === p.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Plug className="h-3 w-3" />
+                  )}
+                  Connect
+                </button>
+              )
+            }
+            extra={
+              primary?.last_sync_at ? (
+                <p className="text-xs text-muted-foreground">
+                  Last sync {new Date(primary.last_sync_at).toLocaleString()}
+                  {primary.total_files_synced > 0 &&
+                    ` · ${primary.total_files_synced} files`}
+                </p>
+              ) : primary?.last_error ? (
+                <p className="text-xs text-destructive">{primary.last_error}</p>
+              ) : undefined
+            }
+          />
+        );
+      })}
+    </>
+  );
+}
+
+// ─── Inline social section ────────────────────────────────────────────────
+
+const SOCIAL_PLATFORMS = [
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'twitter', label: 'X / Twitter' },
+  { key: 'tiktok', label: 'TikTok' },
+  { key: 'youtube', label: 'YouTube' },
+  { key: 'facebook', label: 'Facebook' },
+];
+
+function SocialConnectDialog({
+  open,
+  onClose,
+  orgId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  orgId: string;
+}) {
+  const { data: platformStatus = [] } = useQuery({
+    queryKey: ['social-platform-status'],
+    queryFn: () => socialApi.getPlatformStatus(),
+    staleTime: 300_000,
+    enabled: open,
+  });
+
+  const configuredSet = new Set(
+    platformStatus.filter((p) => p.configured).map((p) => p.platform)
+  );
+
+  const handleConnect = (platform: string) => {
+    socialApi.connectAccount(platform, { orgId });
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Connect Social Account</DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-2 mt-1">
+          {SOCIAL_PLATFORMS.map(({ key, label }) => {
+            const Icon = PLATFORM_ICONS[key] || Globe;
+            const configured =
+              configuredSet.size === 0 || configuredSet.has(key);
+            return (
+              <button
+                key={key}
+                disabled={!configured}
+                onClick={() => configured && handleConnect(key)}
+                className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
+                  configured
+                    ? 'border-border hover:bg-muted/60 cursor-pointer'
+                    : 'border-border/40 opacity-40 cursor-not-allowed'
+                }`}
+              >
+                <div
+                  className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${PLATFORM_BG[key] || 'bg-muted'}`}
+                >
+                  <Icon
+                    className={`h-4 w-4 ${PLATFORM_COLORS[key] || 'text-muted-foreground'}`}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {configured ? 'Click to connect' : 'Not configured'}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function InlineSocialSection({ orgId }: { orgId: string }) {
+  const [connectOpen, setConnectOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: accounts = [], isLoading } = useQuery({
+    queryKey: socialKeys.accounts(orgId),
+    queryFn: () => socialApi.listAccounts({ organizationId: orgId }),
+    staleTime: 60_000,
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => socialApi.deleteAccount(id),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: socialKeys.accounts(orgId) }),
+  });
+
+  return (
+    <section className="space-y-3">
+      <SocialConnectDialog
+        open={connectOpen}
+        onClose={() => setConnectOpen(false)}
+        orgId={orgId}
+      />
+
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Social Media
+        </h3>
+        <button
+          onClick={() => setConnectOpen(true)}
+          className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5"
+        >
+          <Plus className="h-3 w-3" />
+          Connect Account
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading…
+        </div>
+      ) : accounts.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/60 p-6 text-center text-muted-foreground">
+          <Share2 className="h-6 w-6 mx-auto mb-2 opacity-30" />
+          <p className="text-sm mb-3">
+            No social accounts connected to this organization.
+          </p>
+          <button
+            onClick={() => setConnectOpen(true)}
+            className="h-7 px-3 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5 mx-auto"
+          >
+            <Plus className="h-3 w-3" />
+            Connect Account
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {accounts.map((account) => {
+            const Icon = PLATFORM_ICONS[account.platform] || Globe;
+            return (
+              <IntegrationCard
+                key={account.id}
+                accent=""
+                icon={Icon}
+                name={
+                  account.display_name || account.username || account.platform
+                }
+                description={`${account.platform} · ${account.follower_count?.toLocaleString() ?? 0} followers`}
+                status={
+                  account.status === 'active'
+                    ? 'connected'
+                    : account.status === 'error'
+                      ? 'warning'
+                      : 'disconnected'
+                }
+                actions={
+                  <>
+                    {account.profile_url && (
+                      <a
+                        href={account.profile_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        View
+                      </a>
+                    )}
+                    <button
+                      className="h-7 px-2.5 text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 disabled:opacity-50"
+                      onClick={() =>
+                        confirm('Disconnect this account?') &&
+                        deleteMut.mutate(account.id)
+                      }
+                      disabled={deleteMut.isPending}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Disconnect
+                    </button>
+                  </>
+                }
+              />
+            );
+          })}
+          <button
+            onClick={() => setConnectOpen(true)}
+            className="w-full h-8 text-xs text-muted-foreground border border-dashed rounded-md hover:bg-muted/40 hover:text-foreground flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <Plus className="h-3 w-3" />
+            Add another account
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Main tab ─────────────────────────────────────────────────────────────
 
 function IntegrationsTab({ orgId }: { orgId: string }) {
   const queryClient = useQueryClient();
@@ -437,54 +788,12 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
           }
         />
 
-        {/* Dropbox */}
-        <IntegrationCard
-          accent="#0061FF"
-          icon={FileText}
-          name="Dropbox"
-          description="Connect Dropbox folders as knowledge sources and asset storage for projects."
-          status="disconnected"
-          statusLabel="Coming soon"
-          actions={
-            <span className="text-xs text-muted-foreground italic">
-              Configure per-project
-            </span>
-          }
-        />
-
-        {/* OneDrive */}
-        <IntegrationCard
-          accent="#0078D4"
-          icon={FileText}
-          name="OneDrive"
-          description="Access Microsoft OneDrive files as knowledge sources and shared asset storage across projects."
-          status="disconnected"
-          statusLabel="Coming soon"
-          actions={
-            <span className="text-xs text-muted-foreground italic">
-              Not yet configured
-            </span>
-          }
-        />
-
-        {/* GitHub */}
-        <IntegrationCard
-          accent="#24292e"
-          icon={FileText}
-          name="GitHub"
-          description="Link repositories to projects. Agents can read code, create PRs, and browse issues."
-          status="disconnected"
-          statusLabel="Coming soon"
-          actions={
-            <span className="text-xs text-muted-foreground italic">
-              Configure per-project
-            </span>
-          }
-        />
+        {/* Storage providers (OneDrive + Dropbox) */}
+        <StorageProviderCards orgId={orgId} />
       </section>
 
       {/* ── Social ── */}
-      <SocialSection />
+      <InlineSocialSection orgId={orgId} />
 
       {/* ── Communication ── */}
       <CommunicationSection />
@@ -502,9 +811,14 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
           status="disconnected"
           statusLabel="Coming soon"
           actions={
-            <span className="text-xs text-muted-foreground italic">
-              Not yet configured
-            </span>
+            <button
+              disabled
+              title="Coming soon"
+              className="h-7 px-2.5 text-xs border rounded-md opacity-40 cursor-not-allowed flex items-center gap-1.5"
+            >
+              <Plug className="h-3 w-3" />
+              Connect
+            </button>
           }
         />
         <IntegrationCard
@@ -515,9 +829,14 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
           status="disconnected"
           statusLabel="Coming soon"
           actions={
-            <span className="text-xs text-muted-foreground italic">
-              Not yet configured
-            </span>
+            <button
+              disabled
+              title="Coming soon"
+              className="h-7 px-2.5 text-xs border rounded-md opacity-40 cursor-not-allowed flex items-center gap-1.5"
+            >
+              <Plug className="h-3 w-3" />
+              Connect
+            </button>
           }
         />
         <IntegrationCard

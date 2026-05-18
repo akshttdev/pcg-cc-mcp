@@ -143,6 +143,10 @@ const WAKE_WORDS = {
 // Pattern: starts with T, 4-7 chars, ends with s+vowel/y or si/sy
 const TOPSI_REGEX = /\bt[aou][a-z]{0,2}s[aeiouy]\b/i;
 
+// Regex for phonetic Nora variants — Whisper mishears as:
+// Eleanor, Elinor, Elnora, Lenora, Lenore, Elnor, Norah, nor a
+const NORA_REGEX = /\b(?:el(?:i|ea)nor[ah]?|el?nora?|lenora?|lenore|norah?)\b/i;
+
 /**
  * Checks whether the transcript addresses the given agent.
  * Returns the text after the wake word (the actual command), or null if not addressed.
@@ -153,6 +157,16 @@ export function detectWakeWord(text, agentName) {
   // Regex fallback for Topsi — catches all phonetic mishearings automatically
   if (agentName.toLowerCase() === 'topsi') {
     const m = lower.match(TOPSI_REGEX);
+    if (m) {
+      const idx = m.index + m[0].length;
+      const after = text.slice(idx).replace(/^[^a-z0-9]+/i, '').trim();
+      return after || text.trim();
+    }
+  }
+
+  // Regex fallback for Nora — catches Eleanor, Elinor, Elnora, Lenora, etc.
+  if (agentName.toLowerCase() === 'nora') {
+    const m = lower.match(NORA_REGEX);
     if (m) {
       const idx = m.index + m[0].length;
       const after = text.slice(idx).replace(/^[^a-z0-9]+/i, '').trim();

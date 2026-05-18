@@ -146,6 +146,7 @@ pub mod system_settings;
 pub mod tag;
 pub mod topsi_user_settings;
 pub mod trigger_execution;
+pub mod user_knowledge_source;
 pub mod user_profile;
 pub mod video_job;
 pub mod workflow_interaction_log;

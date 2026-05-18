@@ -136,6 +136,14 @@ async function registerCommands(client, agentName) {
       ],
     },
     {
+      name: `${ag}-stop`,
+      description: `Stop ${agentName} if she is mid-sentence`,
+    },
+    {
+      name: `${ag}-free`,
+      description: `Toggle free-chat mode — ${agentName} responds without needing her name each time`,
+    },
+    {
       name: 'meeting-summary',
       description: 'Generate an AI summary of the current voice session',
     },
@@ -183,6 +191,30 @@ async function handleInteraction(interaction, agentName) {
   } else if (cmd === `${ag}-ask`) {
     await interaction.deferReply();
     await handleAsk(interaction, agentName);
+  } else if (cmd === `${ag}-stop`) {
+    const sessionKey = `${interaction.guildId}:${agentName}`;
+    const session = sessions.get(sessionKey);
+    if (session?.isSpeaking) {
+      session.player.stop(true);
+      session.isSpeaking = false;
+      await interaction.reply({ content: `${agentName} stopped.`, ephemeral: true });
+    } else {
+      await interaction.reply({ content: `${agentName} wasn't speaking.`, ephemeral: true });
+    }
+  } else if (cmd === `${ag}-free`) {
+    const sessionKey = `${interaction.guildId}:${agentName}`;
+    const session = sessions.get(sessionKey);
+    if (!session) {
+      await interaction.reply({ content: `${agentName} isn't in a voice channel.`, ephemeral: true });
+      return;
+    }
+    session.freeChat = !session.freeChat;
+    await interaction.reply({
+      content: session.freeChat
+        ? `🟢 **Free-chat on** — ${agentName} will respond to everything without needing her name.`
+        : `🔴 **Free-chat off** — ${agentName} is back to wake-word mode.`,
+      ephemeral: true,
+    });
   } else if (cmd === 'meeting-summary') {
     await interaction.deferReply();
     await handleSummary(interaction, agentName);
@@ -300,6 +332,7 @@ async function handleJoin(interaction, agentName) {
     guild: interaction.guild,
     participants,
     contextBuffer: createContextBuffer(8),
+    freeChat: false, // when true, skip wake-word gate for this session
   };
 
   sessions.set(sessionKey, session);
@@ -372,6 +405,12 @@ function setupReceivePipeline(connection, session) {
   const activeSubs = new Set();
 
   connection.receiver.speaking.on('start', (userId) => {
+    // Barge-in: if agent is mid-TTS and a real user starts speaking, stop immediately
+    if (session.isSpeaking) {
+      session.player.stop(true);
+      session.isSpeaking = false;
+    }
+
     if (activeSubs.has(userId)) return;
     activeSubs.add(userId);
 
@@ -466,9 +505,18 @@ async function processUtterance(pcm, userId, displayName, session) {
   // Log to server asynchronously (fire-and-forget, never blocks voice pipeline)
   logClassifierPrediction(session, transcript, displayName, classifierResult, addressed !== null).catch(() => {});
 
-  // Nora: wake-word gated — only responds when explicitly addressed.
+  // Auto-detect "speak freely" / "free chat" requests — enables free-chat mode
+  // so Nora responds without needing her name each time.
+  const FREE_CHAT_ON  = /\b(speak freely|free(?: ?chat| ?mode)|respond to everything|no (?:need|more) (?:to |for )?(?:say|use|call|address)(?:ing)? (?:your |the )?name|you can (?:just )?respond|drop the wake ?word)\b/i;
+  const FREE_CHAT_OFF = /\b(wake ?word back|address you (?:by name|again)|require your name|back to normal(?: mode)?)\b/i;
+  if (session.agentName.toLowerCase() === 'nora') {
+    if (FREE_CHAT_ON.test(transcript))  session.freeChat = true;
+    if (FREE_CHAT_OFF.test(transcript)) session.freeChat = false;
+  }
+
+  // Nora: wake-word gated unless freeChat is on.
   // Topsi: responds to everything (name is too often misheard by Whisper).
-  if (session.agentName.toLowerCase() === 'nora' && addressed === null) return;
+  if (session.agentName.toLowerCase() === 'nora' && !session.freeChat && addressed === null) return;
 
   const cmd = addressed || transcript;
   const endMs = Date.now() - session.startedAt;
@@ -553,10 +601,12 @@ async function playTts(session, text) {
     inputType: StreamType.Arbitrary,
   });
 
+  session.isSpeaking = true;
   session.player.play(resource);
 
-  // Wait for playback to finish before cleaning up temp file
+  // Wait for playback to finish (or be stopped) before cleaning up temp file
   await entersState(session.player, AudioPlayerStatus.Idle, 120_000).catch(() => {});
+  session.isSpeaking = false;
   await unlink(tmpPath).catch(() => {});
 }
 

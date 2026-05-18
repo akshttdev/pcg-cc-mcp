@@ -1,8 +1,10 @@
 import { handleApiResponse, makeRequest } from './client';
 import type {
+  ArtifactKnowledgeEntry,
   OrgBrandProfile,
   OrgKnowledgeSource,
   PersonOrgContact,
+  UserKnowledgeSource,
 } from './communication';
 
 // ── Member & share types ────────────────────────────────────────────────────
@@ -566,13 +568,41 @@ export const organizationsApi = {
     orgId: string
   ): Promise<{
     knowledge_entries: OrgKnowledgeSource[];
+    artifact_entries: ArtifactKnowledgeEntry[];
+    brand_summary: Record<string, unknown> | null;
     stats: {
       knowledge_entry_count: number;
+      artifact_count: number;
+      client_visible_count: number;
       data_source_count: number;
       avg_coverage: number;
     };
   }> => {
     const r = await makeRequest(`/api/organizations/${orgId}/knowledge`);
+    return handleApiResponse(r);
+  },
+
+  getMyKnowledge: async (): Promise<{
+    sources: UserKnowledgeSource[];
+    by_type: Record<string, UserKnowledgeSource[]>;
+    stats: { total: number; stale: number };
+  }> => {
+    const r = await makeRequest('/api/knowledge/mine');
+    return handleApiResponse(r);
+  },
+
+  setKnowledgeVisibility: async (
+    sourceId: string,
+    clientVisible: boolean
+  ): Promise<void> => {
+    const r = await makeRequest(
+      `/api/knowledge-sources/${sourceId}/visibility`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_visible: clientVisible }),
+      }
+    );
     return handleApiResponse(r);
   },
 };

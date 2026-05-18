@@ -344,13 +344,47 @@ export interface OrgBrandProfile {
 export interface OrgKnowledgeSource {
   id: string;
   source_type: string;
+  source_id: string;
   source_title: string;
   source_summary?: string | null;
   coverage_score: number;
-  is_active: boolean;
+  is_active?: boolean;
   is_stale: boolean;
+  client_visible: boolean;
   project_id?: string | null;
   owner_type?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  last_refreshed_at?: string;
+}
+
+export interface ArtifactKnowledgeEntry {
+  id: string;
+  source_type: string;
+  source_id: string;
+  source_title: string;
+  source_summary?: string | null;
+  coverage_score: number;
+  client_visible: boolean;
+  project_id: string;
+  project_name?: string | null;
+  last_refreshed_at?: string;
+}
+
+export interface UserKnowledgeSource {
+  id: string;
+  user_id: string;
+  source_type: string;
+  source_id: string;
+  source_title: string;
+  source_summary?: string | null;
+  related_company_id?: string | null;
+  related_person_id?: string | null;
+  related_project_id?: string | null;
+  coverage_score: number;
+  is_active: boolean;
+  is_stale: boolean;
+  last_refreshed_at: string;
   created_at: string;
   updated_at: string;
 }

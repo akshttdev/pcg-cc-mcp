@@ -176,6 +176,39 @@ pub async fn client_to_org(pool: &SqlitePool, client_id: Uuid) -> Result<Uuid, C
     .execute(pool)
     .await?;
 
+    // Seed new org KG from client_visible deliverable entries
+    let moved_projects: Vec<(String,)> =
+        sqlx::query_as("SELECT id FROM projects WHERE organization_id = ? AND deleted_at IS NULL")
+            .bind(new_org_id)
+            .fetch_all(pool)
+            .await?;
+
+    for (project_id,) in &moved_projects {
+        sqlx::query(
+            r#"INSERT OR IGNORE INTO project_knowledge_sources
+               (id, owner_type, owner_id, project_id, source_type, source_id,
+                source_title, source_summary, coverage_score, client_visible,
+                is_active, is_stale, created_at, updated_at)
+               SELECT
+                 lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' ||
+                 substr(lower(hex(randomblob(2))),2) || '-' ||
+                 substr('89ab',abs(random()) % 4 + 1, 1) ||
+                 substr(lower(hex(randomblob(2))),2) || '-' ||
+                 lower(hex(randomblob(6))),
+                 'organization', ?, project_id, source_type, source_id,
+                 source_title, source_summary, coverage_score, 1,
+                 1, 0, datetime('now','subsec'), datetime('now','subsec')
+               FROM project_knowledge_sources
+               WHERE project_id = ?
+                 AND client_visible = 1
+                 AND is_active = 1"#,
+        )
+        .bind(new_org_id.to_string())
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+    }
+
     // Migrate members
     migrate_client_members_to_org(pool, client_id, new_org_id).await?;
 

@@ -155,13 +155,12 @@ async fn publish_post(
         SocialAccount::find_by_id(pool, account_id)
             .await
             .map_err(|e| anyhow::anyhow!("Account lookup failed: {}", e))?
-    } else {
-        // No account linked — try to find one for this project on LinkedIn
+    } else if post.project_id.is_some() {
         let project_uuid = post
             .project_id
             .as_ref()
             .map(|id| Uuid::from(id.clone()))
-            .ok_or_else(|| anyhow::anyhow!("Post has no project_id"))?;
+            .unwrap();
         let accounts = SocialAccount::find_by_project(pool, project_uuid)
             .await
             .map_err(|e| anyhow::anyhow!("Account list failed: {}", e))?;
@@ -174,6 +173,16 @@ async fn publish_post(
                     post.project_id
                 )
             })?
+    } else if let Some(ref org_id) = post.organization_id {
+        let accounts = SocialAccount::find_by_organization(pool, org_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Account list failed: {}", e))?;
+        accounts
+            .into_iter()
+            .find(|a| a.status == "active")
+            .ok_or_else(|| anyhow::anyhow!("No active social account found for org {}", org_id))?
+    } else {
+        return Err(anyhow::anyhow!("Post has no project_id or organization_id"));
     };
 
     let access_token = account

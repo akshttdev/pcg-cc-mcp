@@ -3,7 +3,7 @@
 //! Handles content CRUD, scheduling, and publishing operations.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::Html,
     routing::{delete, get, patch, post},
@@ -19,12 +19,13 @@ use services::services::social::{PublishResult, Publisher};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ListPostsQuery {
     pub project_id: Option<Uuid>,
     pub organization_id: Option<String>,
+    pub user_id: Option<String>,
     pub status: Option<String>,
     pub category: Option<String>,
     pub limit: Option<i64>,
@@ -33,12 +34,27 @@ pub struct ListPostsQuery {
 /// GET /social/posts - List posts with filters
 async fn list_posts(
     State(deployment): State<DeploymentImpl>,
+    Extension(access_context): Extension<AccessContext>,
     Query(query): Query<ListPostsQuery>,
 ) -> Result<Json<ApiResponse<Vec<SocialPost>>>, ApiError> {
     let pool = &deployment.db().pool;
 
     // Fetch all posts for the project (or all projects), then filter in-process
-    let all_posts = if let Some(org_id) = query.organization_id.as_deref() {
+    let all_posts = if let Some(uid) = query.user_id.as_deref() {
+        let resolved_id = if uid == "me" {
+            access_context.user_id.as_str().to_string()
+        } else {
+            uid.to_string()
+        };
+        let limit = query.limit.unwrap_or(500);
+        sqlx::query_as(
+            "SELECT * FROM social_posts WHERE user_id = ?1 ORDER BY COALESCE(scheduled_for, created_at) DESC LIMIT ?2",
+        )
+        .bind(&resolved_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?
+    } else if let Some(org_id) = query.organization_id.as_deref() {
         SocialPost::find_by_organization(pool, org_id, query.limit).await?
     } else if let Some(pid) = query.project_id {
         SocialPost::find_all_for_project(pool, pid).await?

@@ -1,0 +1,1 @@
+export { MyIntelPanel } from './MyIntelPanel';

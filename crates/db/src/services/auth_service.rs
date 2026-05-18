@@ -1,5 +1,5 @@
 // Simplified authentication service using bcrypt and sessions
-use bcrypt::{DEFAULT_COST, hash, verify};
+use bcrypt::{hash, verify, DEFAULT_COST};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 

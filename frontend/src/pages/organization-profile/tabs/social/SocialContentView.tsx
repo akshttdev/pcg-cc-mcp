@@ -44,13 +44,17 @@ import {
 export function SocialContentView({
   projectEntries,
   orgId,
+  externalPlatformFilter,
 }: {
   projectEntries: { id: string; name: string }[];
   orgId?: string;
+  /** Optional platform filter applied on top of internal filters (from parent) */
+  externalPlatformFilter?: string[];
 }) {
   const [calView, setCalView] = useState<'list' | 'week' | 'month'>('list');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [platformFilter, setPlatformFilter] = useState<string>('all');
   const [showClientContent, setShowClientContent] = useState(false);
   const [clientProjectFilter, setClientProjectFilter] = useState<string[]>([]); // empty = all clients
   const [showCreate, setShowCreate] = useState(false);
@@ -133,14 +137,39 @@ export function SocialContentView({
     });
   }, [orgPostsQuery.data, projectPostQueries, activeProjectEntries]);
 
+  // Derive unique platforms present across all posts
+  const availablePlatforms = useMemo(() => {
+    const set = new Set<string>();
+    allPosts.forEach((p) => {
+      parsePlatforms(p.platforms).forEach((pl) => set.add(pl));
+    });
+    return Array.from(set).sort();
+  }, [allPosts]);
+
   const filtered = useMemo(() => {
     return allPosts.filter((p) => {
       if (statusFilter !== 'all' && p.status !== statusFilter) return false;
       if (projectFilter !== 'all' && p._projectId !== projectFilter)
         return false;
+      if (platformFilter !== 'all') {
+        const platforms = parsePlatforms(p.platforms);
+        if (!platforms.includes(platformFilter)) return false;
+      }
+      // External platform filter (from parent — applies across all views)
+      if (externalPlatformFilter && externalPlatformFilter.length > 0) {
+        const platforms = parsePlatforms(p.platforms);
+        if (!platforms.some((pl) => externalPlatformFilter.includes(pl)))
+          return false;
+      }
       return true;
     });
-  }, [allPosts, statusFilter, projectFilter]);
+  }, [
+    allPosts,
+    statusFilter,
+    projectFilter,
+    platformFilter,
+    externalPlatformFilter,
+  ]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: allPosts.length };
@@ -738,6 +767,34 @@ export function SocialContentView({
               </button>
             ))}
           </div>
+
+          {/* Platform filter — only shown when 2+ platforms present */}
+          {availablePlatforms.length > 1 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-muted-foreground">Platform:</span>
+              <button
+                onClick={() => setPlatformFilter('all')}
+                className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${platformFilter === 'all' ? 'bg-primary/10 border-primary/30 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
+              >
+                All
+              </button>
+              {availablePlatforms.map((pl) => {
+                const Icon = PLATFORM_ICONS[pl] || Globe;
+                return (
+                  <button
+                    key={pl}
+                    onClick={() =>
+                      setPlatformFilter(platformFilter === pl ? 'all' : pl)
+                    }
+                    className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border transition-colors capitalize ${platformFilter === pl ? 'bg-primary/10 border-primary/30 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <Icon className="h-3 w-3" />
+                    {pl}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">

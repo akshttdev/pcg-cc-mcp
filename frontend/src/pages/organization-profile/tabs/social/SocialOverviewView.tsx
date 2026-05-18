@@ -48,8 +48,20 @@ export function SocialOverviewView({
     enabled: !!orgId,
   });
 
+  // Org-mode: fetch org-owned posts only; project-mode: fetch per-project
+  const orgPostsQuery = useQuery({
+    queryKey: ['social', 'posts', 'org', orgId],
+    queryFn: () =>
+      socialApi.listPostsFiltered({ organizationId: orgId!, limit: 20 }),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  // Only run per-project queries when NOT in org mode
+  const projectQueryEntries = orgId ? [] : projectEntries;
+
   const accountQueries = useQueries({
-    queries: projectEntries.map((e) => ({
+    queries: projectQueryEntries.map((e) => ({
       queryKey: socialKeys.accounts(e.id),
       queryFn: () => socialApi.listAccounts({ projectId: e.id }),
       staleTime: 60_000,
@@ -57,7 +69,7 @@ export function SocialOverviewView({
   });
 
   const postQueries = useQueries({
-    queries: projectEntries.map((e) => ({
+    queries: projectQueryEntries.map((e) => ({
       queryKey: socialKeys.posts(e.id),
       queryFn: () =>
         socialApi.listPostsFiltered({ projectId: e.id, limit: 20 }),
@@ -66,7 +78,7 @@ export function SocialOverviewView({
   });
 
   const mentionQueries = useQueries({
-    queries: projectEntries.map((e) => ({
+    queries: projectQueryEntries.map((e) => ({
       queryKey: socialKeys.mentionsOverview(e.id),
       queryFn: () => socialApi.listMentions(e.id, { limit: 10 }),
       staleTime: 60_000,
@@ -83,9 +95,14 @@ export function SocialOverviewView({
         allAccounts.push({ ...a, _project: projectEntries[i].name })
       );
     });
+    // Org-owned posts (overview mode)
+    orgPostsQuery.data?.forEach((p) =>
+      allPosts.push({ ...p, _project: 'Org' })
+    );
+    // Per-project posts (client/project mode)
     postQueries.forEach((q, i) => {
       q.data?.forEach((p) =>
-        allPosts.push({ ...p, _project: projectEntries[i].name })
+        allPosts.push({ ...p, _project: projectQueryEntries[i].name })
       );
     });
     mentionQueries.forEach((q, i) => {
@@ -176,7 +193,8 @@ export function SocialOverviewView({
     accountQueries,
     postQueries,
     mentionQueries,
-    projectEntries,
+    orgPostsQuery.data,
+    projectQueryEntries,
     brandProfile,
   ]);
 

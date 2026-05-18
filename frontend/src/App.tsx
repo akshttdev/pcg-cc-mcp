@@ -286,6 +286,11 @@ const TopsiActivityPage = lazy(() =>
     default: m.TopsiActivityPage,
   }))
 );
+const MyIntelSettings = lazy(() =>
+  import('@/pages/settings/MyIntelSettings').then((m) => ({
+    default: m.MyIntelSettings,
+  }))
+);
 const BrandIntakePage = lazy(() =>
   import('@/pages/brand-intake').then((m) => ({ default: m.BrandIntakePage }))
 );
@@ -614,6 +619,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <OrganizationProfilePage defaultTab="intelligence" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/organizations/:orgId/knowledge"
+            element={
+              <ProtectedRoute>
+                <OrganizationProfilePage defaultTab="knowledge" />
               </ProtectedRoute>
             }
           />
@@ -1134,6 +1147,7 @@ function App() {
               path="topsi-preferences"
               element={<TopsiUserSettingsPage />}
             />
+            <Route path="my-intel" element={<MyIntelSettings />} />
             <Route
               path="developer"
               element={

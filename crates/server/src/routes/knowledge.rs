@@ -1,10 +1,13 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Extension, Path, State},
     routing::{get, patch, post},
     Json, Router,
 };
-use db::models::project_knowledge_source::{
-    KnowledgeSourceType, ProjectKnowledgeCompleteness, ProjectKnowledgeSource,
+use db::models::{
+    project_knowledge_source::{
+        KnowledgeSourceType, ProjectKnowledgeCompleteness, ProjectKnowledgeSource,
+    },
+    user_knowledge_source::UserKnowledgeSource,
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -12,7 +15,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Grouped knowledge sources response
 #[derive(Debug, Serialize, TS)]
@@ -164,6 +167,71 @@ async fn set_source_visibility(
     Ok(Json(ApiResponse::success(())))
 }
 
+/// POST /api/knowledge/mine/:source_id/refresh
+async fn refresh_my_knowledge_source(
+    Path(source_id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+    Extension(access): Extension<AccessContext>,
+) -> Result<Json<ApiResponse<&'static str>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let user_id = Uuid::parse_str(&access.user_id)
+        .map_err(|_| ApiError::BadRequest("Invalid user ID".into()))?;
+
+    let found: Option<(Vec<u8>,)> =
+        sqlx::query_as("SELECT id FROM user_knowledge_sources WHERE id = ?1 AND user_id = ?2")
+            .bind(source_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(ApiError::Database)?;
+
+    if found.is_none() {
+        return Err(ApiError::NotFound("Knowledge source not found".into()));
+    }
+
+    sqlx::query(
+        "UPDATE user_knowledge_sources SET is_stale = 0, last_refreshed_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?1",
+    )
+    .bind(source_id)
+    .execute(pool)
+    .await
+    .map_err(ApiError::Database)?;
+
+    Ok(Json(ApiResponse::success("refreshed")))
+}
+
+/// GET /api/knowledge/mine — returns the logged-in user's personal knowledge sources
+async fn get_my_knowledge(
+    State(deployment): State<DeploymentImpl>,
+    Extension(access): Extension<AccessContext>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let user_id = Uuid::parse_str(&access.user_id)
+        .map_err(|_| ApiError::BadRequest("Invalid user ID".into()))?;
+
+    let sources = UserKnowledgeSource::find_by_user(pool, user_id)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    let by_type: std::collections::HashMap<String, Vec<&UserKnowledgeSource>> = {
+        let mut m: std::collections::HashMap<String, Vec<&UserKnowledgeSource>> =
+            std::collections::HashMap::new();
+        for s in &sources {
+            m.entry(s.source_type.clone()).or_default().push(s);
+        }
+        m
+    };
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "sources": sources,
+        "by_type": by_type,
+        "stats": {
+            "total": sources.len(),
+            "stale": sources.iter().filter(|s| s.is_stale).count(),
+        }
+    }))))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route(
@@ -181,5 +249,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/knowledge-sources/{source_id}/visibility",
             patch(set_source_visibility),
+        )
+        .route("/knowledge/mine", get(get_my_knowledge))
+        .route(
+            "/knowledge/mine/{source_id}/refresh",
+            post(refresh_my_knowledge_source),
         )
 }

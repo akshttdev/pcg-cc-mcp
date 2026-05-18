@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  BrainCircuit,
   Calendar,
   CalendarDays,
   CheckCircle2,
@@ -17,8 +18,10 @@ import {
   Youtube,
 } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
-import { PostDetailModal } from '@/components/social';
+import { MyIntelPanel } from '@/components/intel/MyIntelPanel';
+import { ConnectAccountButton, PostDetailModal } from '@/components/social';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -134,6 +137,7 @@ interface CalEvent {
   status: string;
   projectId?: string;
   platform?: string;
+  _isPersonal?: boolean;
 }
 
 // ── Status colours ────────────────────────────────────────────────────────────
@@ -181,6 +185,11 @@ export default function CalendarPage() {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const [calTab, setCalTab] = useState<'calendar' | 'intel'>(
+    searchParams.get('tab') === 'intel' ? 'intel' : 'calendar'
+  );
+
   const { data: projects = [] } = useProjectList();
   const projectIds = projects.map((p: { id: string }) => p.id);
 
@@ -219,6 +228,20 @@ export default function CalendarPage() {
     enabled: projectIds.length > 0,
   });
 
+  // ── Fetch personal social posts ─────────────────────────────────────────────
+  const { data: personalPostsRaw = [] } = useQuery({
+    queryKey: ['calendar-personal-posts'],
+    queryFn: () => socialApi.listPostsFiltered({ userId: 'me', limit: 200 }),
+    staleTime: 60_000,
+  });
+
+  // ── Fetch personal social accounts ──────────────────────────────────────────
+  const { data: personalAccounts = [] } = useQuery({
+    queryKey: ['calendar-personal-accounts'],
+    queryFn: () => socialApi.getPersonalAccounts(),
+    staleTime: 120_000,
+  });
+
   // ── Normalise to CalEvent ───────────────────────────────────────────────────
   const events = useMemo<CalEvent[]>(() => {
     const out: CalEvent[] = [];
@@ -238,40 +261,54 @@ export default function CalendarPage() {
           kind: 'task',
           status: (t.status as string) ?? 'todo',
           projectId: t.project_id as string | undefined,
+          _isPersonal: false,
         });
       }
+    }
+
+    function normalizePost(
+      p: Record<string, unknown>,
+      isPersonal: boolean
+    ): CalEvent | null {
+      const rawDate = (p.scheduled_for ?? p.published_at) as string | undefined;
+      if (!rawDate) return null;
+      let platform = 'globe';
+      try {
+        const arr = JSON.parse(p.platforms as string);
+        platform = (arr as string[])[0] ?? 'globe';
+      } catch {
+        platform = (p.platforms as string) ?? 'globe';
+      }
+      const rawId = p.id as string;
+      return {
+        id: `post-${rawId}`,
+        rawId,
+        title:
+          (p.caption as string | undefined)?.slice(0, 48) ||
+          `(${platform} post)`,
+        date: new Date(rawDate),
+        kind: 'post',
+        status: (p.status as string) ?? 'draft',
+        platform,
+        _isPersonal: isPersonal,
+      };
     }
 
     if (showPosts) {
       for (const p of postsRaw as unknown as Array<Record<string, unknown>>) {
-        const rawDate = (p.scheduled_for ?? p.published_at) as
-          | string
-          | undefined;
-        if (!rawDate) continue;
-        let platform = 'globe';
-        try {
-          const arr = JSON.parse(p.platforms as string);
-          platform = (arr as string[])[0] ?? 'globe';
-        } catch {
-          platform = (p.platforms as string) ?? 'globe';
-        }
-        const rawId = p.id as string;
-        out.push({
-          id: `post-${rawId}`,
-          rawId,
-          title:
-            (p.caption as string | undefined)?.slice(0, 48) ||
-            `(${platform} post)`,
-          date: new Date(rawDate),
-          kind: 'post',
-          status: (p.status as string) ?? 'draft',
-          platform,
-        });
+        const ev = normalizePost(p, false);
+        if (ev) out.push(ev);
+      }
+      for (const p of personalPostsRaw as unknown as Array<
+        Record<string, unknown>
+      >) {
+        const ev = normalizePost(p, true);
+        if (ev) out.push(ev);
       }
     }
 
     return out;
-  }, [tasksRaw, postsRaw, showTasks, showPosts]);
+  }, [tasksRaw, postsRaw, personalPostsRaw, showTasks, showPosts]);
 
   // ── Index by date ───────────────────────────────────────────────────────────
   const byDate = useMemo(() => {
@@ -362,7 +399,9 @@ export default function CalendarPage() {
     const colorCls =
       e.kind === 'task'
         ? (TASK_STATUS_COLORS[e.status] ?? TASK_STATUS_COLORS.todo)
-        : (POST_STATUS_COLORS[e.status] ?? POST_STATUS_COLORS.draft);
+        : e._isPersonal
+          ? 'bg-violet-500/15 text-violet-700 dark:text-violet-400 border-violet-300/50'
+          : (POST_STATUS_COLORS[e.status] ?? POST_STATUS_COLORS.draft);
 
     if (e.kind === 'post') {
       const Icon = PLATFORM_ICONS[e.platform ?? ''] ?? Globe;
@@ -1065,17 +1104,73 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Calendar body */}
-        <div className="flex flex-1 min-h-0">
-          <div className="flex-1 flex flex-col min-h-0">
-            {view === 'month' && <MonthGrid />}
-            {view === 'week' && <WeekGrid />}
-            {view === 'list' && <ListView />}
+        {/* Tab strip + personal social bar */}
+        <div className="px-4 pt-3 shrink-0">
+          <div className="flex gap-1 mb-3">
+            <Button
+              size="sm"
+              variant={calTab === 'calendar' ? 'default' : 'ghost'}
+              className="h-7 text-xs gap-1.5"
+              onClick={() => setCalTab('calendar')}
+            >
+              <Calendar className="h-3.5 w-3.5" /> Calendar
+            </Button>
+            <Button
+              size="sm"
+              variant={calTab === 'intel' ? 'default' : 'ghost'}
+              className="h-7 text-xs gap-1.5"
+              onClick={() => setCalTab('intel')}
+            >
+              <BrainCircuit className="h-3.5 w-3.5" /> My Intel
+            </Button>
           </div>
 
-          {/* Day detail panel */}
-          {selected && <DayDetail day={selected} />}
+          {calTab === 'calendar' && (
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-xs text-muted-foreground font-medium">
+                My Social:
+              </span>
+              {(
+                personalAccounts as Array<{
+                  id: string;
+                  platform: string;
+                  username?: string | null;
+                }>
+              ).map((acc) => (
+                <div
+                  key={acc.id}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-xs text-violet-600 dark:text-violet-400"
+                >
+                  <span className="capitalize">{acc.platform}</span>
+                  {acc.username && (
+                    <span className="text-muted-foreground">
+                      @{acc.username}
+                    </span>
+                  )}
+                </div>
+              ))}
+              <ConnectAccountButton className="h-6 text-xs" />
+            </div>
+          )}
         </div>
+
+        {/* Calendar body */}
+        {calTab === 'intel' ? (
+          <div className="flex-1 overflow-auto px-4 pb-4">
+            <MyIntelPanel />
+          </div>
+        ) : (
+          <div className="flex flex-1 min-h-0">
+            <div className="flex-1 flex flex-col min-h-0">
+              {view === 'month' && <MonthGrid />}
+              {view === 'week' && <WeekGrid />}
+              {view === 'list' && <ListView />}
+            </div>
+
+            {/* Day detail panel */}
+            {selected && <DayDetail day={selected} />}
+          </div>
+        )}
       </div>
     </div>
   );

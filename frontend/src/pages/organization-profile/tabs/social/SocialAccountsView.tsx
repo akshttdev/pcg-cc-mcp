@@ -4,12 +4,27 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { CheckCircle, ExternalLink, Globe, Share2, Trash2 } from 'lucide-react';
-import { useMemo } from 'react';
+import {
+  CheckCircle,
+  ExternalLink,
+  Globe,
+  Loader2,
+  Plus,
+  Share2,
+  Trash2,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CardGrid } from '@/components/ui/card-grid';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   organizationsApi,
   type SocialAccountRecord,
@@ -20,6 +35,126 @@ import { organizationKeys, socialKeys } from '@/lib/query-keys';
 
 import { PLATFORM_BG, PLATFORM_COLORS, PLATFORM_ICONS } from '../../constants';
 
+const PLATFORMS = [
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'twitter', label: 'X / Twitter' },
+  { key: 'tiktok', label: 'TikTok' },
+  { key: 'youtube', label: 'YouTube' },
+  { key: 'facebook', label: 'Facebook' },
+];
+
+function ConnectDialog({
+  open,
+  onClose,
+  orgId,
+  projectEntries,
+}: {
+  open: boolean;
+  onClose: () => void;
+  orgId?: string;
+  projectEntries: { id: string; name: string }[];
+}) {
+  const [scope, setScope] = useState<'org' | string>('org');
+
+  const { data: platformStatus = [] } = useQuery({
+    queryKey: ['social-platform-status'],
+    queryFn: () => socialApi.getPlatformStatus(),
+    staleTime: 300_000,
+    enabled: open,
+  });
+
+  const configuredSet = new Set(
+    platformStatus.filter((p) => p.configured).map((p) => p.platform)
+  );
+
+  const handleConnect = (platform: string) => {
+    if (scope === 'org') {
+      socialApi.connectAccount(platform, { orgId });
+    } else {
+      socialApi.connectAccount(platform, { projectId: scope });
+    }
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Connect Social Account</DialogTitle>
+        </DialogHeader>
+
+        {/* Scope selector */}
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground font-medium">
+            Connect to
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setScope('org')}
+              className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                scope === 'org'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border hover:bg-muted'
+              }`}
+            >
+              Organization
+            </button>
+            {projectEntries.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setScope(p.id)}
+                className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                  scope === p.id
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border hover:bg-muted'
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Platform grid */}
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          {PLATFORMS.map(({ key, label }) => {
+            const Icon = PLATFORM_ICONS[key] || Globe;
+            const configured =
+              configuredSet.size === 0 || configuredSet.has(key);
+            return (
+              <button
+                key={key}
+                disabled={!configured}
+                onClick={() => configured && handleConnect(key)}
+                className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
+                  configured
+                    ? 'border-border hover:bg-muted/60 cursor-pointer'
+                    : 'border-border/40 opacity-40 cursor-not-allowed'
+                }`}
+              >
+                <div
+                  className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${PLATFORM_BG[key] || 'bg-muted'}`}
+                >
+                  <Icon
+                    className={`h-4 w-4 ${PLATFORM_COLORS[key] || 'text-muted-foreground'}`}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {configured ? 'Click to connect' : 'Not configured'}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function SocialAccountsView({
   projectEntries,
   orgId,
@@ -27,6 +162,8 @@ export function SocialAccountsView({
   projectEntries: { id: string; name: string }[];
   orgId?: string;
 }) {
+  const [connectOpen, setConnectOpen] = useState(false);
+
   const { data: brandProfile } = useQuery({
     queryKey: organizationKeys.brandProfile(orgId ?? ''),
     queryFn: () => organizationsApi.getBrandProfile(orgId!),
@@ -42,11 +179,22 @@ export function SocialAccountsView({
     })),
   });
 
+  // Also fetch org-level accounts
+  const { data: orgAccounts = [] } = useQuery({
+    queryKey: socialKeys.accounts(orgId ?? ''),
+    queryFn: () => socialApi.listAccounts({ organizationId: orgId }),
+    staleTime: 60_000,
+    enabled: !!orgId,
+  });
+
   const allAccounts = useMemo(() => {
     const list: (SocialAccountRecord & {
       _project: string;
       _projectId: string;
     })[] = [];
+    orgAccounts.forEach((a) =>
+      list.push({ ...a, _project: 'Organization', _projectId: orgId ?? '' })
+    );
     accountQueries.forEach((q, i) => {
       q.data?.forEach((a) =>
         list.push({
@@ -57,12 +205,15 @@ export function SocialAccountsView({
       );
     });
     return list.sort((a, b) => a.platform.localeCompare(b.platform));
-  }, [accountQueries, projectEntries]);
+  }, [accountQueries, projectEntries, orgAccounts, orgId]);
 
   const queryClient = useQueryClient();
   const deleteMut = useMutation({
     mutationFn: (id: string) => socialApi.deleteAccount(id),
     onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: socialKeys.accounts(orgId ?? ''),
+      });
       accountQueries.forEach((_, i) => {
         queryClient.invalidateQueries({
           queryKey: socialKeys.accounts(projectEntries[i].id),
@@ -107,6 +258,13 @@ export function SocialAccountsView({
 
   return (
     <div className="space-y-6">
+      <ConnectDialog
+        open={connectOpen}
+        onClose={() => setConnectOpen(false)}
+        orgId={orgId}
+        projectEntries={projectEntries}
+      />
+
       {/* Brand profile handles */}
       {brandHandles.length > 0 && (
         <Card className="bg-card/80 backdrop-blur-sm border-border/50">
@@ -152,9 +310,12 @@ export function SocialAccountsView({
                         connected
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-[9px]">
-                        not connected
-                      </Badge>
+                      <button
+                        onClick={() => setConnectOpen(true)}
+                        className="text-[9px] text-primary hover:underline"
+                      >
+                        connect →
+                      </button>
                     )}
                   </div>
                 );
@@ -175,6 +336,15 @@ export function SocialAccountsView({
                 {allAccounts.length}
               </Badge>
             </CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => setConnectOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Connect Account
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -184,10 +354,18 @@ export function SocialAccountsView({
               <p className="text-sm font-medium mb-1">
                 No accounts connected yet
               </p>
-              <p className="text-xs">
-                Connect social accounts to your projects to start tracking and
-                publishing
+              <p className="text-xs mb-4">
+                Connect social accounts to track performance and publish content
               </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setConnectOpen(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Connect Account
+              </Button>
             </div>
           ) : (
             <div className="space-y-3">
@@ -270,7 +448,11 @@ export function SocialAccountsView({
                         className="p-1.5 rounded hover:bg-destructive/10 transition-colors"
                         title="Disconnect"
                       >
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                        {deleteMut.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                        )}
                       </button>
                     </div>
                   </div>
