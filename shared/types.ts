@@ -364,6 +364,14 @@ export type DiffChangeKind = "added" | "deleted" | "modified" | "renamed" | "cop
 
 export type RepositoryInfo = { id: bigint, name: string, full_name: string, owner: string, description: string | null, clone_url: string, ssh_url: string, default_branch: string, private: boolean, };
 
+export type AuthenticatedUser = { id: bigint, login: string, name: string | null, avatar_url: string | null, email: string | null, };
+
+export type CommitSummary = { sha: string, html_url: string, message: string, author_name: string | null, author_email: string | null, author_date?: Date | null, committer_login: string | null, };
+
+export type GitHubRepoLink = { id: string, organization_id: string, project_id: string, integration_connection_id?: string, github_repo_id: bigint, owner: string, repo_name: string, full_name: string, default_branch: string, clone_url?: string, ssh_url?: string, private: boolean, last_sync_at?: Date | null, last_synced_commit_sha?: string, last_error?: string, metadata: string, created_at: Date, updated_at: Date, };
+
+export type CreateGitHubRepoLink = { organization_id: string, project_id: string, integration_connection_id: string | null, github_repo_id: bigint, owner: string, repo_name: string, full_name: string, default_branch: string | null, clone_url: string | null, ssh_url: string | null, private: boolean | null, metadata: string | null, };
+
 export type CommandBuilder = { 
 /**
  * Base executable command (e.g., "npx -y @anthropic-ai/claude-code@latest")
@@ -914,7 +922,7 @@ export type ConversationSummary = { id: string, title: string | null, status: st
 
 export type KnowledgeSourceType = "conversation" | "artifact" | "pulse_content" | "context_injection" | "entity" | "topology_snapshot";
 
-export type ProjectKnowledgeSource = { id: string, project_id: string, source_type: string, source_id: string, source_title: string, source_summary: string | null, coverage_score: number, is_active: boolean, is_stale: boolean, auto_registered: boolean, last_refreshed_at: string, created_at: string, updated_at: string, };
+export type ProjectKnowledgeSource = { id: string, project_id: string, source_type: string, source_id: string, source_title: string, source_summary: string | null, coverage_score: number, is_active: boolean, is_stale: boolean, auto_registered: boolean, client_visible: boolean, last_refreshed_at: string, created_at: string, updated_at: string, };
 
 export type ProjectKnowledgeCompleteness = { project_id: string, total_sources: bigint, fresh_sources: bigint, avg_coverage: number, type_count: bigint, knowledge_completeness: number, };
 
@@ -1132,6 +1140,7 @@ export type CreateDeckSlide = { deck_id: string, slide_index: bigint, name?: str
 export type UpdateDeckSlide = { name?: string, layout_hint?: string, background?: Fill, elements?: Array<SlideElement>, notes?: string, locked?: boolean, };
 
 export type CreateDeckSuggestion = { deck_id: string, target_slide_id?: string, target_element_id?: string, op: string, payload: JsonValue, rationale?: string, run_id?: string, };
+
 export type AvatarProfile = { id: string, organization_id: string | null, created_by: string | null, name: string, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string, elevenlabs_voice_id: string, voice_sample_url: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, status: string, error_message: string | null, created_at: string, updated_at: string, 
 /**
  * JSON array of `{ slot, url, prompt, locked, generated_at }` entries — one per generated shot.

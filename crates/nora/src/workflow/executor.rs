@@ -191,6 +191,29 @@ impl AgentWorkflowExecutor {
             return self.execute_cinematics_prep_for_editron(context).await;
         }
 
+        // Herald (content distribution) stages — wired to the real Publisher service.
+        // Matched on phrases that only appear in Herald's profile to avoid false hits
+        // on Cinematographer's "publish LUT suggestions" prep stage.
+        if stage_lower.contains("pre-flight")
+            || desc_lower.contains("verify content approval")
+            || desc_lower.contains("media availability")
+        {
+            return self.execute_publishing_preflight(context).await;
+        }
+
+        if stage_lower == "platform publish"
+            || desc_lower.contains("execute publish")
+            || desc_lower.contains("platform apis")
+        {
+            return self.execute_platform_publish(context).await;
+        }
+
+        if stage_lower == "verification"
+            && (desc_lower.contains("post is live") || desc_lower.contains("platform post id"))
+        {
+            return self.execute_publish_verification(context).await;
+        }
+
         // Editron-specific stage mappings (separate from Master Cinematographer)
         if desc_lower.contains("ingest")
             || desc_lower.contains("download")
@@ -472,6 +495,165 @@ impl AgentWorkflowExecutor {
         {
             tracing::warn!("[WORKFLOW] Failed to complete task {}: {}", task_id, e);
         }
+    }
+
+    // ============================================================================
+    // Herald (content distribution) Stage Handlers
+    // ============================================================================
+
+    /// Resolve `post_id` for a Herald stage. Looks in this priority order:
+    /// 1. Output of a prior Herald stage (Pre-flight passes it forward).
+    /// 2. `context.inputs["post_id"]` or `["social_post_id"]`.
+    fn resolve_post_id(context: &WorkflowContext) -> Result<uuid::Uuid> {
+        let from_stage = context
+            .get_stage_output("Pre-flight Check")
+            .or_else(|| context.get_stage_output("Platform Publish"))
+            .and_then(|v| v.get("post_id"))
+            .and_then(|v| v.as_str());
+
+        let from_inputs = context
+            .inputs
+            .get("post_id")
+            .or_else(|| context.inputs.get("social_post_id"))
+            .and_then(|v| v.as_str());
+
+        let raw = from_stage.or(from_inputs).ok_or_else(|| {
+            NoraError::ToolExecutionError(
+                "Herald requires a `post_id` (or `social_post_id`) in workflow inputs".to_string(),
+            )
+        })?;
+
+        uuid::Uuid::parse_str(raw).map_err(|_| {
+            NoraError::ToolExecutionError(format!("Invalid post_id in Herald context: {raw}"))
+        })
+    }
+
+    fn require_db(&self) -> Result<&sqlx::SqlitePool> {
+        self.db.as_ref().ok_or_else(|| {
+            NoraError::ConfigError(
+                "Workflow executor has no database — Herald cannot publish".to_string(),
+            )
+        })
+    }
+
+    /// Pre-flight Check: confirm the post exists, has a caption (or media), and
+    /// has target accounts. Returns the resolved `post_id` so downstream stages
+    /// can pick it up.
+    async fn execute_publishing_preflight(
+        &self,
+        context: &WorkflowContext,
+    ) -> Result<serde_json::Value> {
+        use db::models::social_post::SocialPost;
+
+        let post_id = Self::resolve_post_id(context)?;
+        let pool = self.require_db()?;
+
+        let post = SocialPost::find_by_id(pool, post_id).await.map_err(|e| {
+            NoraError::ToolExecutionError(format!("Herald pre-flight: post not found ({e})"))
+        })?;
+
+        let platforms: Vec<String> = serde_json::from_str(&post.platforms).unwrap_or_default();
+        if platforms.is_empty() {
+            return Err(NoraError::ToolExecutionError(
+                "Herald pre-flight: post has no target accounts in `platforms`".to_string(),
+            ));
+        }
+        let has_body = post
+            .caption
+            .as_deref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+            || post.media_urls.is_some();
+        if !has_body {
+            return Err(NoraError::ToolExecutionError(
+                "Herald pre-flight: post has neither caption nor media".to_string(),
+            ));
+        }
+
+        tracing::info!(
+            "[WORKFLOW] Herald pre-flight passed for post {} ({} target account(s))",
+            post.id,
+            platforms.len()
+        );
+
+        Ok(serde_json::json!({
+            "post_id": post.id.to_string(),
+            "status": post.status,
+            "target_count": platforms.len(),
+        }))
+    }
+
+    /// Platform Publish: route the post through `services::social::Publisher`,
+    /// which dispatches to per-platform connectors (LinkedIn, YouTube, etc.)
+    /// using stored OAuth tokens.
+    async fn execute_platform_publish(
+        &self,
+        context: &WorkflowContext,
+    ) -> Result<serde_json::Value> {
+        use services::services::social::Publisher;
+
+        let post_id = Self::resolve_post_id(context)?;
+        let pool = self.require_db()?;
+
+        tracing::info!("[WORKFLOW] Herald publishing post {}", post_id);
+
+        let publisher = Publisher::new(pool.clone());
+        let results = publisher
+            .publish_post(post_id)
+            .await
+            .map_err(|e| NoraError::ToolExecutionError(format!("Herald publish failed: {e}")))?;
+
+        let entries: Vec<serde_json::Value> = results
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "platform": r.platform.to_string(),
+                    "platform_post_id": r.platform_post_id,
+                    "platform_url": r.platform_url,
+                    "published_at": r.published_at.to_rfc3339(),
+                })
+            })
+            .collect();
+
+        if entries.is_empty() {
+            return Err(NoraError::ToolExecutionError(
+                "Herald publish: every target account failed (see Publisher logs)".to_string(),
+            ));
+        }
+
+        Ok(serde_json::json!({
+            "post_id": post_id.to_string(),
+            "results": entries,
+            "success_count": entries.len(),
+        }))
+    }
+
+    /// Verification: refetch the post and confirm it's marked as published.
+    /// Captures the canonical `platform_url` / `platform_post_id` that the
+    /// Publisher wrote during `mark_published`.
+    async fn execute_publish_verification(
+        &self,
+        context: &WorkflowContext,
+    ) -> Result<serde_json::Value> {
+        use db::models::social_post::SocialPost;
+
+        let post_id = Self::resolve_post_id(context)?;
+        let pool = self.require_db()?;
+
+        let post = SocialPost::find_by_id(pool, post_id).await.map_err(|e| {
+            NoraError::ToolExecutionError(format!("Herald verification: post not found ({e})"))
+        })?;
+
+        let live = post.status.eq_ignore_ascii_case("published");
+        Ok(serde_json::json!({
+            "post_id": post.id.to_string(),
+            "live": live,
+            "status": post.status,
+            "platform_post_id": post.platform_post_id,
+            "platform_url": post.platform_url,
+            "published_at": post.published_at.map(|d| d.to_rfc3339()),
+            "publish_error": post.publish_error,
+        }))
     }
 
     // ============================================================================

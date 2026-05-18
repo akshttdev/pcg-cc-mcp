@@ -12,11 +12,17 @@ import {
   Users,
   Youtube,
 } from 'lucide-react';
-import { useCallback,useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription,CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { CardGrid } from '@/components/ui/card-grid';
 import { IconButton } from '@/components/ui/icon-button';
 import { formatDate } from '@/lib/formatters';
@@ -32,13 +38,16 @@ interface SocialAccountConnectProps {
   className?: string;
 }
 
-const platformConfig: Record<SocialPlatform, {
-  name: string;
-  icon: React.ReactNode;
-  color: string;
-  bgColor: string;
-  description: string;
-}> = {
+const platformConfig: Record<
+  SocialPlatform,
+  {
+    name: string;
+    icon: React.ReactNode;
+    color: string;
+    bgColor: string;
+    description: string;
+  }
+> = {
   linkedin: {
     name: 'LinkedIn',
     icon: <Linkedin className="h-5 w-5" />,
@@ -104,11 +113,14 @@ const platformConfig: Record<SocialPlatform, {
   },
 };
 
-const statusConfig: Record<SocialAccount['status'], {
-  label: string;
-  icon: React.ReactNode;
-  color: string;
-}> = {
+const statusConfig: Record<
+  SocialAccount['status'],
+  {
+    label: string;
+    icon: React.ReactNode;
+    color: string;
+  }
+> = {
   active: {
     label: 'Connected',
     icon: <CheckCircle2 className="h-3 w-3" />,
@@ -216,7 +228,8 @@ function ConnectedAccountCard({
           <div className="flex items-center gap-1">
             {onRefresh && (
               <IconButton
-                variant="ghost" onClick={handleRefresh}
+                variant="ghost"
+                onClick={handleRefresh}
                 disabled={isRefreshing}
                 icon={RefreshCw}
                 label="Refresh"
@@ -225,7 +238,8 @@ function ConnectedAccountCard({
             )}
             {onDisconnect && (
               <IconButton
-                variant="ghost" className="text-destructive hover:text-destructive"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
                 onClick={onDisconnect}
                 icon={Unlink}
                 label="Disconnect"
@@ -286,13 +300,18 @@ export function SocialAccountConnect({
   isConnecting,
   className,
 }: SocialAccountConnectProps) {
-  const connectedPlatforms = new Set(accounts.map(a => a.platform));
+  const connectedPlatforms = new Set(accounts.map((a) => a.platform));
 
   const priorityPlatforms: SocialPlatform[] = [
-    'linkedin', 'instagram', 'twitter', 'facebook', 'tiktok', 'youtube'
+    'linkedin',
+    'instagram',
+    'twitter',
+    'facebook',
+    'tiktok',
+    'youtube',
   ];
 
-  const otherPlatforms: SocialPlatform[] = ['bluesky', 'pinterest', 'threads'];
+  const otherPlatforms: SocialPlatform[] = ['threads'];
 
   return (
     <div className={cn('space-y-6', className)}>
@@ -310,7 +329,9 @@ export function SocialAccountConnect({
               <ConnectedAccountCard
                 key={account.id}
                 account={account}
-                onDisconnect={onDisconnect ? () => onDisconnect(account.id) : undefined}
+                onDisconnect={
+                  onDisconnect ? () => onDisconnect(account.id) : undefined
+                }
                 onRefresh={onRefresh ? () => onRefresh(account.id) : undefined}
               />
             ))}
@@ -343,7 +364,9 @@ export function SocialAccountConnect({
 
             {/* Other platforms */}
             <div className="pt-2 border-t">
-              <p className="text-xs text-muted-foreground mb-2">More platforms</p>
+              <p className="text-xs text-muted-foreground mb-2">
+                More platforms
+              </p>
               <CardGrid columns={{ sm: 3 }} gap={2}>
                 {otherPlatforms.map((platform) => (
                   <PlatformConnectButton

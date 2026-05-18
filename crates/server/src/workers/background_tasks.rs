@@ -263,7 +263,7 @@ impl BackgroundWorker for MeetingSessionCleanup {
                 _ = interval.tick() => {
                     let stale = match db::models::meeting_session::MeetingSession::find_stale_active(
                         &self.pool,
-                        300, // 5 minutes
+                        1800, // 30 minutes
                     )
                     .await
                     {

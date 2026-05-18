@@ -91,6 +91,7 @@ pub mod social_account;
 pub mod social_approval_event;
 pub mod social_media_asset;
 pub mod social_mention;
+pub mod social_performance_benchmark;
 pub mod social_post;
 pub mod task;
 pub mod task_artifact;

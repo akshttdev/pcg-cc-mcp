@@ -6,11 +6,11 @@ export type SubmitFeedbackRequest = {
  */
 feedback_type: string, 
 /**
- * Brief title/summary
+ * Brief title/summary (max 200 chars)
  */
 title: string, 
 /**
- * Detailed description
+ * Detailed description (max 5000 chars)
  */
 description: string, 
 /**
@@ -30,15 +30,15 @@ screenshot: string | null,
  */
 page_url?: string, 
 /**
- * What the user was trying to do
+ * What the user was trying to do (max 1000 chars)
  */
 user_intent?: string, 
 /**
- * What went wrong or felt slow/confusing
+ * What went wrong or felt slow/confusing (max 1000 chars)
  */
 friction_point?: string, 
 /**
- * Expected behavior vs actual
+ * Expected behavior vs actual (max 1000 chars)
  */
 expected_behavior?: string, 
 /**

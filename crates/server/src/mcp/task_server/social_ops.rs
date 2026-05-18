@@ -175,7 +175,9 @@ fn build_create_post(
     let scheduled_for = scheduled_for.and_then(parse_iso_datetime);
 
     Ok(CreateSocialPost {
-        project_id: project_uuid,
+        project_id: Some(project_uuid),
+        organization_id: None,
+        user_id: None,
         social_account_id: None,
         task_id: task_uuid,
         content_type,
@@ -184,21 +186,25 @@ fn build_create_post(
         media_urls,
         hashtags,
         mentions,
-        platforms: account_uuids,
+        platforms: account_uuids.into_iter().map(|u| u.to_string()).collect(),
         platform_specific,
+        status: None,
         scheduled_for,
         category,
         is_evergreen: None,
         recycle_after_days: None,
         created_by_agent_id: None,
         deliverable_id: None,
+        assignee_id: None,
+        crm_deal_id: None,
+        crm_contact_id: None,
     })
 }
 
 fn social_post_to_json(post: &SocialPost) -> serde_json::Value {
     serde_json::json!({
         "id": post.id.to_string(),
-        "project_id": post.project_id.to_string(),
+        "project_id": post.project_id.as_ref().map(|p| p.to_string()),
         "status": post.status,
         "content_type": post.content_type,
         "caption": post.caption,

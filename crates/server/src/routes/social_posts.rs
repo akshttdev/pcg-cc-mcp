@@ -14,7 +14,7 @@ use db::models::{
     social_post::{CreateSocialPost, SocialPost, UpdateSocialPost},
 };
 use deployment::Deployment;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use services::services::social::{PublishResult, Publisher};
 use utils::response::ApiResponse;
 use uuid::Uuid;
@@ -24,6 +24,7 @@ use crate::{error::ApiError, DeploymentImpl};
 #[derive(Debug, Deserialize)]
 pub struct ListPostsQuery {
     pub project_id: Option<Uuid>,
+    pub organization_id: Option<String>,
     pub status: Option<String>,
     pub category: Option<String>,
     pub limit: Option<i64>,
@@ -37,7 +38,9 @@ async fn list_posts(
     let pool = &deployment.db().pool;
 
     // Fetch all posts for the project (or all projects), then filter in-process
-    let all_posts = if let Some(pid) = query.project_id {
+    let all_posts = if let Some(org_id) = query.organization_id.as_deref() {
+        SocialPost::find_by_organization(pool, org_id, query.limit).await?
+    } else if let Some(pid) = query.project_id {
         SocialPost::find_all_for_project(pool, pid).await?
     } else {
         SocialPost::find_all(pool).await?
@@ -407,6 +410,148 @@ pub struct ReviewSubmitForm {
     pub reviewer: Option<String>,
 }
 
+// ── Caption generation ────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct GenerateCaptionRequest {
+    pub platform: String,
+    pub topic: String,
+    pub tone: Option<String>,
+    pub context: Option<String>,
+    pub hashtags_count: Option<u8>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GenerateCaptionResponse {
+    pub captions: Vec<String>,
+}
+
+async fn generate_caption(
+    Json(body): Json<GenerateCaptionRequest>,
+) -> Result<Json<ApiResponse<GenerateCaptionResponse>>, ApiError> {
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
+        .map_err(|_| ApiError::InternalError("ANTHROPIC_API_KEY not set".into()))?;
+
+    let tone = body.tone.as_deref().unwrap_or("professional and engaging");
+    let hashtags = body.hashtags_count.unwrap_or(3);
+    let context = body.context.as_deref().unwrap_or("");
+    let platform_notes = match body.platform.as_str() {
+        "linkedin" => {
+            "Write in a professional B2B tone. Can be up to 3000 chars. Include insights."
+        }
+        "instagram" => "Punchy opener. Visual-first. Up to 2200 chars. Heavy emoji use OK.",
+        "twitter" => "Under 280 chars. Sharp, witty, no fluff.",
+        "tiktok" => "Casual, energetic, hook in the first line. Short.",
+        "facebook" => "Conversational, community-oriented, 1-3 paragraphs.",
+        "youtube" => "Write a video description. Include timestamps placeholder if long.",
+        _ => "Write a concise, engaging social media caption.",
+    };
+
+    let prompt = format!(
+        "Generate 3 distinct social media caption variations for {platform} about: \"{topic}\".\n\
+        Tone: {tone}.\n\
+        Platform guidance: {platform_notes}\n\
+        {context_section}\
+        End each caption with {hashtags} relevant hashtags.\n\n\
+        Return ONLY the 3 captions as a JSON array of strings, no explanation. Example:\n\
+        [\"Caption 1...\", \"Caption 2...\", \"Caption 3...\"]",
+        platform = body.platform,
+        topic = body.topic,
+        tone = tone,
+        platform_notes = platform_notes,
+        context_section = if context.is_empty() {
+            String::new()
+        } else {
+            format!("Additional context: {context}\n")
+        },
+        hashtags = hashtags,
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 1024,
+            "messages": [{ "role": "user", "content": prompt }]
+        }))
+        .send()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Claude request failed: {e}")))?;
+
+    let body_json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Claude response parse error: {e}")))?;
+
+    let text = body_json["content"][0]["text"].as_str().unwrap_or("[]");
+
+    let captions: Vec<String> =
+        serde_json::from_str(text).unwrap_or_else(|_| vec![text.to_string()]);
+
+    Ok(Json(ApiResponse::success(GenerateCaptionResponse {
+        captions,
+    })))
+}
+
+// ── Evergreen queue ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct QueueQuery {
+    pub project_id: Uuid,
+    pub category: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReorderRequest {
+    pub ordered_ids: Vec<String>,
+}
+
+async fn list_queue(
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<QueueQuery>,
+) -> Result<Json<ApiResponse<Vec<SocialPost>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let posts: Vec<SocialPost> = if let Some(cat) = &query.category {
+        sqlx::query_as(
+            "SELECT * FROM social_posts WHERE project_id = ?1 AND is_evergreen = 1 AND category = ?2 ORDER BY COALESCE(queue_position, 9999), created_at ASC",
+        )
+        .bind(query.project_id.to_string())
+        .bind(cat)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT * FROM social_posts WHERE project_id = ?1 AND is_evergreen = 1 ORDER BY category, COALESCE(queue_position, 9999), created_at ASC",
+        )
+        .bind(query.project_id.to_string())
+        .fetch_all(pool)
+        .await?
+    };
+    Ok(Json(ApiResponse::success(posts)))
+}
+
+async fn reorder_queue(
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<ReorderRequest>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    for (pos, id) in body.ordered_ids.iter().enumerate() {
+        sqlx::query(
+            "UPDATE social_posts SET queue_position = ?1, updated_at = datetime('now','subsec') WHERE id = ?2",
+        )
+        .bind(pos as i64)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    }
+    Ok(Json(ApiResponse::success(())))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/social/posts", get(list_posts))
@@ -417,6 +562,9 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/social/posts/{id}", delete(delete_post))
         .route("/social/posts/{id}/publish", post(publish_post_now))
         .route("/social/posts/{id}/status", patch(transition_post_status))
+        .route("/social/captions/generate", post(generate_caption))
+        .route("/social/queue", get(list_queue))
+        .route("/social/queue/reorder", post(reorder_queue))
 }
 
 pub fn public_router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {

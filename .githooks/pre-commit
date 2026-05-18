@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pre-commit hook: fmt staged Rust files + lint-staged on frontend
+# Pre-commit hook: Rust fmt + TS generation reminder + lint-staged + migration collision detection
 # Install: git config core.hooksPath .githooks
 
 set -e
@@ -33,4 +33,55 @@ STAGED_FE=$(git diff --cached --name-only --diff-filter=ACM -- 'frontend/*.ts' '
 if [ -n "$STAGED_FE" ]; then
   echo "[pre-commit] Running lint-staged on frontend files"
   cd frontend && npx lint-staged
+fi
+
+# ── Migrations: timestamp collision detection ──
+MIGRATIONS=$(git diff --cached --name-only | grep 'crates/db/migrations/.*\.sql$' || true)
+
+if [ -n "$MIGRATIONS" ]; then
+  echo "[pre-commit] Checking migrations for timestamp collisions..."
+
+  # Extract timestamps from staged migration files
+  NEW_TIMESTAMPS=$(echo "$MIGRATIONS" | sed 's/.*\/\([0-9]*\)_.*/\1/' | sort)
+
+  # Check for duplicate timestamps in staged files
+  DUPLICATES=$(echo "$NEW_TIMESTAMPS" | uniq -d)
+  if [ -n "$DUPLICATES" ]; then
+    echo ""
+    echo "ERROR: Duplicate migration timestamps detected in staged files:"
+    echo ""
+    for TS in $DUPLICATES; do
+      echo "  Timestamp: $TS"
+      echo "$MIGRATIONS" | grep "$TS" | sed 's/^/    /'
+    done
+    echo ""
+    echo "Fix: Rename one migration to use a different timestamp."
+    echo "     Use ./scripts/new-migration.sh to generate unique timestamps."
+    exit 1
+  fi
+
+  # Check for same-day collisions with existing migrations (warning only)
+  HAS_WARNING=0
+  for TS in $NEW_TIMESTAMPS; do
+    DAY=$(echo "$TS" | cut -c1-8)
+    EXISTING=$(ls crates/db/migrations/${DAY}*.sql 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$EXISTING" -gt 1 ]; then
+      if [ "$HAS_WARNING" -eq 0 ]; then
+        echo ""
+        echo "WARNING: Multiple migrations detected for the same day:"
+        HAS_WARNING=1
+      fi
+      echo "  Date: $(echo $DAY | cut -c1-4)-$(echo $DAY | cut -c5-6)-$(echo $DAY | cut -c7-8) ($EXISTING migrations)"
+      ls crates/db/migrations/${DAY}*.sql 2>/dev/null | sed 's/.*\//    /'
+    fi
+  done
+
+  if [ "$HAS_WARNING" -eq 1 ]; then
+    echo ""
+    echo "This is OK if timestamps differ (YYYYMMDDHHMMSS), but verify no conflicts."
+    echo ""
+  fi
+
+  echo "[pre-commit] Migration timestamps OK"
 fi

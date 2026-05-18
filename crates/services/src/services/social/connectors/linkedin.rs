@@ -503,12 +503,86 @@ impl PlatformConnector for LinkedInConnector {
 
     async fn get_metrics(
         &self,
-        _access_token: &str,
-        _platform_post_id: &str,
+        access_token: &str,
+        platform_post_id: &str,
     ) -> Result<EngagementMetrics, SocialError> {
-        // LinkedIn analytics API requires additional permissions
-        // Return empty metrics for now
-        Ok(EngagementMetrics::default())
+        // LinkedIn Share Statistics — works for both UGC posts and shares.
+        // Endpoint: GET /v2/socialActions/{ugcPostUrn}
+        // Returns likesSummary.totalLikes, commentsSummary.totalFirstLevelComments, etc.
+        let encoded_urn = urlencoding::encode(platform_post_id);
+        let url = format!("{LINKEDIN_API_BASE}/socialActions/{encoded_urn}");
+
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(access_token)
+            .header("X-Restli-Protocol-Version", "2.0.0")
+            .send()
+            .await
+            .map_err(|e| SocialError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            // Don't fail hard on metrics — just return defaults
+            return Ok(EngagementMetrics::default());
+        }
+
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| SocialError::PlatformError(e.to_string()))?;
+
+        let likes = body["likesSummary"]["totalLikes"].as_i64().unwrap_or(0);
+        let comments = body["commentsSummary"]["totalFirstLevelComments"]
+            .as_i64()
+            .unwrap_or(0);
+
+        // LinkedIn share statistics (impressions, clicks) require a separate call
+        // to /v2/organizationalEntityShareStatistics if using a company page.
+        // For personal posts, only socialActions are accessible. Try share stats.
+        let share_url =
+            format!("{LINKEDIN_API_BASE}/shareStatistics?q=activity&activity={encoded_urn}");
+        let share_resp = self
+            .client
+            .get(&share_url)
+            .bearer_auth(access_token)
+            .header("X-Restli-Protocol-Version", "2.0.0")
+            .send()
+            .await;
+
+        let (impressions, clicks, shares) = if let Ok(r) = share_resp {
+            if r.status().is_success() {
+                if let Ok(s) = r.json::<serde_json::Value>().await {
+                    let stats = &s["elements"][0]["totalShareStatistics"];
+                    (
+                        stats["impressionCount"].as_i64().unwrap_or(0),
+                        stats["clickCount"].as_i64().unwrap_or(0),
+                        stats["shareCount"].as_i64().unwrap_or(0),
+                    )
+                } else {
+                    (0, 0, 0)
+                }
+            } else {
+                (0, 0, 0)
+            }
+        } else {
+            (0, 0, 0)
+        };
+
+        let engagement_rate = if impressions > 0 {
+            (likes + comments + shares) as f64 / impressions as f64
+        } else {
+            0.0
+        };
+
+        Ok(EngagementMetrics {
+            impressions,
+            reach: impressions, // LinkedIn doesn't expose reach separately for personal posts
+            likes,
+            comments,
+            shares,
+            saves: 0,
+            clicks,
+        })
     }
 
     async fn fetch_mentions(

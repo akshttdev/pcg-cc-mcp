@@ -1,6 +1,11 @@
+use std::path::PathBuf;
+
 use axum::{
-    extract::{DefaultBodyLimit, Multipart, Query, State},
-    routing::post,
+    body::Body,
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
+    http::{HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+    routing::{get, post},
     Json, Router,
 };
 use db::models::social_media_asset::{CreateSocialMediaAsset, SocialMediaAsset};
@@ -12,6 +17,17 @@ use uuid::Uuid;
 use crate::{error::ApiError, DeploymentImpl};
 
 const MAX_UPLOAD_BYTES: usize = 50 * 1024 * 1024; // 50 MB
+
+fn media_upload_dir() -> PathBuf {
+    std::env::var("MEDIA_UPLOAD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            // In Docker: /app/dev_assets/social_media; locally: ./dev_assets/social_media
+            let base =
+                std::env::var("DEV_ASSETS_DIR").unwrap_or_else(|_| "./dev_assets".to_string());
+            PathBuf::from(base).join("social_media")
+        })
+}
 
 #[derive(Debug, Deserialize)]
 pub struct UploadQuery {
@@ -30,7 +46,7 @@ async fn upload_social_media(
 ) -> Result<Json<ApiResponse<SocialMediaAsset>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let mut file_data: Option<(String, Vec<u8>, String)> = None; // (filename, bytes, mime)
+    let mut file_data: Option<(String, Vec<u8>, String)> = None;
 
     while let Some(field) = multipart
         .next_field()
@@ -58,10 +74,7 @@ async fn upload_social_media(
     let (original_filename, bytes, mime_type) =
         file_data.ok_or_else(|| ApiError::BadRequest("No file provided".into()))?;
 
-    // Store under sovereign org Social Uploads dir
-    let upload_dir = utils::volume::resolve_volume_path("sovereign_org", "Social Uploads")
-        .map_err(|e| ApiError::InternalError(format!("Storage error: {}", e)))?;
-
+    let upload_dir = media_upload_dir();
     tokio::fs::create_dir_all(&upload_dir)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create upload dir: {}", e)))?;
@@ -83,7 +96,6 @@ async fn upload_social_media(
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to write file: {}", e)))?;
 
-    // Detect image dimensions if it's an image
     let (width_px, height_px) = detect_image_dimensions(&bytes, &mime_type);
 
     let app_base = std::env::var("APP_BASE_URL").unwrap_or_else(|_| "http://localhost:3001".into());
@@ -113,17 +125,51 @@ async fn upload_social_media(
     Ok(Json(ApiResponse::success(asset)))
 }
 
+/// GET /uploads/social/:filename — serve uploaded media files
+async fn serve_social_media(Path(filename): Path<String>) -> impl IntoResponse {
+    // Reject any path traversal attempts
+    if filename.contains('/') || filename.contains("..") {
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::from("Invalid filename"))
+            .unwrap();
+    }
+
+    let upload_dir = media_upload_dir();
+    let file_path = upload_dir.join(&filename);
+
+    match tokio::fs::read(&file_path).await {
+        Ok(bytes) => {
+            let mime = mime_guess::from_path(&filename)
+                .first_or_octet_stream()
+                .to_string();
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(
+                    "Content-Type",
+                    HeaderValue::from_str(&mime)
+                        .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+                )
+                .header("Cache-Control", "public, max-age=31536000, immutable")
+                .body(Body::from(bytes))
+                .unwrap()
+        }
+        Err(_) => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Not found"))
+            .unwrap(),
+    }
+}
+
 fn detect_image_dimensions(bytes: &[u8], mime_type: &str) -> (Option<i64>, Option<i64>) {
     if !mime_type.starts_with("image/") {
         return (None, None);
     }
-    // Read PNG dimensions from header (bytes 16-24) — zero-dep approach
     if mime_type == "image/png" && bytes.len() >= 24 {
         let w = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
         let h = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
         return (Some(w as i64), Some(h as i64));
     }
-    // Read JPEG dimensions from SOF marker — skip for MVP
     (None, None)
 }
 
@@ -131,4 +177,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/media/social-upload", post(upload_social_media))
         .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
+}
+
+pub fn public_router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+    Router::new().route("/uploads/social/{filename}", get(serve_social_media))
 }

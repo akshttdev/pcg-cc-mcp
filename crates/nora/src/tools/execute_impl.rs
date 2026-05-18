@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 const NORA_TOPOS_PROJECT_ID: &str = "88f72301-2e19-470a-b855-afcd2eb7c49c";
 
 use db::models::{
+    integration_connection::IntegrationConnection,
     project_board::ProjectBoardType,
     task::{Priority, TaskStatus},
 };
@@ -28,6 +29,10 @@ impl ExecutiveTools {
         &self,
         tool: NoraExecutiveTool,
     ) -> crate::Result<serde_json::Value> {
+        // Route GitHub / Auri tools before the main match
+        if let Some(fut) = self.dispatch_github_auri(tool.clone()) {
+            return fut.await;
+        }
         match tool {
             // Project Management
             NoraExecutiveTool::CreateProject {
@@ -5147,4 +5152,434 @@ impl ExecutiveTools {
 
         Ok(response)
     }
+
+    // ── GitHub + Auri dispatch arms ────────────────────────────────────────────
+    pub(crate) fn dispatch_github_auri(
+        &self,
+        tool: NoraExecutiveTool,
+    ) -> Option<
+        std::pin::Pin<
+            Box<dyn std::future::Future<Output = crate::Result<serde_json::Value>> + Send + '_>,
+        >,
+    > {
+        match tool {
+            NoraExecutiveTool::GithubListRepos { org_id } => {
+                Some(Box::pin(self.execute_github_list_repos(org_id)))
+            }
+            NoraExecutiveTool::GithubReadFile { repo, path, branch } => {
+                Some(Box::pin(async move {
+                    self.execute_github_read_file(&repo, &path, branch.as_deref())
+                        .await
+                }))
+            }
+            NoraExecutiveTool::GithubListIssues { repo, state } => Some(Box::pin(async move {
+                self.execute_github_list_issues(&repo, state.as_deref())
+                    .await
+            })),
+            NoraExecutiveTool::GithubListPrs { repo, state } => Some(Box::pin(async move {
+                self.execute_github_list_prs(&repo, state.as_deref()).await
+            })),
+            NoraExecutiveTool::AssignToAuri {
+                project_id,
+                board_id,
+                title,
+                description,
+                github_repo,
+                base_branch,
+            } => Some(Box::pin(async move {
+                self.execute_assign_to_auri(
+                    &project_id,
+                    board_id.as_deref(),
+                    &title,
+                    &description,
+                    &github_repo,
+                    base_branch.as_deref(),
+                )
+                .await
+            })),
+            _ => None,
+        }
+    }
+}
+
+// ── GitHub + Auri tool execution (standalone impl block) ──────────────────────
+
+impl ExecutiveTools {
+    /// Resolve a GitHub access token: try integration_connections first, then env vars.
+    async fn resolve_github_token(&self) -> String {
+        if let Some(executor) = &self.task_executor {
+            let pool = executor.pool();
+            if let Ok(conns) = sqlx::query_as::<_, IntegrationConnection>(
+                "SELECT * FROM integration_connections WHERE provider = 'github' AND status = 'active' LIMIT 1"
+            )
+            .fetch_all(pool)
+            .await {
+                if let Some(conn) = conns.into_iter().next() {
+                    if let Ok(token) = services::services::oauth_token_manager::decrypt_access(&conn) {
+                        if !token.is_empty() {
+                            return token;
+                        }
+                    }
+                }
+            }
+        }
+        std::env::var("GITHUB_PAT")
+            .or_else(|_| std::env::var("GH_TOKEN"))
+            .unwrap_or_default()
+    }
+
+    pub(crate) async fn execute_github_list_repos(
+        &self,
+        org_id: Option<String>,
+    ) -> crate::Result<serde_json::Value> {
+        let token = self.resolve_github_token().await;
+        let client = reqwest::Client::new();
+
+        let make_req = |url: &str| {
+            let mut req = client
+                .get(url)
+                .header("User-Agent", "Nora-PCG/1.0")
+                .header("Accept", "application/vnd.github+json");
+            if !token.is_empty() {
+                req = req.header("Authorization", format!("token {}", token));
+            }
+            req
+        };
+
+        // If a specific org was requested, just return that org's repos
+        if let Some(ref org) = org_id.as_ref().filter(|s| !s.is_empty()) {
+            let url = format!(
+                "https://api.github.com/orgs/{}/repos?per_page=100&sort=updated",
+                org
+            );
+            let resp = make_req(&url)
+                .send()
+                .await
+                .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+            let repos: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!([]));
+            let simplified = simplify_repos(repos.as_array().cloned().unwrap_or_default());
+            return Ok(
+                serde_json::json!({ "success": true, "orgs": [org], "repositories": simplified }),
+            );
+        }
+
+        // Otherwise fetch all orgs the token belongs to, then list repos from each
+        let orgs_resp = make_req("https://api.github.com/user/orgs?per_page=100")
+            .send()
+            .await
+            .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+        let orgs: Vec<String> = orgs_resp
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|o| o["login"].as_str().map(|s| s.to_string()))
+            .collect();
+
+        let mut all_repos: Vec<serde_json::Value> = Vec::new();
+        for org in &orgs {
+            let url = format!(
+                "https://api.github.com/orgs/{}/repos?per_page=100&sort=updated",
+                org
+            );
+            if let Ok(resp) = make_req(&url).send().await {
+                if let Ok(repos) = resp.json::<serde_json::Value>().await {
+                    all_repos.extend(simplify_repos(
+                        repos.as_array().cloned().unwrap_or_default(),
+                    ));
+                }
+            }
+        }
+
+        Ok(serde_json::json!({
+            "success": true,
+            "orgs": orgs,
+            "total": all_repos.len(),
+            "repositories": all_repos
+        }))
+    }
+
+    pub(crate) async fn execute_github_read_file(
+        &self,
+        repo: &str,
+        path: &str,
+        branch: Option<&str>,
+    ) -> crate::Result<serde_json::Value> {
+        let branch = branch.unwrap_or("main");
+        let url = format!(
+            "https://api.github.com/repos/{}/contents/{}?ref={}",
+            repo, path, branch
+        );
+
+        let token = self.resolve_github_token().await;
+
+        let client = reqwest::Client::new();
+        let mut req = client.get(&url).header("User-Agent", "Nora-PCG/1.0");
+        if !token.is_empty() {
+            req = req.header("Authorization", format!("token {}", token));
+        }
+
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+
+        if resp.status().is_success() {
+            let body: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+            // Decode base64 content
+            if let Some(content_b64) = body.get("content").and_then(|v| v.as_str()) {
+                let content_b64_clean = content_b64.replace('\n', "");
+                let decoded = base64_decode(&content_b64_clean);
+                return Ok(serde_json::json!({
+                    "success": true,
+                    "repo": repo,
+                    "path": path,
+                    "branch": branch,
+                    "content": decoded,
+                    "size": body.get("size"),
+                }));
+            }
+            Ok(serde_json::json!({ "success": true, "data": body }))
+        } else {
+            Ok(
+                serde_json::json!({ "success": false, "error": format!("GitHub returned {}", resp.status()), "url": url }),
+            )
+        }
+    }
+
+    pub(crate) async fn execute_github_list_issues(
+        &self,
+        repo: &str,
+        state: Option<&str>,
+    ) -> crate::Result<serde_json::Value> {
+        let state = state.unwrap_or("open");
+        let url = format!(
+            "https://api.github.com/repos/{}/issues?state={}&per_page=30",
+            repo, state
+        );
+        let token = self.resolve_github_token().await;
+        let client = reqwest::Client::new();
+        let mut req = client.get(&url).header("User-Agent", "Nora-PCG/1.0");
+        if !token.is_empty() {
+            req = req.header("Authorization", format!("token {}", token));
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+        if resp.status().is_success() {
+            let issues: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+            Ok(
+                serde_json::json!({ "success": true, "repo": repo, "state": state, "issues": issues }),
+            )
+        } else {
+            Ok(
+                serde_json::json!({ "success": false, "error": format!("GitHub returned {}", resp.status()) }),
+            )
+        }
+    }
+
+    pub(crate) async fn execute_github_list_prs(
+        &self,
+        repo: &str,
+        state: Option<&str>,
+    ) -> crate::Result<serde_json::Value> {
+        let state = state.unwrap_or("open");
+        let url = format!(
+            "https://api.github.com/repos/{}/pulls?state={}&per_page=30",
+            repo, state
+        );
+        let token = self.resolve_github_token().await;
+        let client = reqwest::Client::new();
+        let mut req = client.get(&url).header("User-Agent", "Nora-PCG/1.0");
+        if !token.is_empty() {
+            req = req.header("Authorization", format!("token {}", token));
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+        if resp.status().is_success() {
+            let prs: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+            Ok(
+                serde_json::json!({ "success": true, "repo": repo, "state": state, "pull_requests": prs }),
+            )
+        } else {
+            Ok(
+                serde_json::json!({ "success": false, "error": format!("GitHub returned {}", resp.status()) }),
+            )
+        }
+    }
+
+    pub(crate) async fn execute_assign_to_auri(
+        &self,
+        project_id: &str,
+        board_id: Option<&str>,
+        title: &str,
+        description: &str,
+        github_repo: &str,
+        base_branch: Option<&str>,
+    ) -> crate::Result<serde_json::Value> {
+        let pool = match &self.task_executor {
+            Some(e) => e.pool().clone(),
+            None => {
+                return Ok(serde_json::json!({ "success": false, "error": "DB not available" }))
+            }
+        };
+
+        let task_id = uuid::Uuid::new_v4();
+        let task_id_str = task_id.to_string();
+        let proj_uuid = uuid::Uuid::parse_str(project_id)
+            .map_err(|_| crate::NoraError::ToolExecutionError("Invalid project_id".into()))?;
+
+        // Create the task record
+        let title_str = title.to_string();
+        let desc_str = description.to_string();
+        let repo_str = github_repo.to_string();
+
+        sqlx::query(
+            "INSERT INTO tasks (id, project_id, title, description, status, assigned_agent, github_repo, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, 'todo', 'Auri', ?, datetime('now','subsec'), datetime('now','subsec'))"
+        )
+        .bind(&task_id_str)
+        .bind(project_id)
+        .bind(&title_str)
+        .bind(&desc_str)
+        .bind(&repo_str)
+        .execute(&pool)
+        .await
+        .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+
+        // Find or use provided board; if board_id given, create a board task link
+        if let Some(bid) = board_id {
+            use sqlx::Row;
+            let col: Option<String> = sqlx::query(
+                "SELECT id FROM board_columns WHERE board_id = ? ORDER BY position ASC LIMIT 1",
+            )
+            .bind(bid)
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|r| r.get::<Option<String>, _>("id"));
+
+            if let Some(col_id) = col {
+                let board_task_id = uuid::Uuid::new_v4().to_string();
+                let _ = sqlx::query(
+                    "INSERT INTO board_tasks (id, board_id, column_id, task_id, position, created_at, updated_at) \
+                     VALUES (?, ?, ?, ?, 0, datetime('now','subsec'), datetime('now','subsec'))"
+                )
+                .bind(&board_task_id)
+                .bind(bid)
+                .bind(&col_id)
+                .bind(&task_id_str)
+                .execute(&pool)
+                .await;
+            }
+        }
+
+        // Trigger Auri execution via the /api/auri/tasks/{id}/run endpoint
+        let backend_url = std::env::var("BACKEND_URL").unwrap_or_else(|_| {
+            let port = std::env::var("BACKEND_PORT").unwrap_or_else(|_| "3001".to_string());
+            format!("http://127.0.0.1:{}", port)
+        });
+        let client = reqwest::Client::new();
+        let payload = serde_json::json!({
+            "github_repo": github_repo,
+            "base_branch": base_branch.unwrap_or("main"),
+        });
+
+        let run_resp = client
+            .post(format!(
+                "{}/api/auri/tasks/{}/run",
+                backend_url, task_id_str
+            ))
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| {
+                crate::NoraError::ToolExecutionError(format!("Failed to trigger Auri: {}", e))
+            })?;
+
+        let run_body: serde_json::Value = run_resp.json().await.unwrap_or(serde_json::json!({}));
+
+        Ok(serde_json::json!({
+            "success": true,
+            "task_id": task_id_str,
+            "task_title": title,
+            "github_repo": github_repo,
+            "status": "inprogress",
+            "message": format!("Auri is now working on '{}' in {}. Track progress on the dashboard: /projects/{}/tasks/{}", title, github_repo, project_id, task_id_str),
+            "run_response": run_body,
+        }))
+    }
+}
+
+fn simplify_repos(repos: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    repos
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "name": r["name"],
+                "full_name": r["full_name"],
+                "description": r["description"],
+                "default_branch": r["default_branch"],
+                "private": r["private"],
+                "updated_at": r["updated_at"],
+            })
+        })
+        .collect()
+}
+
+fn base64_decode(s: &str) -> String {
+    use std::io::Read;
+    // Simple base64 decode using standard library approach
+    let bytes: Vec<u8> = (0..s.len())
+        .step_by(4)
+        .flat_map(|i| {
+            let chunk = &s[i..(i + 4).min(s.len())];
+            decode_base64_chunk(chunk)
+        })
+        .collect();
+    String::from_utf8_lossy(&bytes).to_string()
+}
+
+fn decode_base64_chunk(chunk: &str) -> Vec<u8> {
+    let table = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let char_to_val = |c: u8| -> u8 { table.iter().position(|&x| x == c).unwrap_or(0) as u8 };
+    let bytes: Vec<u8> = chunk.bytes().collect();
+    if bytes.len() < 2 {
+        return vec![];
+    }
+    let b0 = char_to_val(bytes[0]);
+    let b1 = char_to_val(bytes[1]);
+    let b2 = if bytes.len() > 2 && bytes[2] != b'=' {
+        char_to_val(bytes[2])
+    } else {
+        0
+    };
+    let b3 = if bytes.len() > 3 && bytes[3] != b'=' {
+        char_to_val(bytes[3])
+    } else {
+        0
+    };
+    let mut out = vec![(b0 << 2) | (b1 >> 4), (b1 << 4) | (b2 >> 2), (b2 << 6) | b3];
+    if bytes.len() > 3 && bytes[3] == b'=' {
+        out.pop();
+    }
+    if bytes.len() > 2 && bytes[2] == b'=' {
+        out.pop();
+    }
+    out
 }

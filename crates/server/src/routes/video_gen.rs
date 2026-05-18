@@ -1845,6 +1845,7 @@ mod heygen {
         Ok(data.data.video_id)
     }
 
+    #[allow(dead_code)]
     /// Poll HeyGen for video status.
     pub async fn poll_status(api_key: &str, video_id: &str) -> anyhow::Result<HeyGenStatus> {
         let client = reqwest::Client::new();

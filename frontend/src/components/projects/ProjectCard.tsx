@@ -1,18 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card.tsx';
-import { Badge } from '@/components/ui/badge.tsx';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu.tsx';
-import { Button } from '@/components/ui/button.tsx';
+import { formatDistanceToNow } from 'date-fns';
 import {
   Calendar,
   Edit,
@@ -21,13 +7,28 @@ import {
   MoreHorizontal,
   Trash2,
 } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Project, ProjectBoard } from 'shared/types';
-import { useEffect, useRef } from 'react';
+
+import { Badge } from '@/components/ui/badge.tsx';
+import { Button } from '@/components/ui/button.tsx';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card.tsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu.tsx';
+import { Progress } from '@/components/ui/progress';
 import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 import { projectsApi } from '@/lib/api';
-import { formatDistanceToNow } from 'date-fns';
 
 export type ProjectBoardSummary = {
   totalBoards: number;
@@ -182,8 +183,8 @@ function ProjectCard({
             Loading board data…
           </div>
         ) : boardSummary.error ? (
-          <div className="text-xs text-destructive">
-            {boardSummary.error}
+          <div className="text-xs text-muted-foreground">
+            No board data available
           </div>
         ) : (
           <>
@@ -231,7 +232,9 @@ function ProjectCard({
             </div>
             {boardSummary.totalTasks > 0 && (
               <Progress
-                value={(boardSummary.completedTasks / boardSummary.totalTasks) * 100}
+                value={
+                  (boardSummary.completedTasks / boardSummary.totalTasks) * 100
+                }
                 className="h-1.5 mt-2"
               />
             )}

@@ -8,6 +8,7 @@ import {
   Building2,
   Calendar,
   ClipboardList,
+  Code2,
   Coins,
   Cpu,
   Crown,
@@ -27,6 +28,7 @@ import {
   Rocket,
   Settings,
   Users,
+  Video,
   Workflow,
 } from 'lucide-react';
 
@@ -211,6 +213,22 @@ export const PLATFORM_NAV_ITEMS: NavItem[] = [
     to: '/discord',
     id: 'discord',
     adminOnly: true,
+  },
+  {
+    label: 'Meetings',
+    icon: Video,
+    to: '/meetings',
+    id: 'meetings',
+    adminOnly: true,
+    tooltip: 'Voice sessions & transcripts',
+  },
+  {
+    label: 'Auri Tasks',
+    icon: Code2,
+    to: '/auri',
+    id: 'auri',
+    adminOnly: true,
+    tooltip: 'AI coding agent executions',
   },
 ];
 

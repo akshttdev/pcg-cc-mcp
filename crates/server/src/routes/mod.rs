@@ -21,6 +21,7 @@ pub mod approvals;
 pub mod aptos;
 pub mod artifact_reviews;
 pub mod artifacts;
+pub mod auri;
 pub mod auth;
 pub mod automations;
 pub mod autonomy;
@@ -114,7 +115,10 @@ pub mod sidebar;
 pub mod slack;
 pub mod social_accounts;
 pub mod social_inbox;
+pub mod social_intelligence;
 pub mod social_media_upload;
+pub mod social_metrics_sync;
+pub mod social_oauth;
 pub mod social_posts;
 pub mod social_publisher;
 pub mod storage;
@@ -170,6 +174,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(social_accounts::router(&deployment))
         .merge(social_posts::router(&deployment))
         .merge(social_inbox::router(&deployment))
+        .merge(social_intelligence::router(&deployment))
+        .merge(social_oauth::protected_router(&deployment))
         .merge(integrations::router(&deployment))
         .merge(github::router(&deployment))
         .merge(storage::router(&deployment))
@@ -239,7 +245,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(agent_flows::router(&deployment))
         .merge(agent_flow_events::router(&deployment))
         .merge(orchestration::router(&deployment))
-        .merge(video_gen::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -290,18 +295,20 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(model_pricing::router(&deployment))
         .merge(vibe_treasury::public_router(&deployment))
         .merge(meet::meet_routes(&deployment))
+        .merge(auri::router(&deployment))
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))
         .merge(social_posts::public_router(&deployment))
+        .merge(social_oauth::public_router(&deployment))
         .merge(video_gen::public_router(&deployment))
         .merge(orcha::orcha_routes())
         .merge(media_library::public_router(&deployment))
+        .merge(social_media_upload::public_router(&deployment))
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(marketplace::public_router(&deployment))
         .merge(nora_classifier::public_router(&deployment))
         .merge(workflow_triggers::public_router(&deployment))
-        .merge(video_gen::public_router(&deployment))
         .merge(pythia::router(&deployment))
         .merge(pcg_router::router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))

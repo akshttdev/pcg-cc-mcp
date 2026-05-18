@@ -39,6 +39,22 @@ async fn run_publish_cycle(pool: &SqlitePool) -> Result<(), anyhow::Error> {
     );
 
     for post in due_posts {
+        // Skip posts that have no real social account linked and whose platforms field
+        // contains only platform name strings (e.g. ["linkedin"]) rather than account UUIDs.
+        // These are draft/planning entries that haven't been wired to an OAuth account yet —
+        // burning publish attempts on them would flip them to 'failed' prematurely.
+        let has_account = post.social_account_id.is_some() || {
+            let platform_uuids: Result<Vec<uuid::Uuid>, _> = serde_json::from_str(&post.platforms);
+            platform_uuids.is_ok()
+        };
+        if !has_account {
+            warn!(
+                "Skipping post {} — platforms field contains no account UUIDs and no social_account_id",
+                post.id
+            );
+            continue;
+        }
+
         // Lock the post into publishing state (optimistic — ignore if already grabbed)
         let lock_result = sqlx::query(
             "UPDATE social_posts SET status = 'publishing', updated_at = datetime('now','subsec') WHERE id = ?1 AND status = 'scheduled'"
@@ -141,7 +157,12 @@ async fn publish_post(
             .map_err(|e| anyhow::anyhow!("Account lookup failed: {}", e))?
     } else {
         // No account linked — try to find one for this project on LinkedIn
-        let accounts = SocialAccount::find_by_project(pool, Uuid::from(post.project_id.clone()))
+        let project_uuid = post
+            .project_id
+            .as_ref()
+            .map(|id| Uuid::from(id.clone()))
+            .ok_or_else(|| anyhow::anyhow!("Post has no project_id"))?;
+        let accounts = SocialAccount::find_by_project(pool, project_uuid)
             .await
             .map_err(|e| anyhow::anyhow!("Account list failed: {}", e))?;
         accounts
@@ -149,7 +170,7 @@ async fn publish_post(
             .find(|a| a.status == "active")
             .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "No active social account found for project {}",
+                    "No active social account found for project {:?}",
                     post.project_id
                 )
             })?

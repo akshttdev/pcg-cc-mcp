@@ -361,10 +361,10 @@ async fn register_local(
     // Org members can register multiple folders side by side this way.
     let path_key = format!("local:{}", payload.sync_root_path);
 
-    let display = payload.display_name.clone().or_else(|| {
-        root.file_name()
-            .map(|s| s.to_string_lossy().to_string())
-    });
+    let display = payload
+        .display_name
+        .clone()
+        .or_else(|| root.file_name().map(|s| s.to_string_lossy().to_string()));
 
     let account = CloudStorageAccount::upsert(
         pool,

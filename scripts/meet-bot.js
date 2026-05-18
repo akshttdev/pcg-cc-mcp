@@ -45,6 +45,16 @@ const MIC_SRC   = `nora-meet-mic-${sessionId.slice(0, 8)}`;
 // Suppress EPIPE on stdout — parent process may close the pipe before we finish cleanup
 process.stdout.on('error', (err) => { if (err.code !== 'EPIPE') throw err; });
 
+// Crash detection — log unhandled errors before dying
+process.on('unhandledRejection', (reason) => {
+  try { process.stdout.write(JSON.stringify({ type: 'error', message: 'Unhandled rejection', detail: String(reason) }) + '\n'); } catch (_) {}
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  try { process.stdout.write(JSON.stringify({ type: 'error', message: 'Uncaught exception', detail: err.message, stack: err.stack }) + '\n'); } catch (_) {}
+  process.exit(1);
+});
+
 // ── Logging ─────────────────────────────────────────────────────────────────
 function emit(obj) {
   try {
@@ -133,9 +143,10 @@ function setupAudio() {
   const micResult = pactl(`load-module module-virtual-source source_name=${MIC_SRC} master=${TTS_SINK}.monitor source_properties=device.description="Nora-Meet-Mic"`);
   if (micResult) micSrcModule = micResult;
 
-  // Set as PulseAudio server defaults so Chrome picks them up automatically
+  // Set as PulseAudio server defaults so Chrome picks them up automatically.
+  // Virtual sources are registered by PipeWire as "output.<name>", not "<name>".
   pactl(`set-default-sink ${OUT_SINK}`);
-  pactl(`set-default-source ${MIC_SRC}`);
+  pactl(`set-default-source output.${MIC_SRC}`);
 
   log('Audio devices created', { outSink: OUT_SINK, ttsSink: TTS_SINK, micSrc: MIC_SRC });
 }
@@ -525,11 +536,19 @@ async function main() {
       ...process.env,
       DISPLAY: process.env.DISPLAY || ':1',
       PULSE_SINK: OUT_SINK,
-      PULSE_SOURCE: MIC_SRC,
+      PULSE_SOURCE: `output.${MIC_SRC}`,
     };
 
     const chromiumExec = process.env.CHROMIUM_PATH
       || '/home/pythia/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome';
+
+    // Clear Chrome crash-recovery state so the "Restore pages?" dialog never appears.
+    // Chrome writes Last Session / Last Tabs when it exits uncleanly (e.g. SIGKILL).
+    // On next launch it shows a blocking modal; deleting these files prevents it.
+    const defaultDir = path.join(PROFILE_DIR, 'Default');
+    for (const f of ['Last Session', 'Last Tabs', 'Last Browser']) {
+      try { fs.unlinkSync(path.join(defaultDir, f)); } catch (_) { /* doesn't exist, fine */ }
+    }
 
     const launchArgs = [
       '--no-sandbox',
@@ -543,6 +562,9 @@ async function main() {
       '--disable-renderer-backgrounding',
       '--allow-running-insecure-content',
       '--disable-gpu',
+      '--disable-session-crashed-bubble',
+      '--disable-infobars',
+      '--restore-last-session=false',
       `--display=${env.DISPLAY}`,
     ];
 
@@ -564,13 +586,29 @@ async function main() {
 
     const page = context.pages()[0] || await context.newPage();
 
-    // Inject display name "Nora" for guest join if needed
+    // Inject display name "Nora" for guest join + disable noise suppression so TTS passes through
     await page.addInitScript(() => {
-      // Override any prompt for name with "Nora"
+      // Override name prompt
       const origPrompt = window.prompt;
       window.prompt = (msg) => {
         if (msg && msg.toLowerCase().includes('name')) return 'Nora';
         return origPrompt(msg);
+      };
+      // Disable WebRTC noise suppression, echo cancellation, and AGC so Nora's TTS voice
+      // is not classified as noise and filtered before transmission.
+      const origGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = function(constraints) {
+        if (constraints && constraints.audio && typeof constraints.audio === 'object') {
+          constraints.audio = {
+            ...constraints.audio,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          };
+        } else if (constraints && constraints.audio === true) {
+          constraints.audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+        }
+        return origGUM(constraints);
       };
     });
 
@@ -618,9 +656,7 @@ async function main() {
         'button:has-text("Accept")',
         'button:has-text("Continue")',
         'button:has-text("Dismiss")',
-        'button:has-text("Close")',
         'button:has-text("I understand")',
-        '[aria-label="Close"]',
         '[aria-label="Dismiss"]',
       ];
       const dialogPoller = setInterval(async () => {
@@ -649,7 +685,8 @@ async function main() {
             clearInterval(dialogPoller);
             await cleanup(browser);
           }
-        } catch (_) {
+        } catch (err) {
+          error('Browser/page error in keepAlive — Chrome may have crashed', err instanceof Error ? err : new Error(String(err)));
           clearInterval(keepAlive);
           clearInterval(dialogPoller);
           await cleanup(browser);

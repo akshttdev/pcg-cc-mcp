@@ -141,6 +141,12 @@ const CommandCenterPage = lazy(() =>
     default: m.CommandCenterPage,
   }))
 );
+const MeetingsPage = lazy(() =>
+  import('@/pages/meetings').then((m) => ({ default: m.MeetingsPage }))
+);
+const AuriTasksPage = lazy(() =>
+  import('@/pages/auri-tasks').then((m) => ({ default: m.AuriTasksPage }))
+);
 const InvoicesPage = lazy(() =>
   import('@/pages/invoices').then((m) => ({ default: m.InvoicesPage }))
 );
@@ -886,6 +892,22 @@ function App() {
             element={
               <RoleRoute minRole="org_viewer">
                 <CommandCenterPage />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/meetings"
+            element={
+              <RoleRoute minRole="org_viewer">
+                <MeetingsPage />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/auri"
+            element={
+              <RoleRoute minRole="org_viewer">
+                <AuriTasksPage />
               </RoleRoute>
             }
           />

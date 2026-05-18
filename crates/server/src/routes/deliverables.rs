@@ -127,6 +127,33 @@ async fn move_deliverable_status(
             id
         );
 
+        // Mark KG entry as client_visible if this project is client work
+        #[derive(sqlx::FromRow)]
+        struct ProjectRow {
+            client_id: Option<String>,
+        }
+        if let Ok(Some(proj)) =
+            sqlx::query_as::<_, ProjectRow>("SELECT client_id FROM projects WHERE id = ?")
+                .bind(deliverable.project_id.to_string())
+                .fetch_optional(pool)
+                .await
+        {
+            if proj.client_id.is_some() {
+                let _ = sqlx::query(
+                    "UPDATE project_knowledge_sources SET client_visible = 1, updated_at = datetime('now','subsec') \
+                     WHERE project_id = ? AND source_type = 'artifact' AND source_id = ?"
+                )
+                .bind(deliverable.project_id.to_string())
+                .bind(&source_id)
+                .execute(pool)
+                .await;
+                tracing::info!(
+                    "Deliverable {} KG entry marked client_visible (client project)",
+                    id
+                );
+            }
+        }
+
         // Auto-advance linked social post draft → pending_review
         if let Ok(Some(linked_post)) = SocialPost::find_by_deliverable(pool, id).await {
             if linked_post.status == "draft" {

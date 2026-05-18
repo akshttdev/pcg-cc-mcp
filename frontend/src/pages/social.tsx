@@ -1,7 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { Project } from 'shared/types';
+
+import { ContentCalendar } from '@/components/content-studio';
+import { AnalyticsDashboard } from '@/components/social/AnalyticsDashboard';
+import { ApprovalQueue } from '@/components/social/ApprovalQueue';
+import { PostDetailModal } from '@/components/social/PostDetailModal';
+import { QueueManager } from '@/components/social/QueueManager';
+import { SocialAccountConnect } from '@/components/social/SocialAccountConnect';
+import {
+  UnifiedInbox,
+  UnifiedInboxMention,
+} from '@/components/social/UnifiedInbox';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -18,34 +32,29 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { ContentCalendar } from '@/components/content-studio';
-import { SocialAccountConnect } from '@/components/social/SocialAccountConnect';
-import {
-  UnifiedInbox,
-  UnifiedInboxMention,
-} from '@/components/social/UnifiedInbox';
-import type {
-  SocialAccount as UiSocialAccount,
-  SocialPost as UiSocialPost,
-  SocialPlatform,
-  PlatformAdaptation,
-  ContentBlock,
-  ContentCategory,
-  PostStatus,
-} from '@/types/social';
-import { PLATFORM_LIMITS } from '@/types/social';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   projectsApi,
-  socialApi,
   SocialAccountRecord,
-  SocialPostRecord,
+  socialApi,
   SocialMentionRecord,
+  SocialPostRecord,
 } from '@/lib/api';
 import { projectKeys, socialKeys } from '@/lib/query-keys';
+import type {
+  ContentBlock,
+  ContentCategory,
+  PlatformAdaptation,
+  PostStatus,
+  SocialAccount as UiSocialAccount,
+  SocialPlatform,
+  SocialPost as UiSocialPost,
+} from '@/types/social';
+import { PLATFORM_LIMITS } from '@/types/social';
 
 export function SocialPage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const {
     data: projects = [],
     isLoading: projectsLoading,
@@ -54,7 +63,12 @@ export function SocialPage() {
     queryKey: projectKeys.list('social-command'),
     queryFn: projectsApi.getAll,
   });
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    null
+  );
+  const [connectingPlatform, setConnectingPlatform] =
+    useState<SocialPlatform | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const projectParam = searchParams.get('projectId');
 
@@ -80,19 +94,22 @@ export function SocialPage() {
 
   const accountsQuery = useQuery<SocialAccountRecord[], Error>({
     queryKey: socialKeys.accounts(selectedProjectId),
-    queryFn: () => socialApi.listAccounts(selectedProjectId ?? undefined),
+    queryFn: () =>
+      socialApi.listAccounts({ projectId: selectedProjectId ?? undefined }),
     enabled: !!selectedProjectId,
   });
 
   const postsQuery = useQuery<SocialPostRecord[], Error>({
     queryKey: socialKeys.posts(selectedProjectId),
-    queryFn: () => socialApi.listPosts(selectedProjectId ?? undefined),
+    queryFn: () =>
+      socialApi.listPosts({ projectId: selectedProjectId ?? undefined }),
     enabled: !!selectedProjectId,
   });
 
   const mentionsQuery = useQuery<SocialMentionRecord[], Error>({
     queryKey: socialKeys.mentions(selectedProjectId),
-    queryFn: () => socialApi.listMentions(selectedProjectId as string, { limit: 60 }),
+    queryFn: () =>
+      socialApi.listMentions(selectedProjectId as string, { limit: 60 }),
     enabled: !!selectedProjectId,
   });
 
@@ -117,6 +134,52 @@ export function SocialPage() {
     [mentionsQuery.data]
   );
 
+  // Handle OAuth callback: provider=xxx&status=connected (or &error=xxx)
+  useEffect(() => {
+    const provider = searchParams.get('provider');
+    const status = searchParams.get('status');
+    const error = searchParams.get('error');
+    if (provider && (status === 'connected' || error)) {
+      // Strip OAuth params from URL, then refetch accounts
+      const next = new URLSearchParams();
+      if (selectedProjectId) next.set('projectId', selectedProjectId);
+      setSearchParams(next, { replace: true });
+      queryClient.invalidateQueries({
+        queryKey: socialKeys.accounts(selectedProjectId),
+      });
+    }
+  }, [searchParams, selectedProjectId, setSearchParams, queryClient]);
+
+  const handleConnect = useCallback(
+    (platform: SocialPlatform) => {
+      const orgId = user?.home_organization_id;
+      if (!orgId) return;
+      setConnectingPlatform(platform);
+      const returnUrl = `/social?projectId=${selectedProjectId ?? ''}`;
+      const params = new URLSearchParams({ organization_id: orgId });
+      if (selectedProjectId) params.set('project_id', selectedProjectId);
+      params.set('redirect_after', returnUrl);
+      window.location.href = `/api/social/connect/${platform}?${params}`;
+    },
+    [user, selectedProjectId]
+  );
+
+  const handleDisconnect = useCallback(
+    async (accountId: string) => {
+      try {
+        await fetch(`/api/integrations/connections/${accountId}`, {
+          method: 'DELETE',
+        });
+        queryClient.invalidateQueries({
+          queryKey: socialKeys.accounts(selectedProjectId),
+        });
+      } catch (e) {
+        console.error('Disconnect failed', e);
+      }
+    },
+    [selectedProjectId, queryClient]
+  );
+
   const renderAccountsSection = () => {
     if (!selectedProjectId || accountsQuery.isLoading) {
       return <Skeleton className="h-48 w-full" />;
@@ -133,6 +196,9 @@ export function SocialPage() {
     return (
       <SocialAccountConnect
         accounts={socialAccounts}
+        onConnect={handleConnect}
+        onDisconnect={handleDisconnect}
+        isConnecting={connectingPlatform}
         className="space-y-4"
       />
     );
@@ -155,6 +221,7 @@ export function SocialPage() {
       <ContentCalendar
         posts={calendarPosts}
         className="border"
+        onPostClick={(post) => setSelectedPostId(post.id)}
       />
     );
   };
@@ -177,11 +244,23 @@ export function SocialPage() {
 
   return (
     <div className="p-6 space-y-6">
+      <PostDetailModal
+        postId={selectedPostId}
+        open={!!selectedPostId}
+        onClose={() => setSelectedPostId(null)}
+        onDeleted={() => {
+          queryClient.invalidateQueries({
+            queryKey: socialKeys.posts(selectedProjectId),
+          });
+        }}
+      />
+
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <CardTitle className="text-2xl">Social Command</CardTitle>
           <CardDescription>
-            Connect accounts, schedule campaigns, and monitor engagement without leaving Mission Control.
+            Connect accounts, schedule campaigns, and monitor engagement without
+            leaving Mission Control.
           </CardDescription>
         </div>
         <div className="w-full max-w-xs space-y-1">
@@ -245,25 +324,68 @@ export function SocialPage() {
             </Card>
           </div>
 
-          <Card>
-            <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle>Unified Inbox</CardTitle>
-                <CardDescription>
-                  Mentions, comments, and DMs prioritized by Nora’s engagement agent.
-                </CardDescription>
-              </div>
-              {statsQuery.isLoading ? (
-                <Skeleton className="h-6 w-40" />
-              ) : statsQuery.data ? (
-                <div className="flex gap-3 text-sm text-muted-foreground">
-                  <Badge variant="secondary">Unread: {statsQuery.data.total_unread}</Badge>
-                  <Badge variant="outline">High Priority: {statsQuery.data.high_priority}</Badge>
+          {selectedProjectId && (
+            <Card>
+              <CardContent className="pt-5">
+                <AnalyticsDashboard projectId={selectedProjectId} />
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid gap-6 lg:grid-cols-[1fr,380px]">
+            <Card>
+              <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle>Unified Inbox</CardTitle>
+                  <CardDescription>
+                    Mentions, comments, and DMs prioritized by Nora’s engagement
+                    agent.
+                  </CardDescription>
                 </div>
-              ) : null}
-            </CardHeader>
-            <CardContent>{renderInboxSection()}</CardContent>
-          </Card>
+                {statsQuery.isLoading ? (
+                  <Skeleton className="h-6 w-40" />
+                ) : statsQuery.data ? (
+                  <div className="flex gap-3 text-sm text-muted-foreground">
+                    <Badge variant="secondary">
+                      Unread: {statsQuery.data.total_unread}
+                    </Badge>
+                    <Badge variant="outline">
+                      High Priority: {statsQuery.data.high_priority}
+                    </Badge>
+                  </div>
+                ) : null}
+              </CardHeader>
+              <CardContent>{renderInboxSection()}</CardContent>
+            </Card>
+
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Approval Queue</CardTitle>
+                  <CardDescription>
+                    Posts awaiting sign-off before scheduling.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="h-[280px]">
+                  {selectedProjectId ? (
+                    <ApprovalQueue
+                      projectId={selectedProjectId}
+                      className="h-full"
+                      onPostClick={setSelectedPostId}
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Select a project to view the queue.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {selectedProjectId && (
+                <QueueManager projectId={selectedProjectId} />
+              )}
+            </div>
+          </div>
         </>
       )}
     </div>
@@ -284,7 +406,9 @@ function mapAccountRecord(record: SocialAccountRecord): UiSocialAccount {
     id: record.id,
     platform,
     account_name:
-      record.display_name || record.username || `${platform.toUpperCase()} Account`,
+      record.display_name ||
+      record.username ||
+      `${platform.toUpperCase()} Account`,
     account_type:
       (record.account_type as UiSocialAccount['account_type']) || 'business',
     status: statusMap[record.status] || 'disconnected',
@@ -341,13 +465,16 @@ function mapPostRecords(
   });
 }
 
-function mapMentionRecords(records: SocialMentionRecord[]): UnifiedInboxMention[] {
+function mapMentionRecords(
+  records: SocialMentionRecord[]
+): UnifiedInboxMention[] {
   return records.map((record) => ({
     id: record.id,
     platform: normalizePlatform(record.platform),
     account_id: record.social_account_id,
     mention_type: mapMentionType(record.mention_type),
-    author_name: record.author_display_name || record.author_username || 'Follower',
+    author_name:
+      record.author_display_name || record.author_username || 'Follower',
     author_username: record.author_username || '',
     author_avatar: record.author_avatar_url || undefined,
     content: record.content || '',
@@ -424,21 +551,24 @@ function buildPlatformAdaptations(
   baseContent: string,
   hashtagCount: number
 ): Record<SocialPlatform, PlatformAdaptation> {
-  return platforms.reduce((acc, platform) => {
-    const limits = PLATFORM_LIMITS[platform];
-    acc[platform] = {
-      platform,
-      content: baseContent,
-      characterCount: baseContent.length,
-      characterLimit: limits?.characterLimit ?? 3000,
-      hashtagCount,
-      hashtagLimit: limits?.hashtagLimit ?? 30,
-      mediaIds: [],
-      isValid: true,
-      warnings: [],
-    };
-    return acc;
-  }, {} as Record<SocialPlatform, PlatformAdaptation>);
+  return platforms.reduce(
+    (acc, platform) => {
+      const limits = PLATFORM_LIMITS[platform];
+      acc[platform] = {
+        platform,
+        content: baseContent,
+        characterCount: baseContent.length,
+        characterLimit: limits?.characterLimit ?? 3000,
+        hashtagCount,
+        hashtagLimit: limits?.hashtagLimit ?? 30,
+        mediaIds: [],
+        isValid: true,
+        warnings: [],
+      };
+      return acc;
+    },
+    {} as Record<SocialPlatform, PlatformAdaptation>
+  );
 }
 
 function mapPostStatus(status: string): PostStatus {
@@ -464,10 +594,16 @@ function mapPostStatus(status: string): PostStatus {
 
 function mapMentionType(type: string) {
   const normalized = type.toLowerCase();
-  if (['comment', 'mention', 'reply', 'dm', 'like', 'share'].includes(normalized)) {
+  if (
+    ['comment', 'mention', 'reply', 'dm', 'like', 'share'].includes(normalized)
+  ) {
     return normalized as UnifiedInboxMention['mention_type'];
   }
-  if (normalized === 'quote' || normalized === 'tag' || normalized === 'review') {
+  if (
+    normalized === 'quote' ||
+    normalized === 'tag' ||
+    normalized === 'review'
+  ) {
     return 'mention';
   }
   return 'comment';

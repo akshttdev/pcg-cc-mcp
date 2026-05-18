@@ -216,5 +216,107 @@ async fn dispatch_refresh(
         });
     }
 
+    // Calendar providers: standard OAuth2 `refresh_token` grant against the
+    // provider's token endpoint. Each reads its client credentials from the
+    // same env vars used during the initial authorization (see
+    // `crates/server/src/routes/calendar.rs`). Google does not rotate the
+    // refresh token on refresh; Microsoft does — `update_tokens` uses
+    // COALESCE so `None` preserves the existing one and `Some(new)` replaces it.
+    if provider == "google_calendar" {
+        let client_id = std::env::var("GOOGLE_CLIENT_ID").map_err(|_| {
+            TokenManagerError::RefreshFailed("GOOGLE_CLIENT_ID not configured".into())
+        })?;
+        let client_secret = std::env::var("GOOGLE_CLIENT_SECRET").map_err(|_| {
+            TokenManagerError::RefreshFailed("GOOGLE_CLIENT_SECRET not configured".into())
+        })?;
+        return refresh_via_oauth2(
+            "https://oauth2.googleapis.com/token",
+            &client_id,
+            &client_secret,
+            refresh_token,
+            None,
+        )
+        .await;
+    }
+
+    if provider == "outlook_calendar" {
+        let client_id = std::env::var("MICROSOFT_CLIENT_ID").map_err(|_| {
+            TokenManagerError::RefreshFailed("MICROSOFT_CLIENT_ID not configured".into())
+        })?;
+        let client_secret = std::env::var("MICROSOFT_CLIENT_SECRET").map_err(|_| {
+            TokenManagerError::RefreshFailed("MICROSOFT_CLIENT_SECRET not configured".into())
+        })?;
+        let scope = std::env::var("MICROSOFT_CALENDAR_SCOPES")
+            .unwrap_or_else(|_| "Calendars.Read offline_access User.Read openid".into());
+        return refresh_via_oauth2(
+            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+            &client_id,
+            &client_secret,
+            refresh_token,
+            Some(&scope),
+        )
+        .await;
+    }
+
     Err(TokenManagerError::UnsupportedProvider(provider.to_string()))
+}
+
+/// Standard OAuth2 `grant_type=refresh_token` exchange. Returns plaintext
+/// tokens parsed from the provider's JSON response; surfaces a structured
+/// error if the request fails or the provider rejects the refresh token.
+async fn refresh_via_oauth2(
+    token_url: &str,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+    scope: Option<&str>,
+) -> Result<PlainTokens, TokenManagerError> {
+    #[derive(serde::Deserialize)]
+    struct RefreshResponse {
+        access_token: String,
+        refresh_token: Option<String>,
+        expires_in: Option<i64>,
+        scope: Option<String>,
+    }
+
+    let mut form: Vec<(&str, &str)> = vec![
+        ("client_id", client_id),
+        ("client_secret", client_secret),
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token),
+    ];
+    if let Some(s) = scope {
+        form.push(("scope", s));
+    }
+
+    let resp = reqwest::Client::new()
+        .post(token_url)
+        .form(&form)
+        .send()
+        .await
+        .map_err(|e| TokenManagerError::RefreshFailed(format!("network: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(TokenManagerError::RefreshFailed(format!(
+            "{status}: {body}"
+        )));
+    }
+
+    let parsed: RefreshResponse = resp
+        .json()
+        .await
+        .map_err(|e| TokenManagerError::RefreshFailed(format!("parse: {e}")))?;
+
+    let expires_at = parsed
+        .expires_in
+        .map(|s| Utc::now() + chrono::Duration::seconds(s));
+
+    Ok(PlainTokens {
+        access_token: parsed.access_token,
+        refresh_token: parsed.refresh_token,
+        expires_at,
+        scopes: parsed.scope,
+    })
 }

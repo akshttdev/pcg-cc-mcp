@@ -89,6 +89,7 @@ pub struct ProjectKnowledgeSource {
     pub is_active: bool,
     pub is_stale: bool,
     pub auto_registered: bool,
+    pub client_visible: bool,
     pub last_refreshed_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

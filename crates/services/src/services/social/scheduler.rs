@@ -6,7 +6,10 @@
 //! - Evergreen content rotation
 
 use chrono::{DateTime, NaiveTime, Utc};
-use db::models::social_post::{PostStatus, SocialPost, UpdateSocialPost};
+use db::models::{
+    social_performance_benchmark::SocialPerformanceBenchmark,
+    social_post::{PostStatus, SocialPost, UpdateSocialPost},
+};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tracing::info;
@@ -93,6 +96,26 @@ impl Scheduler {
         Ok(scheduled_time)
     }
 
+    /// Get optimal times from learned benchmarks, falling back to category defaults.
+    async fn get_optimal_times_learned(
+        &self,
+        account_id: Option<&str>,
+        category: Option<&str>,
+    ) -> Vec<String> {
+        if let Some(aid) = account_id {
+            match SocialPerformanceBenchmark::get_optimal_slots(&self.pool, aid, 0.6, 4).await {
+                Ok(slots) if !slots.is_empty() => {
+                    return slots
+                        .into_iter()
+                        .map(|s| format!("{:02}:{:02}", s.hour_of_day, 0))
+                        .collect();
+                }
+                _ => {}
+            }
+        }
+        self.get_optimal_times(category)
+    }
+
     /// Find the next available slot considering existing scheduled posts
     async fn find_next_available_slot(
         &self,
@@ -100,14 +123,17 @@ impl Scheduler {
         category: Option<&str>,
         preferred_date: Option<DateTime<Utc>>,
     ) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
-        // Get existing scheduled posts for the same project
-        let existing =
-            SocialPost::find_scheduled(&self.pool, Some(post.project_id.to_uuid())).await?;
+        // Get existing scheduled posts for the same project (or all if org-owned)
+        let project_uuid = post.project_id.as_ref().map(|p| p.to_uuid());
+        let existing = SocialPost::find_scheduled(&self.pool, project_uuid).await?;
 
         let start_date = preferred_date.unwrap_or_else(Utc::now);
 
-        // Get optimal times based on category or use defaults
-        let optimal_times = self.get_optimal_times(category);
+        // Use learned benchmarks when available, else category defaults
+        let account_id_str = post.social_account_id.as_ref().map(|u| u.to_string());
+        let optimal_times = self
+            .get_optimal_times_learned(account_id_str.as_deref(), category)
+            .await;
 
         // Find next available slot
         for day_offset in 0..self.config.scheduling_horizon_days {
