@@ -612,6 +612,32 @@ pub enum NoraExecutiveTool {
         /// Project for VIBE billing
         project_id: Option<String>,
     },
+    // ── GitHub awareness ────────────────────────────────────────────────────
+    GithubListRepos {
+        org_id: Option<String>,
+    },
+    GithubReadFile {
+        repo: String,
+        path: String,
+        branch: Option<String>,
+    },
+    GithubListIssues {
+        repo: String,
+        state: Option<String>,
+    },
+    GithubListPrs {
+        repo: String,
+        state: Option<String>,
+    },
+    // ── Auri dispatch ───────────────────────────────────────────────────────
+    AssignToAuri {
+        project_id: String,
+        board_id: Option<String>,
+        title: String,
+        description: String,
+        github_repo: String,
+        base_branch: Option<String>,
+    },
 }
 
 /// Search types for web search

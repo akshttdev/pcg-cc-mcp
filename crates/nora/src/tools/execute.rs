@@ -924,8 +924,12 @@ impl ExecutiveTools {
             NoraExecutiveTool::GenerateImage { .. } => "generate_image".to_string(),
             NoraExecutiveTool::ApplyVideoEffect { .. } => "apply_video_effect".to_string(),
             NoraExecutiveTool::PostProcessVideoJob { .. } => "post_process_video_job".to_string(),
+            NoraExecutiveTool::GithubListRepos { .. } => "github_list_repos".to_string(),
+            NoraExecutiveTool::GithubReadFile { .. } => "github_read_file".to_string(),
+            NoraExecutiveTool::GithubListIssues { .. } => "github_list_issues".to_string(),
+            NoraExecutiveTool::GithubListPrs { .. } => "github_list_prs".to_string(),
+            NoraExecutiveTool::AssignToAuri { .. } => "assign_to_auri".to_string(),
 
-            // Add more mappings...
             _ => "unknown_tool".to_string(),
         }
     }

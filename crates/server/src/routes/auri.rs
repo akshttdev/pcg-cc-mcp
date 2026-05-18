@@ -21,10 +21,19 @@ use uuid::Uuid;
 
 use crate::{error::ApiError, helpers::billing::record_llm_vibe_usage, DeploymentImpl};
 
-const CLAUDE_BIN: &str = "/home/pythia/.nvm/versions/node/v22.20.0/bin/claude";
-const GH_BIN: &str = "/home/pythia/.local/bin/gh";
-const WORKSPACES_DIR: &str = "/home/pythia/auri-workspaces";
 const AURI_VIBE_ESTIMATE: i64 = 500; // upfront estimate, reconciled after
+
+fn claude_bin() -> String {
+    std::env::var("CLAUDE_BIN")
+        .unwrap_or_else(|_| "/home/pythia/.nvm/versions/node/v22.20.0/bin/claude".to_string())
+}
+fn gh_bin() -> String {
+    std::env::var("GH_BIN").unwrap_or_else(|_| "/home/pythia/.local/bin/gh".to_string())
+}
+fn workspaces_dir() -> String {
+    std::env::var("AURI_WORKSPACES_DIR")
+        .unwrap_or_else(|_| "/home/pythia/auri-workspaces".to_string())
+}
 
 #[derive(Debug, Deserialize)]
 pub struct RunPayload {

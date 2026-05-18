@@ -1031,6 +1031,81 @@ impl ExecutiveTools {
                     }
                 }
             }),
+            // ── GitHub awareness tools ─────────────────────────────────────
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "github_list_repos",
+                    "description": "List GitHub repositories accessible to the connected organization. Use this to understand what codebases exist before assigning work to Auri.",
+                    "parameters": { "type": "object", "properties": {}, "required": [] }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "github_read_file",
+                    "description": "Read the contents of a file in a GitHub repository. Use this to understand existing code before asking Auri to modify it.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo": { "type": "string", "description": "owner/repo format" },
+                            "path": { "type": "string", "description": "File path, e.g. 'src/main.rs'" },
+                            "branch": { "type": "string", "description": "Branch (default: main)" }
+                        },
+                        "required": ["repo", "path"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "github_list_issues",
+                    "description": "List open issues in a GitHub repository.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo": { "type": "string", "description": "owner/repo format" },
+                            "state": { "type": "string", "description": "'open', 'closed', or 'all'" }
+                        },
+                        "required": ["repo"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "github_list_prs",
+                    "description": "List pull requests in a GitHub repository.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo": { "type": "string", "description": "owner/repo format" },
+                            "state": { "type": "string", "description": "'open', 'closed', or 'merged'" }
+                        },
+                        "required": ["repo"]
+                    }
+                }
+            }),
+            // ── Auri dispatch ──────────────────────────────────────────────
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "assign_to_auri",
+                    "description": "Assign a coding task to Auri, the AI developer agent. Auri will clone the repository, implement changes using Claude Code, commit, push, and open a Pull Request. The task is tracked on the project board with VIBE costs. Use whenever the user wants code written, bugs fixed, or any repository changes made.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_id": { "type": "string", "description": "Project UUID" },
+                            "board_id": { "type": "string", "description": "Board UUID (optional)" },
+                            "title": { "type": "string", "description": "Task title" },
+                            "description": { "type": "string", "description": "Detailed spec for Auri — be specific about files, requirements, expected behaviour" },
+                            "github_repo": { "type": "string", "description": "owner/repo, e.g. 'powerclubglobal/pcg-cc-mcp'" },
+                            "base_branch": { "type": "string", "description": "Base branch (default: main)" }
+                        },
+                        "required": ["project_id", "title", "description", "github_repo"]
+                    }
+                }
+            }),
         ]
     }
 
