@@ -55,6 +55,7 @@ pub async fn chat_with_topsi(
 
     let topsi_request = TopsiRequest::new(TopsiRequestType::Chat {
         message: request.message.clone(),
+        model_id: request.model_id.clone(),
     });
 
     let response = topsi

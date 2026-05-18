@@ -1,4 +1,5 @@
 use anyhow::{self, Error as AnyhowError};
+use chrono::Datelike;
 use deployment::{Deployment, DeploymentError};
 use server::{routes, DeploymentImpl};
 use sqlx::Error as SqlxError;
@@ -173,9 +174,15 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     // Start Sovereign Stack scraper service (Dropbox C: → sovereign stack E:)
     let sovereign_stack_shutdown = tokio_util::sync::CancellationToken::new();
+    let sovereign_stack_org_id = std::env::var("SOVEREIGN_STACK_ORG_ID")
+        .unwrap_or_else(|_| "02020202-0202-0202-0202-020202020202".to_string());
     match server::sovereign_stack::SovereignStackConfig::from_env() {
         Ok(config) if config.enabled => {
-            let mut service = server::sovereign_stack::SovereignStackService::new(config);
+            let mut service = server::sovereign_stack::SovereignStackService::new(
+                config,
+                Some(deployment.db().pool.clone()),
+                sovereign_stack_org_id.clone(),
+            );
             let shutdown_token = sovereign_stack_shutdown.clone();
             tokio::spawn(async move {
                 if let Err(e) = service.start(shutdown_token).await {
@@ -191,6 +198,28 @@ async fn main() -> Result<(), VibeKanbanError> {
         Err(e) => {
             tracing::warn!("Failed to load sovereign stack config: {}", e);
         }
+    }
+
+    // Auto-index cloud files on startup (10s delay to let scraper do first pass)
+    {
+        let pool_for_index = deployment.db().pool.clone();
+        let org_id_for_index = sovereign_stack_org_id.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            tracing::info!(
+                "[CLOUD_INDEX] Running startup index for org {}",
+                org_id_for_index
+            );
+            match server::org_cloud_indexer::index_existing_data(&pool_for_index, &org_id_for_index)
+                .await
+            {
+                Ok(count) => tracing::info!(
+                    "[CLOUD_INDEX] Startup index complete: {} files indexed",
+                    count
+                ),
+                Err(e) => tracing::error!("[CLOUD_INDEX] Startup index failed: {}", e),
+            }
+        });
     }
 
     // Start Pulse Engine NATS consumer and publisher
@@ -244,7 +273,12 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     if auto_start_apn {
         tokio::spawn(async move {
-            tracing::info!("🌐 Media Monsters Master Node — starting APN node...");
+            // Resolve node identity from env or ~/.apn/node_identity.json
+            let node_id = std::env::var("APN_NODE_ID").unwrap_or_default();
+            let device_name =
+                std::env::var("APN_DEVICE_NAME").unwrap_or_else(|_| "APN Node".to_string());
+
+            tracing::info!("🌐 Starting APN node — {} ({})...", device_name, node_id);
 
             // Kill any existing apn_node processes to prevent accumulation
             utils::external_services::kill_existing_apn_nodes();
@@ -262,21 +296,24 @@ async fn main() -> Result<(), VibeKanbanError> {
                 return;
             }
 
-            let device_name = std::env::var("APN_DEVICE_NAME")
-                .unwrap_or_else(|_| "Media Monsters Master Node".to_string());
+            let relay_url = std::env::var("APN_RELAY_URL")
+                .unwrap_or_else(|_| "nats://nonlocal.info:4222".to_string());
 
             let mut cmd = tokio::process::Command::new(&apn_binary);
             cmd.arg("--port")
                 .arg("4001")
                 .arg("--relay")
-                .arg("nats://nonlocal.info:4222")
+                .arg(&relay_url)
                 .arg("--heartbeat-interval")
                 .arg("30")
                 .arg("--name")
                 .arg(&device_name);
 
-            // Set custom hostname for master node
-            cmd.env("APN_HOSTNAME", "media-monsters-master");
+            // Pass unified identity to APN node subprocess
+            if !node_id.is_empty() {
+                cmd.env("APN_HOSTNAME", &node_id);
+                cmd.env("APN_NODE_ID", &node_id);
+            }
 
             // Stdin/stdout/stderr should be null for background process
             cmd.stdin(std::process::Stdio::null())
@@ -286,7 +323,9 @@ async fn main() -> Result<(), VibeKanbanError> {
             match cmd.spawn() {
                 Ok(child) => {
                     tracing::info!(
-                        "✅ Media Monsters Master Node — APN node active (PID: {:?})",
+                        "✅ {} ({}) — APN node active (PID: {:?})",
+                        device_name,
+                        node_id,
                         child.id()
                     );
                 }
@@ -305,6 +344,47 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
 
+    // Spawn social intelligence engine (hourly: mention clustering + snapshot analysis;
+    // opportunity drafter runs every 30 min)
+    {
+        use chrono::Datelike as _;
+        use services::services::social::intelligence::{IntelligenceEngine, OpportunityDrafter};
+        let pool = deployment.db().pool.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                let engine = IntelligenceEngine::new(pool.clone());
+                engine.run_periodic_processors().await;
+                // Weekly processors run on Sunday (weekday 0)
+                let weekday = chrono::Utc::now().weekday();
+                if weekday == chrono::Weekday::Sun {
+                    engine.run_weekly_processors().await;
+                }
+            }
+        });
+        let pool2 = deployment.db().pool.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1800));
+            loop {
+                interval.tick().await;
+                let drafter = OpportunityDrafter::new(pool2.clone());
+                if let Err(e) = drafter.draft_pending().await {
+                    tracing::warn!("OpportunityDrafter error: {e}");
+                }
+            }
+        });
+    }
+
+    // Spawn social post publish loop (checks every 15 minutes)
+    routes::social_publisher::spawn_social_publish_loop(deployment.db().pool.clone());
+
+    // Spawn social metrics sync loop (runs every 30 minutes, inserts growth snapshots)
+    routes::social_metrics_sync::spawn_metrics_sync_loop(deployment.db().pool.clone());
+
+    // Spawn account follower snapshot loop (runs once per day)
+    routes::social_metrics_sync::spawn_account_snapshot_loop(deployment.db().pool.clone());
+
     // Spawn workflow schedule trigger loop (checks every 5 minutes)
     let schedule_shutdown = tokio_util::sync::CancellationToken::new();
     routes::data_source_workflows::spawn_workflow_schedule_loop(
@@ -312,15 +392,43 @@ async fn main() -> Result<(), VibeKanbanError> {
         schedule_shutdown.clone(),
     );
 
+    // Spawn OAuth token refresh worker (every 15 min, refreshes tokens expiring < 1hr)
+    routes::integrations::spawn_token_refresh_loop(deployment.db().pool.clone());
+
+    // Spawn cloud storage sync worker (every 15 min, runs OneDrive/Dropbox/GDrive deltas)
+    services::services::storage::sync_worker::spawn_sync_loop(deployment.db().pool.clone());
+
+    // Spawn calendar sync worker (every 15 min, runs Google + Outlook delta syncs
+    // and creates CRM activities for any matched attendees)
+    services::services::calendar::spawn_sync_loop(deployment.db().pool.clone());
+
     // Create shutdown registry (must be before workers that use it)
     let registry = server::workers::ShutdownRegistry::new();
 
-    // Spawn Agent Flow Orchestration Engine (disabled by default)
-    if std::env::var("ENABLE_AGENT_FLOW_ENGINE").unwrap_or_default() == "1" {
+    // Spawn Agent Flow Orchestration Engine
+    // Enabled by default in dev mode, disabled in prod unless ENABLE_AGENT_FLOW_ENGINE=1
+    let enable_agent_flow_engine = std::env::var("ENABLE_AGENT_FLOW_ENGINE")
+        .map(|v| v == "1")
+        .unwrap_or_else(|_| cfg!(debug_assertions)); // Default: enabled in dev, disabled in prod
+
+    if enable_agent_flow_engine {
         let executor =
             server::agent_flow_executor::AgentFlowExecutor::new(deployment.db().pool.clone());
         registry.spawn_worker(executor).await;
-        tracing::info!("[AgentFlowEngine] Enabled via ENABLE_AGENT_FLOW_ENGINE=1");
+
+        // Also spawn OrchestrationCoordinator for multi-task orchestration
+        let orchestrator = server::orchestration_engine::OrchestrationCoordinator::new(
+            deployment.db().pool.clone(),
+        );
+        registry.spawn_worker(orchestrator).await;
+
+        if cfg!(debug_assertions) {
+            tracing::info!("[AgentFlowEngine] Enabled (dev mode default)");
+            tracing::info!("[OrchestrationCoordinator] Enabled (dev mode default)");
+        } else {
+            tracing::info!("[AgentFlowEngine] Enabled via ENABLE_AGENT_FLOW_ENGINE=1");
+            tracing::info!("[OrchestrationCoordinator] Enabled via ENABLE_AGENT_FLOW_ENGINE=1");
+        }
     }
 
     // Spawn OSS Library Listener (polls GitHub releases hourly)
@@ -361,6 +469,13 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Nora inbox poller — monitors nora@powerclubglobal.com, routes to intake pipeline
     registry
         .spawn_worker(server::workers::background_tasks::NoraInboxPoller::new(
+            deployment.db().pool.clone(),
+        ))
+        .await;
+
+    // Email sync worker — pulls Gmail (and future Zoho/IMAP) accounts on cadence
+    registry
+        .spawn_worker(server::workers::background_tasks::EmailSyncWorker::new(
             deployment.db().pool.clone(),
         ))
         .await;

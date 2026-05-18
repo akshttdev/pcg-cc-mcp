@@ -6,9 +6,16 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
+  File,
+  FileSpreadsheet,
   FileText,
+  Film,
   FolderOpen,
+  Image,
+  LayoutGrid,
+  List,
   MoreHorizontal,
+  Music,
   Pencil,
   Plus,
   Search,
@@ -82,11 +89,19 @@ function AddDataSourceDialog({
   const queryClient = useQueryClient();
   const isEdit = !!editingSource;
 
-  const [selectedProject, setSelectedProject] = useState<string>(editingSource?.project_id ?? '__none__');
-  const [sourceType, setSourceType] = useState<string>(editingSource?.source_type ?? 'text');
-  const [dataType, setDataType] = useState<string>(editingSource?.data_type ?? 'conversation');
+  const [selectedProject, setSelectedProject] = useState<string>(
+    editingSource?.project_id ?? '__none__'
+  );
+  const [sourceType, setSourceType] = useState<string>(
+    editingSource?.source_type ?? 'text'
+  );
+  const [dataType, setDataType] = useState<string>(
+    editingSource?.data_type ?? 'conversation'
+  );
   const [title, setTitle] = useState(editingSource?.title ?? '');
-  const [description, setDescription] = useState(editingSource?.description ?? '');
+  const [description, setDescription] = useState(
+    editingSource?.description ?? ''
+  );
   const [content, setContent] = useState(editingSource?.content ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [folder, setFolder] = useState(editingSource?.folder ?? '');
@@ -105,13 +120,15 @@ function AddDataSourceDialog({
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const projId = selectedProject !== '__none__' ? selectedProject : undefined;
+      const projId =
+        selectedProject !== '__none__' ? selectedProject : undefined;
       if (sourceType === 'file' && file) {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('title', title.trim());
         formData.append('data_type', dataType);
-        if (description.trim()) formData.append('description', description.trim());
+        if (description.trim())
+          formData.append('description', description.trim());
         if (projId) formData.append('project_id', projId);
         formData.append('organization_id', orgId);
         if (folder.trim()) formData.append('folder', folder.trim());
@@ -124,7 +141,8 @@ function AddDataSourceDialog({
         description: description.trim() || undefined,
         data_type: dataType,
         source_type: sourceType,
-        content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+        content:
+          sourceType === 'text' && content.trim() ? content.trim() : undefined,
         folder: folder.trim() || undefined,
       });
     },
@@ -152,7 +170,8 @@ function AddDataSourceDialog({
         description: description.trim() || undefined,
         data_type: dataType,
         source_type: sourceType,
-        content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+        content:
+          sourceType === 'text' && content.trim() ? content.trim() : undefined,
         folder: folder.trim() || undefined,
       });
     } else {
@@ -163,7 +182,13 @@ function AddDataSourceDialog({
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) resetForm();
+      }}
+    >
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -182,15 +207,30 @@ function AddDataSourceDialog({
             >
               <div className="flex items-center gap-1.5">
                 <RadioGroupItem value="text" id="st-text" />
-                <Label htmlFor="st-text" className="text-sm font-normal cursor-pointer">Text</Label>
+                <Label
+                  htmlFor="st-text"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Text
+                </Label>
               </div>
               <div className="flex items-center gap-1.5">
                 <RadioGroupItem value="file" id="st-file" />
-                <Label htmlFor="st-file" className="text-sm font-normal cursor-pointer">File Upload</Label>
+                <Label
+                  htmlFor="st-file"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  File Upload
+                </Label>
               </div>
               <div className="flex items-center gap-1.5">
                 <RadioGroupItem value="integration" id="st-integration" />
-                <Label htmlFor="st-integration" className="text-sm font-normal cursor-pointer">Integration</Label>
+                <Label
+                  htmlFor="st-integration"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Integration
+                </Label>
               </div>
             </RadioGroup>
           </div>
@@ -211,7 +251,9 @@ function AddDataSourceDialog({
               </SelectTrigger>
               <SelectContent>
                 {DATA_TYPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -226,7 +268,10 @@ function AddDataSourceDialog({
             />
           </FormField>
 
-          <FormField label="Folder (optional)" description='Use / to create subfolders. Leave blank to file under "Unfiled".'>
+          <FormField
+            label="Folder (optional)"
+            description='Use / to create subfolders. Leave blank to file under "Unfiled".'
+          >
             <Input
               placeholder="e.g. Meetings or Meetings/Google Meet"
               value={folder}
@@ -264,21 +309,29 @@ function AddDataSourceDialog({
           )}
           {sourceType === 'integration' && (
             <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
-              Integration sources are populated automatically from connected services.
+              Integration sources are populated automatically from connected
+              services.
             </div>
           )}
 
           {projectEntries.length > 0 && (
             <div className="space-y-2">
               <Label>Project (optional)</Label>
-              <Select value={selectedProject} onValueChange={setSelectedProject}>
+              <Select
+                value={selectedProject}
+                onValueChange={setSelectedProject}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="No project (org-level)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">No project (org-level)</SelectItem>
+                  <SelectItem value="__none__">
+                    No project (org-level)
+                  </SelectItem>
                   {projectEntries.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -286,9 +339,17 @@ function AddDataSourceDialog({
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
           <Button onClick={handleSubmit} disabled={!title.trim() || isPending}>
-            {isPending ? (isEdit ? 'Saving...' : 'Adding...') : (isEdit ? 'Save' : 'Add Source')}
+            {isPending
+              ? isEdit
+                ? 'Saving...'
+                : 'Adding...'
+              : isEdit
+                ? 'Save'
+                : 'Add Source'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -321,11 +382,18 @@ function DeleteConfirmDialog({
           </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Are you sure you want to delete <strong>{sourceName}</strong>? This action cannot be undone.
+          Are you sure you want to delete <strong>{sourceName}</strong>? This
+          action cannot be undone.
         </p>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={isPending}
+          >
             {isPending ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogFooter>
@@ -348,13 +416,20 @@ export function DataSourcesView({
 }) {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
-  const [editingSource, setEditingSource] = useState<DataSourceRecord | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<DataSourceRecord | null>(null);
+  const [editingSource, setEditingSource] = useState<DataSourceRecord | null>(
+    null
+  );
+  const [deleteTarget, setDeleteTarget] = useState<DataSourceRecord | null>(
+    null
+  );
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['Meetings', 'Documents']));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set(['Meetings', 'Documents'])
+  );
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const { data: sources = [], isLoading } = useQuery({
     queryKey: dataSourceKeys.list(orgId),
@@ -372,7 +447,7 @@ export function DataSourcesView({
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
       setSortDir('asc');
@@ -380,14 +455,19 @@ export function DataSourcesView({
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
-    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+    if (sortField !== field)
+      return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+    return sortDir === 'asc' ? (
+      <ArrowUp className="h-3 w-3" />
+    ) : (
+      <ArrowDown className="h-3 w-3" />
+    );
   };
 
   // Build folder tree from sources
   const folderTree = useMemo(() => {
     const tree: Record<string, Record<string, number>> = {}; // root -> { sub: count }
-    sources.forEach(s => {
+    sources.forEach((s) => {
       const f = s.folder || 'Unfiled';
       const parts = f.split('/');
       const root = parts[0];
@@ -408,7 +488,7 @@ export function DataSourcesView({
     let arr = [...sources];
     // Folder filter
     if (selectedFolder) {
-      arr = arr.filter(s => {
+      arr = arr.filter((s) => {
         const f = s.folder || 'Unfiled';
         return f === selectedFolder || f.startsWith(selectedFolder + '/');
       });
@@ -416,15 +496,27 @@ export function DataSourcesView({
     // Search filter
     if (search.trim()) {
       const q = search.toLowerCase();
-      arr = arr.filter(s => s.title.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q));
+      arr = arr.filter(
+        (s) =>
+          s.title.toLowerCase().includes(q) ||
+          (s.description || '').toLowerCase().includes(q)
+      );
     }
     arr.sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
-        case 'title': cmp = a.title.localeCompare(b.title); break;
-        case 'data_type': cmp = a.data_type.localeCompare(b.data_type); break;
-        case 'status': cmp = a.status.localeCompare(b.status); break;
-        case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break;
+        case 'title':
+          cmp = a.title.localeCompare(b.title);
+          break;
+        case 'data_type':
+          cmp = a.data_type.localeCompare(b.data_type);
+          break;
+        case 'status':
+          cmp = a.status.localeCompare(b.status);
+          break;
+        case 'created_at':
+          cmp = a.created_at.localeCompare(b.created_at);
+          break;
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
@@ -432,7 +524,7 @@ export function DataSourcesView({
   }, [sources, sortField, sortDir, selectedFolder, search]);
 
   const dataTypeLabel = (dt: string) =>
-    DATA_TYPE_OPTIONS.find(o => o.value === dt)?.label ?? dt;
+    DATA_TYPE_OPTIONS.find((o) => o.value === dt)?.label ?? dt;
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
@@ -443,28 +535,34 @@ export function DataSourcesView({
 
   const statusBadge = (status: string) => {
     const variants: Record<string, string> = {
-      ready: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-      pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-      processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      ready:
+        'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      pending:
+        'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+      processing:
+        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
       error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     };
     return (
-      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}>
+      <span
+        className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}
+      >
         {status}
       </span>
     );
   };
 
   const toggleFolder = (f: string) => {
-    setExpandedFolders(prev => {
+    setExpandedFolders((prev) => {
       const next = new Set(prev);
-      if (next.has(f)) next.delete(f); else next.add(f);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
       return next;
     });
   };
 
   const folderCount = (f: string) =>
-    sources.filter(s => {
+    sources.filter((s) => {
       const sf = s.folder || 'Unfiled';
       return sf === f || sf.startsWith(f + '/');
     }).length;
@@ -477,19 +575,33 @@ export function DataSourcesView({
           <h2 className="text-lg font-semibold">Data Sources</h2>
           <Badge variant="secondary">{sources.length}</Badge>
         </div>
-        <Button size="sm" onClick={() => { setEditingSource(null); setAddOpen(true); }} className="gap-1">
+        <Button
+          size="sm"
+          onClick={() => {
+            setEditingSource(null);
+            setAddOpen(true);
+          }}
+          className="gap-1"
+        >
           <Plus className="h-3.5 w-3.5" />
           Add Data Source
         </Button>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">Loading data sources...</div>
+        <div className="text-center py-12 text-muted-foreground text-sm">
+          Loading data sources...
+        </div>
       ) : sources.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Database className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>No data sources yet</p>
-          <Button variant="outline" size="sm" className="mt-4 gap-1" onClick={() => setAddOpen(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4 gap-1"
+            onClick={() => setAddOpen(true)}
+          >
             <Plus className="h-3.5 w-3.5" />
             Add your first data source
           </Button>
@@ -498,172 +610,408 @@ export function DataSourcesView({
         <div className="flex gap-4">
           {/* Folder sidebar */}
           <div className="w-48 shrink-0">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-1">Folders</div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-1">
+              Folders
+            </div>
             <nav className="space-y-0.5">
               {/* All */}
               <button
                 onClick={() => setSelectedFolder(null)}
                 className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted/60 transition-colors ${!selectedFolder ? 'bg-muted font-medium' : ''}`}
               >
-                <span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />All</span>
-                <span className="text-xs text-muted-foreground">{allFolderCount}</span>
+                <span className="flex items-center gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                  All
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {allFolderCount}
+                </span>
               </button>
               {/* Root folders */}
-              {Object.entries(folderTree).sort(([a],[b]) => a.localeCompare(b)).map(([root, subs]) => {
-                const subKeys = Object.keys(subs).filter(k => k !== '__self__');
-                const hasChildren = subKeys.length > 0;
-                const isExpanded = expandedFolders.has(root);
-                const cnt = folderCount(root);
-                return (
-                  <div key={root}>
-                    <button
-                      onClick={() => { if (hasChildren) toggleFolder(root); setSelectedFolder(root); }}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted/60 transition-colors ${selectedFolder === root ? 'bg-muted font-medium' : ''}`}
-                    >
-                      <span className="flex items-center gap-1.5 min-w-0">
-                        {hasChildren
-                          ? (isExpanded ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />)
-                          : <span className="w-3 shrink-0" />}
-                        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{root}</span>
-                      </span>
-                      <span className="text-xs text-muted-foreground shrink-0 ml-1">{cnt}</span>
-                    </button>
-                    {hasChildren && isExpanded && (
-                      <div className="pl-4 space-y-0.5">
-                        {subKeys.sort().map(sub => {
-                          const fullPath = `${root}/${sub}`;
-                          const subCnt = folderCount(fullPath);
-                          return (
-                            <button
-                              key={sub}
-                              onClick={() => setSelectedFolder(fullPath)}
-                              className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-muted/60 transition-colors ${selectedFolder === fullPath ? 'bg-muted font-medium' : ''}`}
-                            >
-                              <span className="flex items-center gap-1.5 min-w-0">
-                                <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                <span className="truncate">{sub}</span>
-                              </span>
-                              <span className="text-xs text-muted-foreground">{subCnt}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {Object.entries(folderTree)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([root, subs]) => {
+                  const subKeys = Object.keys(subs).filter(
+                    (k) => k !== '__self__'
+                  );
+                  const hasChildren = subKeys.length > 0;
+                  const isExpanded = expandedFolders.has(root);
+                  const cnt = folderCount(root);
+                  return (
+                    <div key={root}>
+                      <button
+                        onClick={() => {
+                          if (hasChildren) toggleFolder(root);
+                          setSelectedFolder(root);
+                        }}
+                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted/60 transition-colors ${selectedFolder === root ? 'bg-muted font-medium' : ''}`}
+                      >
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          {hasChildren ? (
+                            isExpanded ? (
+                              <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                            )
+                          ) : (
+                            <span className="w-3 shrink-0" />
+                          )}
+                          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{root}</span>
+                        </span>
+                        <span className="text-xs text-muted-foreground shrink-0 ml-1">
+                          {cnt}
+                        </span>
+                      </button>
+                      {hasChildren && isExpanded && (
+                        <div className="pl-4 space-y-0.5">
+                          {subKeys.sort().map((sub) => {
+                            const fullPath = `${root}/${sub}`;
+                            const subCnt = folderCount(fullPath);
+                            return (
+                              <button
+                                key={sub}
+                                onClick={() => setSelectedFolder(fullPath)}
+                                className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-muted/60 transition-colors ${selectedFolder === fullPath ? 'bg-muted font-medium' : ''}`}
+                              >
+                                <span className="flex items-center gap-1.5 min-w-0">
+                                  <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                  <span className="truncate">{sub}</span>
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {subCnt}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
             </nav>
           </div>
 
           {/* Main content */}
           <div className="flex-1 min-w-0 space-y-3">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search sources..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-sm border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              />
+            {/* Search + View Toggle */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search sources..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-sm border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+              <div className="flex items-center border rounded overflow-hidden">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-1.5 ${viewMode === 'grid' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
+                  title="Grid view"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-1.5 ${viewMode === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
+                  title="List view"
+                >
+                  <List className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-            {sorted.length === 0 ? (
-              <div className="text-center py-8 text-sm text-muted-foreground">No sources in this folder.</div>
-            ) : (
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('title')}>
-                  <span className="flex items-center gap-1">Title <SortIcon field="title" /></span>
-                </TableHead>
-                <TableHead className="cursor-pointer select-none w-[120px]" onClick={() => toggleSort('data_type')}>
-                  <span className="flex items-center gap-1">Type <SortIcon field="data_type" /></span>
-                </TableHead>
-                <TableHead className="w-[100px]">Source</TableHead>
-                <TableHead className="cursor-pointer select-none w-[80px]" onClick={() => toggleSort('status')}>
-                  <span className="flex items-center gap-1">Status <SortIcon field="status" /></span>
-                </TableHead>
-                <TableHead className="cursor-pointer select-none w-[110px]" onClick={() => toggleSort('created_at')}>
-                  <span className="flex items-center gap-1">Created <SortIcon field="created_at" /></span>
-                </TableHead>
-                <TableHead className="w-[40px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sorted.map((source) => (
-                <TableRow key={source.id}>
-                  <TableCell>
-                    <div className="min-w-0">
-                      <Link to={`/organizations/${orgId}/data-sources/${source.id}`} className="text-sm font-medium truncate hover:underline block">{source.title}</Link>
-                      {source.description && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{source.description}</p>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs">{dataTypeLabel(source.data_type)}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      {source.source_type === 'file' && source.file_name ? (
-                        <>
-                          <Upload className="h-3 w-3 shrink-0" />
-                          <span className="truncate max-w-[60px]">{source.file_name}</span>
-                          {source.file_size_bytes != null && (
-                            <span className="shrink-0">({formatFileSize(source.file_size_bytes)})</span>
-                          )}
-                        </>
-                      ) : source.source_type === 'file' ? (
-                        <>
-                          <Upload className="h-3 w-3 shrink-0" />
-                          <span>File</span>
-                        </>
-                      ) : source.source_type === 'text' ? (
-                        <>
-                          <FileText className="h-3 w-3 shrink-0" />
-                          <span>Text</span>
-                        </>
-                      ) : (
-                        <>
-                          <Database className="h-3 w-3 shrink-0" />
-                          <span>Integration</span>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>{statusBadge(source.status)}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{formatDate(source.created_at)}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                          <MoreHorizontal className="h-3.5 w-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => { setEditingSource(source); setAddOpen(true); }}>
-                          <Pencil className="h-3.5 w-3.5 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => setDeleteTarget(source)}
+            {/* Show folder tiles when at root (no folder selected) and not searching */}
+            {!selectedFolder && !search.trim() && viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                {Object.entries(folderTree)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([root]) => {
+                    const cnt = folderCount(root);
+                    return (
+                      <button
+                        key={root}
+                        onClick={() => setSelectedFolder(root)}
+                        className="group border rounded-lg overflow-hidden hover:shadow-md hover:border-primary/30 transition-all bg-card text-left"
+                      >
+                        <div className="aspect-square flex items-center justify-center bg-amber-50 dark:bg-amber-950/20">
+                          <FolderOpen className="h-12 w-12 text-amber-500 opacity-60 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                        <div className="p-2 space-y-0.5">
+                          <p
+                            className="text-xs font-medium truncate"
+                            title={root}
+                          >
+                            {root}
+                          </p>
+                          <span className="text-[10px] text-muted-foreground">
+                            {cnt} items
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            ) : sorted.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">
+                No sources in this folder.
+              </div>
+            ) : viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                {sorted.slice(0, 200).map((source) => {
+                  const isImage = source.file_type?.startsWith('image/');
+                  const isVideo = source.file_type?.startsWith('video/');
+                  const isAudio = source.file_type?.startsWith('audio/');
+                  const isPdf = source.file_type === 'application/pdf';
+                  const isDoc =
+                    source.file_type?.includes('document') ||
+                    source.file_type?.includes('wordprocessing');
+                  const isSpreadsheet =
+                    source.file_type?.includes('spreadsheet') ||
+                    source.file_type === 'text/csv';
+                  const FileIcon2 = isImage
+                    ? Image
+                    : isVideo
+                      ? Film
+                      : isAudio
+                        ? Music
+                        : isSpreadsheet
+                          ? FileSpreadsheet
+                          : isPdf || isDoc
+                            ? FileText
+                            : File;
+                  const bgColor = isImage
+                    ? 'bg-purple-50 dark:bg-purple-950/30'
+                    : isVideo
+                      ? 'bg-blue-50 dark:bg-blue-950/30'
+                      : isAudio
+                        ? 'bg-orange-50 dark:bg-orange-950/30'
+                        : 'bg-muted/30';
+                  const iconColor = isImage
+                    ? 'text-purple-500'
+                    : isVideo
+                      ? 'text-blue-500'
+                      : isAudio
+                        ? 'text-orange-500'
+                        : 'text-muted-foreground';
+                  return (
+                    <Link
+                      key={source.id}
+                      to={`/organizations/${orgId}/data-sources/${source.id}`}
+                      className="group border rounded-lg overflow-hidden hover:shadow-md hover:border-primary/30 transition-all bg-card"
+                    >
+                      <div
+                        className={`aspect-square flex items-center justify-center ${bgColor}`}
+                      >
+                        <FileIcon2
+                          className={`h-10 w-10 ${iconColor} opacity-60 group-hover:opacity-100 transition-opacity`}
+                        />
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <p
+                          className="text-xs font-medium truncate"
+                          title={source.title}
                         >
-                          <Trash2 className="h-3.5 w-3.5 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+                          {source.title}
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-muted-foreground capitalize">
+                            {source.data_type}
+                          </span>
+                          {source.file_size_bytes != null && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatFileSize(source.file_size_bytes)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+                {sorted.length > 200 && (
+                  <div className="col-span-full text-center py-4 text-xs text-muted-foreground">
+                    Showing 200 of {sorted.length} files. Use search or
+                    subfolders to narrow down.
+                  </div>
+                )}
+              </div>
+            ) : !selectedFolder && !search.trim() ? (
+              /* List view: show folders at root */
+              <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="w-[100px] text-right">
+                        Items
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(folderTree)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([root]) => (
+                        <TableRow
+                          key={root}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setSelectedFolder(root)}
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <FolderOpen className="h-4 w-4 text-amber-500 shrink-0" />
+                              <span className="text-sm font-medium">
+                                {root}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right text-sm text-muted-foreground">
+                            {folderCount(root)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            ) : (
+              <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead
+                        className="cursor-pointer select-none"
+                        onClick={() => toggleSort('title')}
+                      >
+                        <span className="flex items-center gap-1">
+                          Title <SortIcon field="title" />
+                        </span>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer select-none w-[120px]"
+                        onClick={() => toggleSort('data_type')}
+                      >
+                        <span className="flex items-center gap-1">
+                          Type <SortIcon field="data_type" />
+                        </span>
+                      </TableHead>
+                      <TableHead className="w-[100px]">Source</TableHead>
+                      <TableHead
+                        className="cursor-pointer select-none w-[80px]"
+                        onClick={() => toggleSort('status')}
+                      >
+                        <span className="flex items-center gap-1">
+                          Status <SortIcon field="status" />
+                        </span>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer select-none w-[110px]"
+                        onClick={() => toggleSort('created_at')}
+                      >
+                        <span className="flex items-center gap-1">
+                          Created <SortIcon field="created_at" />
+                        </span>
+                      </TableHead>
+                      <TableHead className="w-[40px]" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sorted.map((source) => (
+                      <TableRow key={source.id}>
+                        <TableCell>
+                          <div className="min-w-0">
+                            <Link
+                              to={`/organizations/${orgId}/data-sources/${source.id}`}
+                              className="text-sm font-medium truncate hover:underline block"
+                            >
+                              {source.title}
+                            </Link>
+                            {source.description && (
+                              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                {source.description}
+                              </p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {dataTypeLabel(source.data_type)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            {source.source_type === 'file' &&
+                            source.file_name ? (
+                              <>
+                                <Upload className="h-3 w-3 shrink-0" />
+                                <span className="truncate max-w-[60px]">
+                                  {source.file_name}
+                                </span>
+                                {source.file_size_bytes != null && (
+                                  <span className="shrink-0">
+                                    ({formatFileSize(source.file_size_bytes)})
+                                  </span>
+                                )}
+                              </>
+                            ) : source.source_type === 'file' ? (
+                              <>
+                                <Upload className="h-3 w-3 shrink-0" />
+                                <span>File</span>
+                              </>
+                            ) : source.source_type === 'text' ? (
+                              <>
+                                <FileText className="h-3 w-3 shrink-0" />
+                                <span>Text</span>
+                              </>
+                            ) : (
+                              <>
+                                <Database className="h-3 w-3 shrink-0" />
+                                <span>Integration</span>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{statusBadge(source.status)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {formatDate(source.created_at)}
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setEditingSource(source);
+                                  setAddOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-3.5 w-3.5 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setDeleteTarget(source)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
             )}
           </div>
         </div>
@@ -679,7 +1027,9 @@ export function DataSourcesView({
 
       <DeleteConfirmDialog
         open={!!deleteTarget}
-        onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
+        onOpenChange={(v) => {
+          if (!v) setDeleteTarget(null);
+        }}
         sourceName={deleteTarget?.title ?? ''}
         onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
         isPending={deleteMutation.isPending}

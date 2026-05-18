@@ -7,6 +7,7 @@
 //! - Analytics collection
 
 pub mod connectors;
+pub mod intelligence;
 pub mod publisher;
 pub mod scheduler;
 
@@ -104,6 +105,11 @@ pub struct PublishContent {
     pub mentions: Vec<String>,
     pub link: Option<String>,
     pub scheduled_for: Option<DateTime<Utc>>,
+    /// Platform-specific extras pulled from `social_posts.platform_specific`.
+    /// Each connector reads its own subkey, e.g. `platform_specific.tiktok.privacy_level`.
+    /// Connectors that don't care can ignore it.
+    #[serde(default)]
+    pub platform_specific: Option<serde_json::Value>,
 }
 
 /// Platform-specific content adaptations
@@ -125,11 +131,15 @@ pub trait PlatformConnector: Send + Sync {
     /// Generate OAuth authorization URL
     async fn get_auth_url(&self, redirect_uri: &str, state: &str) -> Result<String, SocialError>;
 
-    /// Exchange OAuth code for tokens
+    /// Exchange OAuth code for tokens.
+    ///
+    /// `code_verifier` is the PKCE verifier — required by providers that mandate
+    /// PKCE (e.g. TikTok). For providers that don't use PKCE, the param is ignored.
     async fn exchange_code(
         &self,
         code: &str,
         redirect_uri: &str,
+        code_verifier: Option<&str>,
     ) -> Result<OAuthTokens, SocialError>;
 
     /// Refresh access token
@@ -221,6 +231,9 @@ pub fn get_connector(platform: SocialPlatform) -> Result<Box<dyn PlatformConnect
         SocialPlatform::Twitter => Ok(Box::new(connectors::twitter::TwitterConnector::new())),
         SocialPlatform::TikTok => Ok(Box::new(connectors::tiktok::TikTokConnector::new())),
         SocialPlatform::Threads => Ok(Box::new(connectors::threads::ThreadsConnector::new())),
-        _ => Err(SocialError::UnsupportedPlatform(platform.to_string())),
+        SocialPlatform::Facebook => Ok(Box::new(connectors::facebook::FacebookConnector::new())),
+        SocialPlatform::YouTube => Ok(Box::new(connectors::youtube::YouTubeConnector::new())),
+        SocialPlatform::Bluesky => Ok(Box::new(connectors::bluesky::BlueskyConnector::new())),
+        SocialPlatform::Pinterest => Ok(Box::new(connectors::pinterest::PinterestConnector::new())),
     }
 }

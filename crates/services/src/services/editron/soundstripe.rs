@@ -13,11 +13,11 @@ use thiserror::Error;
 use ts_rs::TS;
 
 use super::{
-    EditronError,
     music::{
         LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
         MusicTrack,
     },
+    EditronError,
 };
 
 /// Soundstripe API base URL

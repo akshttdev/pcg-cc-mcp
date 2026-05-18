@@ -141,6 +141,12 @@ const CommandCenterPage = lazy(() =>
     default: m.CommandCenterPage,
   }))
 );
+const MeetingsPage = lazy(() =>
+  import('@/pages/meetings').then((m) => ({ default: m.MeetingsPage }))
+);
+const AuriTasksPage = lazy(() =>
+  import('@/pages/auri-tasks').then((m) => ({ default: m.AuriTasksPage }))
+);
 const InvoicesPage = lazy(() =>
   import('@/pages/invoices').then((m) => ({ default: m.InvoicesPage }))
 );
@@ -260,6 +266,11 @@ const DeveloperSettings = lazy(() =>
 const ApnDriveSettings = lazy(
   () => import('@/pages/settings/ApnDriveSettings')
 );
+const StorageSettings = lazy(() =>
+  import('@/pages/settings/StorageSettings').then((m) => ({
+    default: m.StorageSettings,
+  }))
+);
 const TopsiAdminSettings = lazy(() =>
   import('@/pages/settings/TopsiAdminSettings').then((m) => ({
     default: m.TopsiAdminSettings,
@@ -304,6 +315,9 @@ const LeadsPage = lazy(() =>
 );
 const VideoStudioPage = lazy(() =>
   import('@/pages/video-studio').then((m) => ({ default: m.VideoStudioPage }))
+);
+const AvatarsPage = lazy(() =>
+  import('@/pages/avatars').then((m) => ({ default: m.AvatarsPage }))
 );
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
@@ -882,6 +896,22 @@ function App() {
             }
           />
           <Route
+            path="/meetings"
+            element={
+              <RoleRoute minRole="org_viewer">
+                <MeetingsPage />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/auri"
+            element={
+              <RoleRoute minRole="org_viewer">
+                <AuriTasksPage />
+              </RoleRoute>
+            }
+          />
+          <Route
             path="/invoices"
             element={
               <RoleRoute minRole="org_viewer">
@@ -919,6 +949,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <VideoStudioPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/avatars"
+            element={
+              <ProtectedRoute>
+                <AvatarsPage />
               </ProtectedRoute>
             }
           />
@@ -1083,6 +1121,7 @@ function App() {
             />
             <Route path="network" element={<NetworkSettings />} />
             <Route path="apn-drive" element={<ApnDriveSettings />} />
+            <Route path="storage" element={<StorageSettings />} />
             <Route
               path="topsi"
               element={

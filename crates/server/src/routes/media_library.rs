@@ -12,7 +12,10 @@
 use std::path::PathBuf;
 
 use axum::{
+    body::Body,
     extract::{Multipart, Path, Query, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -23,7 +26,8 @@ use db::{
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use services::services::editron::asset_intelligence;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_util::io::ReaderStream;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
@@ -168,6 +172,52 @@ async fn upload_asset(
     Ok(Json(ApiResponse::success(asset)))
 }
 
+/// GET /media/{id}/serve
+///
+/// Stream the raw file bytes for an asset. Used by social-platform connectors
+/// (Publisher fetches `media_url` via HTTP before forwarding to the platform).
+/// In production this should be replaced with signed-URL redirects to whatever
+/// blob store (S3/R2/GCS) backs media — streaming through the API server is
+/// fine for local dev / single-instance deployments only.
+async fn serve_asset(
+    State(d): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
+    let asset = MediaAsset::find_by_id(&d.db().pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Asset not found".into()))?;
+
+    let file = tokio::fs::File::open(&asset.file_path).await.map_err(|e| {
+        ApiError::InternalError(format!(
+            "Asset {} file_path {} unreadable: {}",
+            asset.id, asset.file_path, e
+        ))
+    })?;
+
+    let size = file.metadata().await.ok().map(|m| m.len());
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    let mut headers = HeaderMap::new();
+    if let Ok(ct) = HeaderValue::from_str(&asset.mime_type) {
+        headers.insert(header::CONTENT_TYPE, ct);
+    }
+    if let Some(len) = size {
+        if let Ok(cl) = HeaderValue::from_str(&len.to_string()) {
+            headers.insert(header::CONTENT_LENGTH, cl);
+        }
+    }
+    // Inline so browsers preview rather than force-download.
+    if let Ok(cd) = HeaderValue::from_str(&format!("inline; filename=\"{}\"", asset.filename)) {
+        headers.insert(header::CONTENT_DISPOSITION, cd);
+    }
+
+    Ok((StatusCode::OK, headers, body).into_response())
+}
+
 /// GET /media/{id}
 async fn get_asset(
     State(d): State<DeploymentImpl>,
@@ -180,6 +230,103 @@ async fn get_asset(
         .await?
         .map(|a| Json(ApiResponse::success(a)))
         .ok_or_else(|| ApiError::NotFound("Asset not found".into()))
+}
+
+/// GET /media/{id}/file — stream the underlying file by file_path so
+/// the frontend can render `<video src>` / `<img src>` previews directly.
+/// Uses HTTP range requests so the browser only needs the first frame for a poster.
+async fn serve_asset_file(
+    State(d): State<DeploymentImpl>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let parsed = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
+    let asset = MediaAsset::find_by_id(&d.db().pool, parsed)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Asset not found".into()))?;
+
+    let path = std::path::Path::new(&asset.file_path);
+    if !path.is_file() {
+        return Err(ApiError::NotFound("Underlying file missing".into()));
+    }
+
+    let file_size = tokio::fs::metadata(path)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("stat failed: {e}")))?
+        .len();
+
+    let mime = if asset.mime_type.is_empty() {
+        "application/octet-stream".to_string()
+    } else {
+        asset.mime_type.clone()
+    };
+
+    // Parse Range header for byte-range requests (browsers do this for <video>)
+    if let Some(range_val) = headers.get(header::RANGE).and_then(|v| v.to_str().ok()) {
+        if let Some((start, end)) = parse_range(range_val, file_size) {
+            let length = end - start + 1;
+            let mut file = tokio::fs::File::open(path)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("open failed: {e}")))?;
+            use tokio::io::AsyncSeekExt;
+            file.seek(std::io::SeekFrom::Start(start))
+                .await
+                .map_err(|e| ApiError::InternalError(format!("seek failed: {e}")))?;
+            let stream = ReaderStream::new(file.take(length));
+            let body = Body::from_stream(stream);
+            let mut resp = Response::new(body);
+            *resp.status_mut() = StatusCode::PARTIAL_CONTENT;
+            resp.headers_mut().insert(
+                header::CONTENT_TYPE,
+                mime.parse()
+                    .unwrap_or_else(|_| "application/octet-stream".parse().unwrap()),
+            );
+            resp.headers_mut()
+                .insert(header::CONTENT_LENGTH, length.to_string().parse().unwrap());
+            resp.headers_mut().insert(
+                header::CONTENT_RANGE,
+                format!("bytes {}-{}/{}", start, end, file_size)
+                    .parse()
+                    .unwrap(),
+            );
+            resp.headers_mut()
+                .insert(header::ACCEPT_RANGES, "bytes".parse().unwrap());
+            return Ok(resp);
+        }
+    }
+
+    // No Range header → full file
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("open failed: {e}")))?;
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+    Ok((
+        [
+            (header::CONTENT_TYPE, mime),
+            (header::CONTENT_LENGTH, file_size.to_string()),
+            (header::ACCEPT_RANGES, "bytes".to_string()),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+fn parse_range(header_val: &str, file_size: u64) -> Option<(u64, u64)> {
+    let stripped = header_val.strip_prefix("bytes=")?;
+    let (s, e) = stripped.split_once('-')?;
+    let start: u64 = if s.is_empty() { 0 } else { s.parse().ok()? };
+    let end: u64 = if e.is_empty() {
+        file_size.saturating_sub(1)
+    } else {
+        e.parse().ok()?
+    };
+    if start > end || end >= file_size {
+        return None;
+    }
+    Some((start, end))
 }
 
 /// DELETE /media/{id}
@@ -669,6 +816,21 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/media/backfill", post(backfill_from_artifacts))
         .route("/media/remote-pull", post(remote_pull))
         .route("/media/{id}", get(get_asset).delete(delete_asset))
+        .route("/media/{id}/file", get(serve_asset_file))
         .route("/media/{id}/analyze", post(retrigger_analysis))
+        .with_state(deployment.clone())
+}
+
+/// Public (unauthenticated) media routes.
+///
+/// Only `/media/{id}/serve` lives here. It needs to be reachable from internal
+/// services — the social `Publisher` fetches `media_urls` via reqwest with no
+/// session cookie — and from any future external CDN/preview consumer. In
+/// production this should be replaced with signed-URL redirects to whatever
+/// blob store backs media; bytes streamed from the API server are fine for
+/// local dev / single-instance deploys.
+pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+    Router::new()
+        .route("/media/{id}/serve", get(serve_asset))
         .with_state(deployment.clone())
 }

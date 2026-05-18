@@ -13,6 +13,18 @@ import type { PipelineType } from '@/types/crm';
 
 // ── Tasks ──────────────────────────────────────────────────────────────────
 
+// ── Topology (entity graph) ────────────────────────────────────────────────
+
+export const topologyKeys = {
+  all: ['topology'] as const,
+  global: () => ['topology', 'global'] as const,
+  org: (orgId: string) => ['topology', 'org', orgId] as const,
+  focused: (focusType: string, focusId: string, depth: number) =>
+    ['topology', 'subgraph', focusType, focusId, depth] as const,
+  actions: (nodeType: string | undefined) =>
+    ['topology', 'actions', nodeType] as const,
+};
+
 export const taskKeys = {
   all: ['tasks'] as const,
   list: (projectId: string) => ['tasks', projectId] as const,
@@ -470,6 +482,28 @@ export const socialKeys = {
     ['social-mentions-ov', projectId] as const,
   inboxStats: (projectId?: string | null) =>
     ['social-inbox-stats', projectId] as const,
+  analytics: (projectId: string, days?: number) =>
+    ['social-analytics', projectId, days] as const,
+  growth: (postId: string) => ['social', 'growth', postId] as const,
+  topPosts: (projectId: string, metric?: string) =>
+    ['social', 'top-posts', projectId, metric] as const,
+  bestTimes: (projectId: string, orgId?: string) =>
+    ['social', 'best-times', projectId, orgId] as const,
+  insights: (projectId: string, days?: number) =>
+    ['social', 'insights', projectId, days] as const,
+};
+
+// ── Social Intelligence ──────────────────────────────────────────────────────
+
+export const intelligenceKeys = {
+  opportunities: (orgId: string, status?: string, type?: string) =>
+    ['social-intel-opps', orgId, status, type] as const,
+  audienceInsights: (orgId: string, days?: number) =>
+    ['social-intel-insights', orgId, days] as const,
+  shareOfVoice: (orgId: string, days?: number, platform?: string) =>
+    ['social-intel-sov', orgId, days, platform] as const,
+  trackedEntities: (orgId: string, entityType?: string) =>
+    ['social-intel-entities', orgId, entityType] as const,
 };
 
 // ── Network ─────────────────────────────────────────────────────────────────

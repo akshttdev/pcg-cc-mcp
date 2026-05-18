@@ -5,12 +5,16 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::db_uuid::DbUuid;
+
 #[derive(Debug, Error)]
 pub enum SocialPostError {
     #[error(transparent)]
     Database(#[from] sqlx::Error),
     #[error("Social post not found")]
     NotFound,
+    #[error("Invalid status transition from {0} to {1}")]
+    InvalidTransition(String, String),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
@@ -44,7 +48,12 @@ pub enum PostStatus {
 #[ts(export)]
 pub struct SocialPost {
     pub id: Uuid,
-    pub project_id: Uuid,
+    // DbUuid: legacy BLOB column FKs to projects.id (TEXT). NULL for org/user posts.
+    pub project_id: Option<DbUuid>,
+    /// Set for org-brand posts (not tied to any specific project).
+    pub organization_id: Option<String>,
+    /// Set for personal/individual posts (Phase D).
+    pub user_id: Option<String>,
     pub social_account_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
     pub content_type: String,
@@ -79,12 +88,26 @@ pub struct SocialPost {
     pub engagement_rate: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub conference_workflow_id: Option<Uuid>,
+    pub entity_id: Option<Uuid>,
+    // Delivery pipeline fields
+    pub deliverable_id: Option<Uuid>,
+    pub review_token: Option<String>,
+    pub review_note: Option<String>,
+    pub reviewed_by: Option<String>,
+    pub publish_attempt: i64,
+    pub assignee_id: Option<Uuid>,
+    pub crm_deal_id: Option<Uuid>,
+    pub crm_contact_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateSocialPost {
-    pub project_id: Uuid,
+    /// Exactly one of project_id / organization_id / user_id must be set.
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<String>,
+    pub user_id: Option<String>,
     pub social_account_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
     pub content_type: Option<ContentType>,
@@ -93,13 +116,20 @@ pub struct CreateSocialPost {
     pub media_urls: Option<Vec<String>>,
     pub hashtags: Option<Vec<String>>,
     pub mentions: Option<Vec<String>>,
-    pub platforms: Vec<Uuid>,
+    // accepts platform name strings ("linkedin") or account UUID strings
+    pub platforms: Vec<String>,
     pub platform_specific: Option<serde_json::Value>,
+    // if provided, overrides the default 'draft' status on creation
+    pub status: Option<String>,
     pub scheduled_for: Option<DateTime<Utc>>,
     pub category: Option<String>,
     pub is_evergreen: Option<bool>,
     pub recycle_after_days: Option<i64>,
     pub created_by_agent_id: Option<Uuid>,
+    pub deliverable_id: Option<Uuid>,
+    pub assignee_id: Option<Uuid>,
+    pub crm_deal_id: Option<Uuid>,
+    pub crm_contact_id: Option<Uuid>,
 }
 
 #[derive(Debug, Default, Deserialize, TS)]
@@ -110,13 +140,18 @@ pub struct UpdateSocialPost {
     pub media_urls: Option<Vec<String>>,
     pub hashtags: Option<Vec<String>>,
     pub mentions: Option<Vec<String>>,
+    pub platforms: Option<Vec<String>>,
     pub platform_specific: Option<serde_json::Value>,
     pub status: Option<PostStatus>,
     pub scheduled_for: Option<DateTime<Utc>>,
     pub category: Option<String>,
     pub queue_position: Option<i64>,
     pub is_evergreen: Option<bool>,
+    pub recycle_after_days: Option<i64>,
     pub approved_by: Option<String>,
+    pub assignee_id: Option<Uuid>,
+    pub crm_deal_id: Option<Uuid>,
+    pub crm_contact_id: Option<Uuid>,
 }
 
 impl SocialPost {
@@ -146,17 +181,22 @@ impl SocialPost {
         let post = sqlx::query_as::<_, SocialPost>(
             r#"
             INSERT INTO social_posts (
-                id, project_id, social_account_id, task_id, content_type,
+                id, project_id, organization_id, user_id,
+                social_account_id, task_id, content_type,
                 caption, content_blocks, media_urls, hashtags, mentions,
-                platforms, platform_specific, scheduled_for, category,
-                is_evergreen, recycle_after_days, created_by_agent_id
+                platforms, platform_specific, status, scheduled_for, category,
+                is_evergreen, recycle_after_days, created_by_agent_id, deliverable_id, assignee_id,
+                crm_deal_id, crm_contact_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+                    COALESCE(?15, 'draft'), ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)
             RETURNING *
             "#,
         )
         .bind(id)
-        .bind(data.project_id)
+        .bind(data.project_id.map(|p| p.to_string()))
+        .bind(&data.organization_id)
+        .bind(&data.user_id)
         .bind(data.social_account_id)
         .bind(data.task_id)
         .bind(&content_type)
@@ -167,11 +207,16 @@ impl SocialPost {
         .bind(mentions)
         .bind(&platforms)
         .bind(platform_specific)
+        .bind(&data.status)
         .bind(data.scheduled_for)
         .bind(&data.category)
         .bind(is_evergreen)
         .bind(data.recycle_after_days)
         .bind(data.created_by_agent_id)
+        .bind(data.deliverable_id)
+        .bind(data.assignee_id)
+        .bind(data.crm_deal_id)
+        .bind(data.crm_contact_id)
         .fetch_one(pool)
         .await?;
 
@@ -200,11 +245,27 @@ impl SocialPost {
             LIMIT ?2
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(limit)
         .fetch_all(pool)
         .await?;
 
+        Ok(posts)
+    }
+
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: &str,
+        limit: Option<i64>,
+    ) -> Result<Vec<Self>, SocialPostError> {
+        let limit = limit.unwrap_or(200);
+        let posts = sqlx::query_as::<_, SocialPost>(
+            r#"SELECT * FROM social_posts WHERE organization_id = ?1 ORDER BY created_at DESC LIMIT ?2"#,
+        )
+        .bind(organization_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
         Ok(posts)
     }
 
@@ -220,7 +281,7 @@ impl SocialPost {
                 ORDER BY scheduled_for ASC
                 "#,
             )
-            .bind(pid)
+            .bind(pid.to_string())
             .fetch_all(pool)
             .await?
         } else {
@@ -244,6 +305,7 @@ impl SocialPost {
             SELECT * FROM social_posts
             WHERE status = 'scheduled'
             AND datetime(scheduled_for) <= datetime('now')
+            AND publish_attempt < 3
             ORDER BY scheduled_for ASC
             "#,
         )
@@ -251,6 +313,29 @@ impl SocialPost {
         .await?;
 
         Ok(posts)
+    }
+
+    pub async fn find_all_for_project(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Vec<Self>, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"SELECT * FROM social_posts WHERE project_id = ?1 ORDER BY COALESCE(scheduled_for, created_at) ASC"#,
+        )
+        // project_id is stored as TEXT (UUID string) in this BLOB column — must bind as string
+        .bind(project_id.to_string())
+        .fetch_all(pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"SELECT * FROM social_posts ORDER BY COALESCE(scheduled_for, created_at) ASC"#,
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(Into::into)
     }
 
     pub async fn find_by_category(
@@ -265,7 +350,7 @@ impl SocialPost {
             ORDER BY queue_position ASC, created_at DESC
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(category)
         .fetch_all(pool)
         .await?;
@@ -284,7 +369,7 @@ impl SocialPost {
             ORDER BY last_recycled_at ASC NULLS FIRST
             "#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .fetch_all(pool)
         .await?;
 
@@ -307,6 +392,9 @@ impl SocialPost {
         let mentions = data
             .mentions
             .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
+        let platforms = data
+            .platforms
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
         let platform_specific = data.platform_specific.map(|v| v.to_string());
 
         let approved_at = data.approved_by.as_ref().map(|_| Utc::now());
@@ -319,14 +407,19 @@ impl SocialPost {
                 media_urls = COALESCE(?4, media_urls),
                 hashtags = COALESCE(?5, hashtags),
                 mentions = COALESCE(?6, mentions),
-                platform_specific = COALESCE(?7, platform_specific),
-                status = COALESCE(?8, status),
-                scheduled_for = COALESCE(?9, scheduled_for),
-                category = COALESCE(?10, category),
-                queue_position = COALESCE(?11, queue_position),
-                is_evergreen = COALESCE(?12, is_evergreen),
-                approved_by = COALESCE(?13, approved_by),
-                approved_at = COALESCE(?14, approved_at),
+                platforms = COALESCE(?7, platforms),
+                platform_specific = COALESCE(?8, platform_specific),
+                status = COALESCE(?9, status),
+                scheduled_for = COALESCE(?10, scheduled_for),
+                category = COALESCE(?11, category),
+                queue_position = COALESCE(?12, queue_position),
+                is_evergreen = COALESCE(?13, is_evergreen),
+                recycle_after_days = COALESCE(?14, recycle_after_days),
+                approved_by = COALESCE(?15, approved_by),
+                approved_at = COALESCE(?16, approved_at),
+                assignee_id = COALESCE(?17, assignee_id),
+                crm_deal_id = COALESCE(?18, crm_deal_id),
+                crm_contact_id = COALESCE(?19, crm_contact_id),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
             RETURNING *
@@ -338,14 +431,19 @@ impl SocialPost {
         .bind(media_urls)
         .bind(hashtags)
         .bind(mentions)
+        .bind(platforms)
         .bind(platform_specific)
         .bind(&status)
         .bind(data.scheduled_for)
         .bind(&data.category)
         .bind(data.queue_position)
         .bind(data.is_evergreen)
+        .bind(data.recycle_after_days)
         .bind(&data.approved_by)
         .bind(approved_at)
+        .bind(data.assignee_id)
+        .bind(data.crm_deal_id)
+        .bind(data.crm_contact_id)
         .fetch_optional(pool)
         .await?
         .ok_or(SocialPostError::NotFound)
@@ -461,6 +559,174 @@ impl SocialPost {
 
         Ok(())
     }
+
+    pub async fn find_by_deliverable(
+        pool: &SqlitePool,
+        deliverable_id: Uuid,
+    ) -> Result<Option<Self>, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            "SELECT * FROM social_posts WHERE deliverable_id = ?1 ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(deliverable_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    pub async fn advance_to_review(
+        pool: &SqlitePool,
+        id: Uuid,
+        media_url: &str,
+        asset_urls: &[String],
+    ) -> Result<Self, SocialPostError> {
+        // Generate a review token (random UUID string)
+        let token = Uuid::new_v4().to_string().replace('-', "");
+        let _ = media_url; // caller may pass the primary URL; all URLs go in asset_urls
+        let media_json = serde_json::to_string(asset_urls).unwrap_or_else(|_| "[]".to_string());
+        sqlx::query_as::<_, SocialPost>(
+            r#"
+            UPDATE social_posts SET
+                status = 'pending_review',
+                media_urls = ?2,
+                review_token = ?3,
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1 AND status = 'draft'
+            RETURNING *
+        "#,
+        )
+        .bind(id)
+        .bind(media_json)
+        .bind(token)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn find_by_review_token(
+        pool: &SqlitePool,
+        token: &str,
+    ) -> Result<Self, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>("SELECT * FROM social_posts WHERE review_token = ?1")
+            .bind(token)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn approve_post(
+        pool: &SqlitePool,
+        id: Uuid,
+        approved_by: &str,
+    ) -> Result<Self, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"
+            UPDATE social_posts SET
+                status = 'approved',
+                approved_by = ?2,
+                approved_at = datetime('now', 'subsec'),
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1 AND status = 'pending_review'
+            RETURNING *
+        "#,
+        )
+        .bind(id)
+        .bind(approved_by)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn request_changes(
+        pool: &SqlitePool,
+        id: Uuid,
+        note: &str,
+        reviewed_by: &str,
+    ) -> Result<Self, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"
+            UPDATE social_posts SET
+                status = 'draft',
+                review_note = ?2,
+                reviewed_by = ?3,
+                review_token = NULL,
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1 AND status = 'pending_review'
+            RETURNING *
+        "#,
+        )
+        .bind(id)
+        .bind(note)
+        .bind(reviewed_by)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn move_to_scheduled(pool: &SqlitePool, id: Uuid) -> Result<Self, SocialPostError> {
+        sqlx::query_as::<_, SocialPost>(
+            r#"
+            UPDATE social_posts SET
+                status = 'scheduled',
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1 AND status = 'approved' AND scheduled_for IS NOT NULL
+            RETURNING *
+        "#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
+    }
+
+    pub async fn increment_publish_attempt(
+        pool: &SqlitePool,
+        id: Uuid,
+    ) -> Result<(), SocialPostError> {
+        sqlx::query("UPDATE social_posts SET publish_attempt = publish_attempt + 1, updated_at = datetime('now', 'subsec') WHERE id = ?1")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn transition_status(
+        pool: &SqlitePool,
+        id: Uuid,
+        new_status: &str,
+        by: Option<&str>,
+    ) -> Result<Self, SocialPostError> {
+        // FSM guard: validate allowed transitions
+        let current = Self::find_by_id(pool, id).await?;
+        let allowed: &[&str] = match current.status.as_str() {
+            "draft" => &["pending_review", "cancelled"],
+            "pending_review" => &["approved", "draft", "cancelled"],
+            "approved" => &["scheduled", "draft", "cancelled"],
+            "scheduled" => &["approved", "cancelled"],
+            "failed" => &["draft", "scheduled"],
+            _ => &[],
+        };
+        if !allowed.contains(&new_status) {
+            return Err(SocialPostError::InvalidTransition(
+                current.status.clone(),
+                new_status.to_string(),
+            ));
+        }
+        sqlx::query_as::<_, SocialPost>(r#"
+            UPDATE social_posts SET
+                status = ?2,
+                approved_by = CASE WHEN ?2 = 'approved' THEN COALESCE(?3, approved_by) ELSE approved_by END,
+                approved_at = CASE WHEN ?2 = 'approved' THEN datetime('now', 'subsec') ELSE approved_at END,
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?1
+            RETURNING *
+        "#)
+        .bind(id)
+        .bind(new_status)
+        .bind(by)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(SocialPostError::NotFound)
+    }
 }
 
 #[cfg(test)]
@@ -483,7 +749,9 @@ mod tests {
         let created = SocialPost::create(
             &pool,
             CreateSocialPost {
-                project_id,
+                project_id: Some(project_id),
+                organization_id: None,
+                user_id: None,
                 social_account_id: Some(account.id),
                 task_id: None,
                 content_type: Some(ContentType::Carousel),
@@ -495,13 +763,18 @@ mod tests {
                 media_urls: Some(vec!["https://cdn.example.com/post.png".into()]),
                 hashtags: Some(vec!["#pcg".into(), "#social".into()]),
                 mentions: Some(vec!["@prime".into()]),
-                platforms: vec![account.id],
+                platforms: vec![account.id.to_string()],
                 platform_specific: Some(json!({"instagram": {"cta": "RSVP"}})),
+                status: None,
                 scheduled_for: Some(initial_time),
                 category: Some("launch".into()),
                 is_evergreen: Some(true),
                 recycle_after_days: Some(14),
                 created_by_agent_id: None,
+                deliverable_id: None,
+                assignee_id: None,
+                crm_deal_id: None,
+                crm_contact_id: None,
             },
         )
         .await

@@ -2053,7 +2053,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab67060fc6b8ef687992d439ca0fa36e7ed17e9a0b16b25b601e8757df720de"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -2068,6 +2068,7 @@ dependencies = [
  "futures-util",
  "glob",
  "hex",
+ "hostname",
  "regex",
  "sentry-tracing",
  "serde",
@@ -4403,6 +4404,15 @@ dependencies = [
 
 [[package]]
 name = "infer"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc150e5ce2330295b8616ce0e3f53250e53af31759a9dbedad1621ba29151847"
+dependencies = [
+ "cfb",
+]
+
+[[package]]
+name = "infer"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a588916bfdfd92e71cacef98a63d9b1f0d74d6599980d11894290e7ddefffcf7"
@@ -6715,30 +6725,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31f2f4539bffe53fc4b4da301df49d114b845b077bd5727b7fe2bd9d8df2ae68"
 dependencies = [
  "bitflags 2.11.0",
-]
-
-[[package]]
-name = "pcg-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "colored 3.1.1",
- "dirs 5.0.1",
- "futures",
- "git2",
- "reqwest 0.12.28",
- "rustyline",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.2",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -9062,6 +9048,7 @@ dependencies = [
  "hmac",
  "hostname",
  "ignore",
+ "infer 0.16.0",
  "json-patch 2.0.0",
  "jsonwebtoken",
  "lazy_static",
@@ -9107,6 +9094,7 @@ dependencies = [
  "urlencoding",
  "utils",
  "uuid",
+ "video_gen",
 ]
 
 [[package]]
@@ -9135,10 +9123,12 @@ dependencies = [
  "futures-util",
  "git2",
  "hex",
+ "hmac",
  "ignore",
  "json-patch 2.0.0",
  "lazy_static",
  "libc",
+ "mime_guess",
  "moka",
  "notify 8.2.0",
  "notify-debouncer-full",
@@ -9173,6 +9163,7 @@ dependencies = [
  "urlencoding",
  "utils",
  "uuid",
+ "walkdir",
  "xdg",
 ]
 
@@ -10485,7 +10476,7 @@ dependencies = [
  "glob",
  "html5ever 0.29.1",
  "http 1.4.0",
- "infer",
+ "infer 0.19.0",
  "json-patch 3.0.1",
  "kuchikiki",
  "log",
@@ -10968,6 +10959,30 @@ dependencies = [
  "tokio",
  "tracing",
  "ts-rs",
+ "uuid",
+]
+
+[[package]]
+name = "topsi-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "colored 3.1.1",
+ "dirs 5.0.1",
+ "futures",
+ "git2",
+ "reqwest 0.12.28",
+ "rustyline",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.2",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -11703,6 +11718,19 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "video_gen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "void"

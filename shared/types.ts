@@ -364,6 +364,14 @@ export type DiffChangeKind = "added" | "deleted" | "modified" | "renamed" | "cop
 
 export type RepositoryInfo = { id: bigint, name: string, full_name: string, owner: string, description: string | null, clone_url: string, ssh_url: string, default_branch: string, private: boolean, };
 
+export type AuthenticatedUser = { id: bigint, login: string, name: string | null, avatar_url: string | null, email: string | null, };
+
+export type CommitSummary = { sha: string, html_url: string, message: string, author_name: string | null, author_email: string | null, author_date?: Date | null, committer_login: string | null, };
+
+export type GitHubRepoLink = { id: string, organization_id: string, project_id: string, integration_connection_id?: string, github_repo_id: bigint, owner: string, repo_name: string, full_name: string, default_branch: string, clone_url?: string, ssh_url?: string, private: boolean, last_sync_at?: Date | null, last_synced_commit_sha?: string, last_error?: string, metadata: string, created_at: Date, updated_at: Date, };
+
+export type CreateGitHubRepoLink = { organization_id: string, project_id: string, integration_connection_id: string | null, github_repo_id: bigint, owner: string, repo_name: string, full_name: string, default_branch: string | null, clone_url: string | null, ssh_url: string | null, private: boolean | null, metadata: string | null, };
+
 export type CommandBuilder = { 
 /**
  * Base executable command (e.g., "npx -y @anthropic-ai/claude-code@latest")
@@ -914,13 +922,21 @@ export type ConversationSummary = { id: string, title: string | null, status: st
 
 export type KnowledgeSourceType = "conversation" | "artifact" | "pulse_content" | "context_injection" | "entity" | "topology_snapshot";
 
-export type ProjectKnowledgeSource = { id: string, project_id: string, source_type: string, source_id: string, source_title: string, source_summary: string | null, coverage_score: number, is_active: boolean, is_stale: boolean, auto_registered: boolean, last_refreshed_at: string, created_at: string, updated_at: string, };
+export type ProjectKnowledgeSource = { id: string, project_id: string, source_type: string, source_id: string, source_title: string, source_summary: string | null, coverage_score: number, is_active: boolean, is_stale: boolean, auto_registered: boolean, client_visible: boolean, last_refreshed_at: string, created_at: string, updated_at: string, };
 
 export type ProjectKnowledgeCompleteness = { project_id: string, total_sources: bigint, fresh_sources: bigint, avg_coverage: number, type_count: bigint, knowledge_completeness: number, };
 
 export type HealthStatus = "healthy" | "warning" | "critical" | "unknown";
 
 export type ProjectHealthSummary = { project_id: string, health_status: string, active_issues_count: bigint, critical_issues: bigint, warning_issues: bigint, knowledge_completeness: number, last_activity_at: string | null, };
+
+export type EntityGraphNode = { id: string, node_type: string, ref_id: string, ref_table: string, label: string, metadata: string | null, created_at: string, updated_at: string, };
+
+export type EntityGraphEdge = { id: string, from_node_id: string, to_node_id: string, edge_type: string, weight: number | null, metadata: string | null, created_at: string, };
+
+export type EntitySubgraph = { nodes: Array<EntityGraphNode>, edges: Array<EntityGraphEdge>, };
+
+export type SyncGlobalStats = { organizations_synced: number, clients_synced: number, companies_synced: number, projects_synced: number, pipelines_synced: number, deals_synced: number, proposals_synced: number, brand_profiles_synced: number, knowledge_sources_synced: number, };
 
 export type ProjectKnowledgeResponse = { project_id: string, completeness: ProjectKnowledgeCompleteness | null, total_sources: number, stale_count: number, sources_by_type: { [key in string]?: Array<ProjectKnowledgeSource> }, };
 
@@ -1013,3 +1029,132 @@ attachments: string, proposal_id: string | null, created_at: string, updated_at:
 export type ContactResearchPass = { id: string, crm_contact_id: string, pass_number: bigint, research_focus: string, focus_prompt: string | null, status: string, summary: string | null, raw_results: string | null, key_findings: string, search_queries: string, confidence_delta: number, agent_used: string | null, tokens_used: bigint | null, error: string | null, created_at: string, completed_at: string | null, };
 
 export type ContactSocialProfile = { id: string, crm_contact_id: string, platform: string, handle: string | null, profile_url: string | null, follower_count: bigint | null, following_count: bigint | null, bio: string | null, verified: number, raw_data: string | null, last_synced_at: string | null, created_at: string, updated_at: string, };
+
+export type DeckDocument = { id: string, deal_id: string, version: bigint, brand_token_version: string | null, 
+/**
+ * Opaque serialized `Canvas`. Use [`DeckDocument::canvas`] to parse.
+ */
+canvas_json: string, 
+/**
+ * Who last touched the deck: `lux` | `operator` | `system`.
+ */
+last_edited_by: string, created_at: string, updated_at: string, };
+
+export type DeckSlide = { id: string, deck_id: string, slide_index: bigint, name: string | null, layout_hint: string | null, 
+/**
+ * Opaque serialized `Fill`.
+ */
+background_json: string, 
+/**
+ * Opaque serialized `Vec<SlideElement>`.
+ */
+elements_json: string, notes: string | null, 
+/**
+ * `lux` | `operator`.
+ */
+origin: string, locked: bigint, created_at: string, updated_at: string, };
+
+export type DeckRevision = { id: string, deck_id: string, version: bigint, 
+/**
+ * `lux` | `operator` | user UUID string.
+ */
+author: string, 
+/**
+ * Full serialized `DeckSnapshot` for restore/diff.
+ */
+snapshot_json: string, diff_summary: string | null, created_at: string, };
+
+export type DeckSuggestion = { id: string, deck_id: string, target_slide_id: string | null, target_element_id: string | null, op: string, payload_json: string, rationale: string | null, status: string, run_id: string | null, created_at: string, resolved_at: string | null, resolved_by: string | null, };
+
+export type Canvas = { width: number, height: number, 
+/**
+ * `px` | `pt`.
+ */
+unit: string, dpi: number, };
+
+export type Color = { r: number, g: number, b: number, a: number, token?: string, };
+
+export type Fill = { "kind": "solid", color: Color, } | { "kind": "linear-gradient", stops: Array<GradientStop>, angle: number, } | { "kind": "none" };
+
+export type GradientStop = { offset: number, color: Color, };
+
+export type Stroke = { color: Color, width: number, 
+/**
+ * `solid` | `dashed` | `dotted`.
+ */
+style: string, };
+
+export type BBox = { x: number, y: number, w: number, h: number, rotation?: number, };
+
+export type SlideElement = { "type": "text" } & TextElement | { "type": "image" } & ImageElement | { "type": "shape" } & ShapeElement | { "type": "group" } & GroupElement;
+
+export type TextElement = { id: string, bbox: BBox, z: bigint, 
+/**
+ * `lux` | `operator`.
+ */
+origin: string, locked_by?: string, opacity?: number, token_refs?: { [key in string]?: string }, text: string, font_family: string, font_size: number, font_weight: bigint, line_height: number, letter_spacing: number, color: Color, 
+/**
+ * `left` | `center` | `right` | `justify`.
+ */
+align: string, runs?: Array<TextRun>, };
+
+export type TextRun = { start: bigint, end: bigint, 
+/**
+ * Partial overrides — stored as a free-form JSON map.
+ */
+overrides: JsonValue, };
+
+export type ImageElement = { id: string, bbox: BBox, z: bigint, origin: string, locked_by?: string, opacity?: number, token_refs?: { [key in string]?: string }, 
+/**
+ * FK to `media_assets.id`. Nullable while the asset is pending a Maci
+ * generation (see Phase 7).
+ */
+asset_id?: string, 
+/**
+ * `pending` | `resolved` | `failed`.
+ */
+asset_status: string, asset_request_id?: string, 
+/**
+ * `cover` | `contain` | `fill`.
+ */
+fit: string, crop?: BBox, };
+
+export type ShapeElement = { id: string, bbox: BBox, z: bigint, origin: string, locked_by?: string, opacity?: number, token_refs?: { [key in string]?: string }, 
+/**
+ * `rect` | `ellipse` | `line` | `path`.
+ */
+shape: string, path?: string, fill: Fill, stroke?: Stroke, corner_radius?: number, };
+
+export type GroupElement = { id: string, bbox: BBox, z: bigint, origin: string, locked_by?: string, opacity?: number, token_refs?: { [key in string]?: string }, children: Array<SlideElement>, };
+
+export type DeckSnapshot = { id: string, deal_id: string, version: bigint, brand_token_version?: string, canvas: Canvas, slides: Array<SlideSnapshot>, last_edited_by: string, created_at: string, updated_at: string, };
+
+export type SlideSnapshot = { id: string, slide_index: bigint, name?: string, layout_hint?: string, background: Fill, elements: Array<SlideElement>, notes?: string, origin: string, locked: boolean, };
+
+export type CreateDeckDocument = { deal_id: string, canvas?: Canvas, brand_token_version?: string, };
+
+export type UpdateDeckDocument = { canvas?: Canvas, brand_token_version?: string, last_edited_by?: string, };
+
+export type CreateDeckSlide = { deck_id: string, slide_index: bigint, name?: string, layout_hint?: string, background: Fill, elements: Array<SlideElement>, notes?: string, origin?: string, };
+
+export type UpdateDeckSlide = { name?: string, layout_hint?: string, background?: Fill, elements?: Array<SlideElement>, notes?: string, locked?: boolean, };
+
+export type CreateDeckSuggestion = { deck_id: string, target_slide_id?: string, target_element_id?: string, op: string, payload: JsonValue, rationale?: string, run_id?: string, };
+
+export type AvatarProfile = { id: string, organization_id: string | null, created_by: string | null, name: string, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string, elevenlabs_voice_id: string, voice_sample_url: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, status: string, error_message: string | null, created_at: string, updated_at: string, 
+/**
+ * JSON array of `{ slot, url, prompt, locked, generated_at }` entries — one per generated shot.
+ */
+portrait_set: string, 
+/**
+ * Structured character bible JSON produced by the Claude vision pass.
+ */
+bible_json: string | null, 
+/**
+ * Lifecycle of the profile-generation pipeline: `none`/`pending`/`generating`/`ready`/`failed`.
+ */
+profile_status: string, profile_error: string | null, };
+
+export type CreateAvatarProfile = { organization_id: string | null, name: string, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string | null, elevenlabs_voice_id: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, };
+
+export type UpdateAvatarProfile = { name: string | null, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string | null, elevenlabs_voice_id: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, status: string | null, bible_json: string | null, };

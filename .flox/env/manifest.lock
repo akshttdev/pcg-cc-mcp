@@ -1,7 +1,7 @@
 {
   "lockfile-version": 1,
   "manifest": {
-    "version": 1,
+    "schema-version": "1.11.0",
     "install": {
       "cargo-watch": {
         "pkg-path": "cargo-watch"
@@ -10,19 +10,29 @@
         "pkg-path": "cmake"
       },
       "libopus": {
-        "pkg-path": "libopus"
+        "pkg-path": "libopus",
+        "outputs": "all"
       },
       "lld": {
-        "pkg-path": "lld"
+        "pkg-path": "lld",
+        "outputs": "all"
       },
       "nodejs": {
-        "pkg-path": "nodejs"
+        "pkg-path": "nodejs",
+        "outputs": "all"
+      },
+      "ollama": {
+        "pkg-path": "ollama"
       },
       "pkg-config": {
-        "pkg-path": "pkg-config"
+        "pkg-path": "pkg-config",
+        "outputs": "all"
       },
       "pnpm": {
         "pkg-path": "pnpm"
+      },
+      "python311": {
+        "pkg-path": "python311"
       },
       "rustup": {
         "pkg-path": "rustup"
@@ -48,7 +58,7 @@
       "on-activate": "  # Install Rust toolchain from rust-toolchain.toml (nightly + cranelift)\n  export RUSTUP_HOME=\"${FLOX_ENV_CACHE}/rustup\"\n  export CARGO_HOME=\"${FLOX_ENV_CACHE}/cargo\"\n  if [ ! -d \"$RUSTUP_HOME/toolchains\" ]; then\n    echo \"Installing Rust toolchain (first time only)...\"\n    rustup-init -y --no-modify-path --default-toolchain none 2>/dev/null\n  fi\n  # Ensure toolchain from rust-toolchain.toml is installed\n  if ! rustup show active-toolchain >/dev/null 2>&1; then\n    rustup toolchain install nightly-2025-05-18 --profile default \\\n      --component rustc-codegen-cranelift-preview 2>/dev/null\n  fi\n\n  # Seed dev_assets from dev_assets_seed if missing (needed for server startup)\n  if [ -d \"$FLOX_ENV_PROJECT/dev_assets_seed\" ] && [ ! -f \"$FLOX_ENV_PROJECT/dev_assets/db.sqlite\" ]; then\n    echo \"Seeding dev_assets from dev_assets_seed...\"\n    mkdir -p \"$FLOX_ENV_PROJECT/dev_assets/artifacts\"\n    cp \"$FLOX_ENV_PROJECT/dev_assets_seed/db.sqlite\" \"$FLOX_ENV_PROJECT/dev_assets/db.sqlite\"\n    cp \"$FLOX_ENV_PROJECT/dev_assets_seed/config.json\" \"$FLOX_ENV_PROJECT/dev_assets/config.json\" 2>/dev/null\n  fi\n"
     },
     "profile": {
-      "common": "  export RUSTUP_HOME=\"${FLOX_ENV_CACHE}/rustup\"\n  export CARGO_HOME=\"${FLOX_ENV_CACHE}/cargo\"\n  export PATH=\"$CARGO_HOME/bin:$FLOX_ENV_PROJECT/target/release:$PATH\"\n  alias orcha=\"$FLOX_ENV_PROJECT/target/release/orcha\"\n  echo \"ORCHA CLI available — run: orcha status\"\n"
+      "common": "  export RUSTUP_HOME=\"${FLOX_ENV_CACHE}/rustup\"\n  export CARGO_HOME=\"${FLOX_ENV_CACHE}/cargo\"\n  export PATH=\"$CARGO_HOME/bin:$FLOX_ENV_PROJECT/target/release:$PATH\"\n  alias topsi=\"$FLOX_ENV_PROJECT/target/release/topsi\"\n  echo \"Topsi CLI available — run: topsi status\"\n"
     },
     "options": {}
   },
@@ -658,6 +668,122 @@
       "priority": 5
     },
     {
+      "attr_path": "ollama",
+      "broken": false,
+      "derivation": "/nix/store/xh0j9zkasnbphdvab631jljqmb8nczx7-ollama-0.14.1.drv",
+      "description": "Get up and running with large language models locally",
+      "install_id": "ollama",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "ollama-0.14.1",
+      "pname": "ollama",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:28:21.978040Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.14.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/lwzs9gsv96aj6nfpfj398k0wxpv3masl-ollama-0.14.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "ollama",
+      "broken": false,
+      "derivation": "/nix/store/ywhv37pckbd2pvii0w6m5yszi3rd1pky-ollama-0.14.1.drv",
+      "description": "Get up and running with large language models locally",
+      "install_id": "ollama",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "ollama-0.14.1",
+      "pname": "ollama",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:03:00.440265Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.14.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/s3zmkl6kfv7xyqw2pmwmz4fqi326d6qr-ollama-0.14.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "ollama",
+      "broken": false,
+      "derivation": "/nix/store/sljblddf982785570a22k3yg9abbf5hr-ollama-0.14.1.drv",
+      "description": "Get up and running with large language models locally",
+      "install_id": "ollama",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "ollama-0.14.1",
+      "pname": "ollama",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:34:33.015929Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.14.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/f21jxq5ylfikhs2ws0miagw7irfs0l1a-ollama-0.14.1"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "ollama",
+      "broken": false,
+      "derivation": "/nix/store/h09glvs48smj0rvigv4lfhmwy02v0vr8-ollama-0.14.1.drv",
+      "description": "Get up and running with large language models locally",
+      "install_id": "ollama",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "ollama-0.14.1",
+      "pname": "ollama",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:21:06.583626Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.14.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/dxdgbx148r23krz9wmbggm1skc42x6qv-ollama-0.14.1"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "pkg-config",
       "broken": false,
       "derivation": "/nix/store/0zhsvrkrjdl2m8qj5hnki2qnw5pwy5qr-pkg-config-wrapper-0.29.2.drv",
@@ -898,6 +1024,126 @@
       ],
       "outputs": {
         "out": "/nix/store/rsqvnapfwyal6iw70p5nrk3vng3qdprw-pnpm-10.28.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python311",
+      "broken": false,
+      "derivation": "/nix/store/dsigi5r7h9hyg3ka4p5sakf0bcx2b9fq-python3-3.11.14.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python311",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "python3-3.11.14",
+      "pname": "python311",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:28:33.261234Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.11.14",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/kq99w40g3b22yg51vsqv3zvc6sk2cxql-python3-3.11.14"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python311",
+      "broken": false,
+      "derivation": "/nix/store/jmq9pjw82ycpv5qgllfn8za3j7wdkslj-python3-3.11.14.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python311",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "python3-3.11.14",
+      "pname": "python311",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:03:15.119631Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.11.14",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/gx93c92b86h4nrjgw0pkg2lmskrphfqq-python3-3.11.14-debug",
+        "out": "/nix/store/6zzs17cjyclxqsk6rjdm0866zkm39vgf-python3-3.11.14"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python311",
+      "broken": false,
+      "derivation": "/nix/store/5w4v8q4g2zb2hg7ikq4inr4spa0xcb5r-python3-3.11.14.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python311",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "python3-3.11.14",
+      "pname": "python311",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:34:43.537751Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.11.14",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/a8clana6zj7rqa5c1na4hcp33d6lvh7f-python3-3.11.14"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python311",
+      "broken": false,
+      "derivation": "/nix/store/rpi86g2bp8dvx7yrqxbyd2bp9np43vsq-python3-3.11.14.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python311",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "python3-3.11.14",
+      "pname": "python311",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:21:23.678502Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.11.14",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/by1wc7c5pqka33y27mhv8sm40ib8rkw6-python3-3.11.14-debug",
+        "out": "/nix/store/6334pjf6w2q623rgvwi499qaiym1p6yv-python3-3.11.14"
       },
       "system": "x86_64-linux",
       "group": "toplevel",

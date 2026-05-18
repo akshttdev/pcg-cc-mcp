@@ -133,10 +133,31 @@ async fn move_invoice_status(
         .execute(pool)
         .await?;
 
-    Invoice::find_by_id(pool, id_uuid)
+    let invoice = Invoice::find_by_id(pool, id_uuid)
         .await?
-        .map(|i| Json(ApiResponse::success(i)))
-        .ok_or_else(|| ApiError::NotFound("Invoice not found".into()))
+        .ok_or_else(|| ApiError::NotFound("Invoice not found".into()))?;
+
+    // Slack notify on paid. Soft-fail.
+    if body.status == "paid" {
+        if let Some(org_uuid) = invoice.organization_id {
+            let payload = serde_json::json!({
+                "invoice_number": invoice.invoice_number,
+                "amount_usd": invoice.amount_usd,
+                "client_name": serde_json::Value::Null,
+                "month_total_usd": serde_json::Value::Null,
+            });
+            let org_db = db::db_uuid::DbUuid::from_string(org_uuid.to_string());
+            let _ = services::services::slack::dispatch_event(
+                pool,
+                &org_db,
+                db::models::slack_channel_route::SlackEventType::InvoicePaid,
+                &payload,
+            )
+            .await;
+        }
+    }
+
+    Ok(Json(ApiResponse::success(invoice)))
 }
 
 /// DELETE /api/invoices/:id

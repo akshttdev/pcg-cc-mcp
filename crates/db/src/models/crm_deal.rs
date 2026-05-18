@@ -50,6 +50,10 @@ pub struct CrmDeal {
     pub proposal_text: Option<String>,
     pub proposal_status: String,
     pub deck_url: Option<String>,
+    /// FK to `deck_documents.id` — the structured deck authored by Lux in the
+    /// creator studio. Coexists with `deck_url` during the Phase 1 cutover;
+    /// when both are set, the structured document is authoritative.
+    pub deck_document_id: Option<DbUuid>,
     pub invoice_id: Option<String>,
     pub won_at: Option<DateTime<Utc>>,
     pub lost_at: Option<DateTime<Utc>>,
@@ -97,6 +101,7 @@ pub struct UpdateCrmDeal {
     pub proposal_text: Option<String>,
     pub proposal_status: Option<String>,
     pub deck_url: Option<String>,
+    pub deck_document_id: Option<DbUuid>,
     pub invoice_id: Option<String>,
     pub expedited: Option<i32>,
 }
@@ -300,6 +305,19 @@ impl CrmDeal {
             .ok_or(CrmDealError::NotFound)
     }
 
+    /// Load the structured deck document linked to this deal, if Lux has
+    /// authored one. Returns `None` when only the legacy `deck_url` markdown
+    /// output exists or when no deck has been generated yet.
+    pub async fn load_deck_document(
+        &self,
+        pool: &SqlitePool,
+    ) -> Result<Option<crate::models::deck_document::DeckDocument>, sqlx::Error> {
+        let Some(deck_id) = self.deck_document_id.as_ref() else {
+            return Ok(None);
+        };
+        crate::models::deck_document::DeckDocument::find_by_id(pool, deck_id.to_uuid()).await
+    }
+
     pub async fn find_by_organization(
         pool: &SqlitePool,
         organization_id: &DbUuid,
@@ -403,8 +421,9 @@ impl CrmDeal {
                 proposal_text = COALESCE(?18, proposal_text),
                 proposal_status = COALESCE(?19, proposal_status),
                 deck_url = COALESCE(?20, deck_url),
-                invoice_id = COALESCE(?21, invoice_id),
-                expedited = COALESCE(?22, expedited),
+                deck_document_id = COALESCE(?21, deck_document_id),
+                invoice_id = COALESCE(?22, invoice_id),
+                expedited = COALESCE(?23, expedited),
                 last_activity_at = datetime('now', 'subsec'),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
@@ -431,6 +450,7 @@ impl CrmDeal {
         .bind(&data.proposal_text)
         .bind(&data.proposal_status)
         .bind(&data.deck_url)
+        .bind(data.deck_document_id)
         .bind(&data.invoice_id)
         .bind(data.expedited)
         .fetch_optional(pool)

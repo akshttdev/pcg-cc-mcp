@@ -93,8 +93,8 @@ pub async fn create_task_attempt_record(
     .fetch_one(&mut *conn)
     .await;
 
-    // Re-enable FK checks on this connection before returning it to pool
-    let _ = sqlx::query("PRAGMA foreign_keys = ON")
+    // Restore pool default (FK OFF) before returning connection
+    let _ = sqlx::query("PRAGMA foreign_keys = OFF")
         .execute(&mut *conn)
         .await;
 

@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    routing::{get, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use db::models::project_knowledge_source::{
@@ -143,6 +143,27 @@ async fn mark_source_stale(
     Ok(Json(ApiResponse::success(())))
 }
 
+/// PATCH /api/knowledge-sources/:id/visibility
+async fn set_source_visibility(
+    Path(source_id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let client_visible = body
+        .get("client_visible")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| ApiError::BadRequest("client_visible boolean required".into()))?;
+    let val: i32 = if client_visible { 1 } else { 0 };
+    sqlx::query("UPDATE project_knowledge_sources SET client_visible = ?1, updated_at = datetime('now','subsec') WHERE id = ?2")
+        .bind(val)
+        .bind(source_id.as_bytes().as_slice())
+        .execute(pool)
+        .await
+        .map_err(ApiError::Database)?;
+    Ok(Json(ApiResponse::success(())))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route(
@@ -156,5 +177,9 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/projects/{project_id}/knowledge/{source_id}/stale",
             post(mark_source_stale),
+        )
+        .route(
+            "/knowledge-sources/{source_id}/visibility",
+            patch(set_source_visibility),
         )
 }

@@ -61,6 +61,11 @@ fn configure_user(repo: &Repository) {
     let mut cfg = repo.config().unwrap();
     cfg.set_str("user.name", "Test User").unwrap();
     cfg.set_str("user.email", "test@example.com").unwrap();
+    // Tests write `\n`-terminated content and read it back through libgit2's
+    // checkout. On Windows the user's global `core.autocrlf=true` would
+    // rewrite checkouts to CRLF and break byte-exact assertions.
+    cfg.set_str("core.autocrlf", "false").unwrap();
+    cfg.set_str("core.safecrlf", "false").unwrap();
 }
 
 fn push_ref(repo: &Repository, local: &str, remote: &str) {
@@ -918,6 +923,14 @@ fn merge_refreshes_main_worktree_when_on_base() {
     s.initialize_repo_with_main_branch(&repo_path).unwrap();
     s.configure_user(&repo_path, "Test User", "test@example.com")
         .unwrap();
+    // Disable autocrlf so the LF in `write_file` survives the checkout the
+    // squash-merge performs on Windows (default `core.autocrlf=true`).
+    {
+        let r = Repository::open(&repo_path).unwrap();
+        let mut cfg = r.config().unwrap();
+        cfg.set_str("core.autocrlf", "false").unwrap();
+        cfg.set_str("core.safecrlf", "false").unwrap();
+    }
     s.checkout_branch(&repo_path, "main").unwrap();
     // Baseline file
     write_file(&repo_path, "file.txt", "base\n");

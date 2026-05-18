@@ -21,6 +21,7 @@ use futures_util::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::info;
+use utils::response::ApiResponse;
 
 use crate::{error::ApiError, DeploymentImpl};
 
@@ -80,7 +81,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
 /// GET /discord/sessions — list currently active Discord voice sessions
-async fn list_active_sessions() -> impl IntoResponse {
+async fn list_active_sessions() -> Json<ApiResponse<Vec<DiscordSessionSummary>>> {
     let sessions: Vec<DiscordSessionSummary> = active_sessions()
         .into_iter()
         .map(|s| DiscordSessionSummary {
@@ -97,7 +98,7 @@ async fn list_active_sessions() -> impl IntoResponse {
         })
         .collect();
 
-    Json(sessions)
+    Json(ApiResponse::success(sessions))
 }
 
 /// POST /discord/join — inform the dashboard about the correct slash commands to use.

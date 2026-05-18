@@ -20,12 +20,12 @@ use workspace_utils::{
 };
 
 use crate::{
-    command::{CmdOverrides, CommandBuilder, apply_overrides},
+    command::{apply_overrides, CmdOverrides, CommandBuilder},
     executors::{AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor},
     logs::{
-        ActionType, FileChange, NormalizedEntry, NormalizedEntryType, TodoItem, ToolStatus,
         stderr_processor::normalize_stderr_logs,
-        utils::{EntryIndexProvider, patch::ConversationPatch},
+        utils::{patch::ConversationPatch, EntryIndexProvider},
+        ActionType, FileChange, NormalizedEntry, NormalizedEntryType, TodoItem, ToolStatus,
     },
 };
 
@@ -1685,6 +1685,11 @@ mod tests {
         assert_eq!(result, "`*.js`");
     }
 
+    // The next three tests feed Unix-style `/tmp/...` paths into `make_path_relative`.
+    // On Windows those paths are not absolute (no drive prefix), so `strip_prefix`
+    // never matches and the function returns the input unchanged. Real Windows
+    // worktree paths (`C:\…`) work fine; gate the Unix-pathed tests to Unix only.
+    #[cfg(unix)]
     #[test]
     fn test_ls_tool_content_extraction() {
         // Test LS with path
@@ -1702,6 +1707,7 @@ mod tests {
         assert_eq!(result, "List directory: `components`");
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_path_relative_conversion() {
         // Test with relative path (should remain unchanged)
@@ -1781,6 +1787,9 @@ mod tests {
         );
     }
 
+    // Uses Unix `/tmp/...` paths against `make_path_relative` (via `normalize_entries`).
+    // Same Windows-path quirk as the other path tests above.
+    #[cfg(unix)]
     #[test]
     fn test_amp_tool_aliases_create_file_and_edit_file() {
         // Amp "create_file" should deserialize into Write with alias field "path"

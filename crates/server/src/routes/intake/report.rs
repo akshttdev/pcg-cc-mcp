@@ -591,6 +591,55 @@ pub async fn run_report_generation(
         "Report {} created for contact {}",
         report_id_str, contact_id
     );
+    // Create human-review task: "Review Business Report: [person]"
+    {
+        let person_name = contact
+            .full_name
+            .clone()
+            .unwrap_or_else(|| "Unknown".into());
+
+        let title = format!("Review Business Report: {}", person_name);
+        let desc = format!(
+            "Business report is ready for review.\nReport ID: {}\n\
+             Review the executive summary, market analysis, and recommended services.\n\
+             Then advance the deal stage and create a proposal if appropriate.",
+            report_id_str
+        );
+        let project_id = super::pipeline::SIRAK_CONFIG.project_id;
+        let exists: bool =
+            sqlx::query_scalar("SELECT COUNT(*) > 0 FROM tasks WHERE project_id = ? AND title = ?")
+                .bind(project_id)
+                .bind(&title)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(false);
+
+        if !exists {
+            let _ = sqlx::query(
+                "INSERT INTO tasks (id, project_id, title, description, status, priority,
+                 created_by, tags, workflow_type, entity_type, entity_id,
+                 created_at, updated_at)
+                 SELECT ?, ?, ?, ?, 'todo', 'high', id, '[\"report-review\",\"intel\"]',
+                 'report_review', 'person', ?
+                 FROM users WHERE username = 'Sirak' LIMIT 1",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(project_id)
+            .bind(&title)
+            .bind(&desc)
+            .bind(&report_id_str)
+            .execute(&pool)
+            .await;
+            tracing::info!("Created report review task: {}", title);
+        }
+    }
+
+    info!(
+        "Report {} created for contact {}",
+        report_id_str, contact_id
+    );
     Ok(())
 }
 

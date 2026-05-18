@@ -169,6 +169,8 @@ impl VideoJobBridge for VideoProductionBridge {
                 script_text: script_text.to_string(),
                 background_url: background_url.map(|s| s.to_string()),
                 segments_json: segments_json.map(|s| s.to_string()),
+                width: None,
+                height: None,
             },
             None,
         )
@@ -190,6 +192,8 @@ impl VideoJobBridge for VideoProductionBridge {
                 &script,
                 bg.as_deref(),
                 segs.as_deref(),
+                1280,
+                720,
             )
             .await
             {
@@ -418,6 +422,11 @@ pub struct TopsiChatRequest {
     pub session_id: String,
     pub project_id: Option<Uuid>,
     pub context: Option<serde_json::Value>,
+    /// Optional PCG Router `model_id` to override Topsi's configured default LLM
+    /// for this turn (e.g. "claude-sonnet-4-6", "gpt-4o"). When absent, Topsi
+    /// uses the LLM configured at agent initialization.
+    #[serde(default)]
+    pub model_id: Option<String>,
 }
 
 /// Topology overview response

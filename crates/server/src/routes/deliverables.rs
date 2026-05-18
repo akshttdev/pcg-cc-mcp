@@ -12,6 +12,7 @@ use db::{
         project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
         review_comment::ReviewComment,
         review_token::ReviewToken,
+        social_post::SocialPost,
     },
 };
 use deployment::Deployment;
@@ -125,6 +126,58 @@ async fn move_deliverable_status(
             "Deliverable {} registered in knowledge graph as artifact",
             id
         );
+
+        // Mark KG entry as client_visible if this project is client work
+        #[derive(sqlx::FromRow)]
+        struct ProjectRow {
+            client_id: Option<String>,
+        }
+        if let Ok(Some(proj)) =
+            sqlx::query_as::<_, ProjectRow>("SELECT client_id FROM projects WHERE id = ?")
+                .bind(deliverable.project_id.to_string())
+                .fetch_optional(pool)
+                .await
+        {
+            if proj.client_id.is_some() {
+                let _ = sqlx::query(
+                    "UPDATE project_knowledge_sources SET client_visible = 1, updated_at = datetime('now','subsec') \
+                     WHERE project_id = ? AND source_type = 'artifact' AND source_id = ?"
+                )
+                .bind(deliverable.project_id.to_string())
+                .bind(&source_id)
+                .execute(pool)
+                .await;
+                tracing::info!(
+                    "Deliverable {} KG entry marked client_visible (client project)",
+                    id
+                );
+            }
+        }
+
+        // Auto-advance linked social post draft → pending_review
+        if let Ok(Some(linked_post)) = SocialPost::find_by_deliverable(pool, id).await {
+            if linked_post.status == "draft" {
+                match SocialPost::advance_to_review(pool, linked_post.id, "", &[]).await {
+                    Ok(updated) => {
+                        let app_base = std::env::var("APP_BASE_URL")
+                            .unwrap_or_else(|_| "http://localhost:3001".into());
+                        let review_url = updated
+                            .review_token
+                            .as_deref()
+                            .map(|t| format!("{}/api/social/review/{}", app_base, t))
+                            .unwrap_or_default();
+                        tracing::info!(
+                            "Social post {} advanced to pending_review. Review: {}",
+                            linked_post.id,
+                            review_url
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!("Could not advance social post {}: {}", linked_post.id, e)
+                    }
+                }
+            }
+        }
     }
 
     Ok(Json(ApiResponse::success(deliverable)))

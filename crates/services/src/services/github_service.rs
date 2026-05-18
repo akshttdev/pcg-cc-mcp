@@ -1,9 +1,11 @@
 use std::time::Duration;
 
 use backon::{ExponentialBuilder, Retryable};
+use chrono::{DateTime, Utc};
 use db::models::merge::{MergeStatus, PullRequestInfo};
-use octocrab::{Octocrab, OctocrabBuilder, models::IssueState};
+use octocrab::{models::IssueState, Octocrab, OctocrabBuilder};
 use regex::Regex;
+use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::info;
@@ -344,7 +346,6 @@ impl GitHubService {
     }
 
     /// List repositories for the authenticated user with pagination
-    #[cfg(feature = "cloud")]
     pub async fn list_repositories(
         &self,
         page: u8,
@@ -368,7 +369,6 @@ impl GitHubService {
             .await
     }
 
-    #[cfg(feature = "cloud")]
     async fn list_repositories_internal(
         &self,
         page: u8,
@@ -414,4 +414,184 @@ impl GitHubService {
         );
         Ok(repositories)
     }
+
+    /// Identity of the user who owns the access token. Used after OAuth
+    /// callback to populate `provider_account_id` on the integration connection.
+    pub async fn get_authenticated_user(&self) -> Result<AuthenticatedUser, GitHubServiceError> {
+        let me = self.client.current().user().await?;
+        Ok(AuthenticatedUser {
+            id: me.id.0 as i64,
+            login: me.login,
+            name: me.name,
+            avatar_url: Some(me.avatar_url.to_string()),
+            email: me.email,
+        })
+    }
+
+    /// Commits on `branch` (or default branch when None), newest first.
+    /// `since` is an optional RFC3339 cutoff so callers can resume from their
+    /// last sync cursor.
+    pub async fn list_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch: Option<&str>,
+        since: Option<DateTime<Utc>>,
+        page: u8,
+    ) -> Result<Vec<CommitSummary>, GitHubServiceError> {
+        // Hold the RepoHandler in a binding so the borrow outlives the
+        // chained builder calls below.
+        let handler = self.client.repos(owner, repo);
+        let mut builder = handler.list_commits();
+        if let Some(b) = branch {
+            builder = builder.branch(b);
+        }
+        if let Some(s) = since {
+            builder = builder.since(s);
+        }
+        let commits_page = builder.per_page(50).page(page).send().await.map_err(|e| {
+            GitHubServiceError::Repository(format!(
+                "Failed to list commits for {owner}/{repo}: {e}"
+            ))
+        })?;
+
+        let commits = commits_page
+            .items
+            .into_iter()
+            .map(|c| CommitSummary {
+                sha: c.sha,
+                html_url: c.html_url.to_string(),
+                message: c.commit.message,
+                author_name: c.commit.author.as_ref().map(|a| a.name.clone()),
+                author_email: c.commit.author.as_ref().map(|a| a.email.clone()),
+                author_date: c.commit.author.and_then(|a| a.date),
+                committer_login: c.author.map(|a| a.login),
+            })
+            .collect();
+        Ok(commits)
+    }
+}
+
+// ─── OAuth helpers (no token required) ─────────────────────────────────────
+
+/// User-facing GitHub OAuth scopes. Override via `GITHUB_OAUTH_SCOPES`.
+const DEFAULT_OAUTH_SCOPES: &str = "read:user user:email repo";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct AuthenticatedUser {
+    pub id: i64,
+    pub login: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct CommitSummary {
+    pub sha: String,
+    pub html_url: String,
+    pub message: String,
+    pub author_name: Option<String>,
+    pub author_email: Option<String>,
+    #[ts(type = "Date | null", optional)]
+    pub author_date: Option<DateTime<Utc>>,
+    pub committer_login: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OAuthTokens {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub scope: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenResponse {
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+    expires_in: Option<i64>,
+    scope: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+fn oauth_scopes() -> String {
+    std::env::var("GITHUB_OAUTH_SCOPES").unwrap_or_else(|_| DEFAULT_OAUTH_SCOPES.to_string())
+}
+
+/// Build the GitHub OAuth authorization URL.
+///
+/// Reads `GITHUB_CLIENT_ID` from the env. Callers must register the
+/// `redirect_uri` on their GitHub OAuth app.
+pub fn oauth_authorize_url(redirect_uri: &str, state: &str) -> Result<String, GitHubServiceError> {
+    let client_id = std::env::var("GITHUB_CLIENT_ID").map_err(|_| {
+        GitHubServiceError::Repository("GITHUB_CLIENT_ID environment variable not set".to_string())
+    })?;
+    let scopes = oauth_scopes();
+    Ok(format!(
+        "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope={}&state={}&allow_signup=true",
+        urlencoding::encode(&client_id),
+        urlencoding::encode(redirect_uri),
+        urlencoding::encode(&scopes),
+        urlencoding::encode(state),
+    ))
+}
+
+/// Exchange an authorization code for an access token.
+///
+/// Reads `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` from the env. The
+/// returned tokens are *plaintext* — callers must encrypt before persisting.
+pub async fn oauth_exchange_code(
+    code: &str,
+    redirect_uri: &str,
+) -> Result<OAuthTokens, GitHubServiceError> {
+    let client_id = std::env::var("GITHUB_CLIENT_ID").map_err(|_| {
+        GitHubServiceError::Repository("GITHUB_CLIENT_ID environment variable not set".to_string())
+    })?;
+    let client_secret = std::env::var("GITHUB_CLIENT_SECRET").map_err(|_| {
+        GitHubServiceError::Repository(
+            "GITHUB_CLIENT_SECRET environment variable not set".to_string(),
+        )
+    })?;
+
+    let http = HttpClient::new();
+    let body: TokenResponse = http
+        .post("https://github.com/login/oauth/access_token")
+        .header("Accept", "application/json")
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("code", code),
+            ("redirect_uri", redirect_uri),
+        ])
+        .send()
+        .await
+        .map_err(|e| GitHubServiceError::Repository(format!("Token exchange request failed: {e}")))?
+        .json()
+        .await
+        .map_err(|e| {
+            GitHubServiceError::Repository(format!("Token exchange response parse failed: {e}"))
+        })?;
+
+    if let Some(err) = body.error {
+        return Err(GitHubServiceError::Repository(format!(
+            "GitHub OAuth error: {} ({})",
+            err,
+            body.error_description.unwrap_or_default(),
+        )));
+    }
+
+    let access_token = body.access_token.ok_or_else(|| {
+        GitHubServiceError::Repository("GitHub token response missing access_token".to_string())
+    })?;
+
+    Ok(OAuthTokens {
+        access_token,
+        refresh_token: body.refresh_token,
+        expires_at: body
+            .expires_in
+            .map(|s| Utc::now() + chrono::Duration::seconds(s)),
+        scope: body.scope,
+    })
 }

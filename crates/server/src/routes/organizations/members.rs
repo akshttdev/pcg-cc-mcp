@@ -351,6 +351,7 @@ pub async fn list_org_data_sources(
             'metadata', metadata,
             'status', status,
             'source_type', source_type,
+            'folder', folder,
             'created_at', created_at,
             'updated_at', updated_at
         ) FROM data_sources
@@ -406,7 +407,7 @@ pub async fn add_org_person_contact(
 pub async fn list_org_companies(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
-) -> Result<Json<Vec<Company>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<Company>>>, ApiError> {
     let pool = &deployment.db().pool;
     let companies = Company::list(
         pool,
@@ -416,7 +417,7 @@ pub async fn list_org_companies(
     )
     .await
     .map_err(|e| ApiError::InternalError(e.to_string()))?;
-    Ok(Json(companies))
+    Ok(Json(ApiResponse::success(companies)))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -519,10 +520,7 @@ pub async fn assign_member(
             .bind(&target_bytes)
             .bind(user_id.as_bytes().to_vec())
             .bind(role)
-            .bind(
-                db::bind_uuid_blob(&access_context.user_id)
-                    .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?,
-            )
+            .bind(access_context.user_id.as_str())
             .execute(pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to assign to project: {}", e)))?;
@@ -562,10 +560,7 @@ pub async fn assign_member(
             .bind(&target_bytes)
             .bind(user_id.as_bytes().to_vec())
             .bind(role)
-            .bind(
-                db::bind_uuid_blob(&access_context.user_id)
-                    .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?,
-            )
+            .bind(access_context.user_id.as_str())
             .execute(pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to assign to client: {}", e)))?;

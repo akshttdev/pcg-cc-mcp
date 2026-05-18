@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
 import type { Project } from 'shared/types';
 
 import {
@@ -68,13 +73,8 @@ const SocialTab = lazy(() =>
       m.default ??
       ((m as Record<string, unknown>).SocialTab as React.ComponentType<{
         projectEntries: Array<{ id: string; name: string }>;
-        orgId: string;
+        orgId?: string;
       }>),
-  }))
-);
-const KnowledgeTab = lazy(() =>
-  import('./organization-profile/tabs/intelligence/KnowledgeTab').then((m) => ({
-    default: m.KnowledgeTab,
   }))
 );
 
@@ -85,7 +85,6 @@ type Tab =
   | 'members'
   | 'pipeline'
   | 'social'
-  | 'intelligence'
   | 'intel'
   | 'integrations';
 
@@ -645,13 +644,7 @@ function PipelineTab({ orgId, clientId }: { orgId: string; clientId: string }) {
 }
 
 // ── Social placeholder ────────────────────────────────────────────────────────
-function SocialPlaceholderTab({
-  projects,
-  orgId,
-}: {
-  projects: Project[];
-  orgId: string;
-}) {
+function SocialPlaceholderTab({ projects }: { projects: Project[] }) {
   if (projects.length === 0)
     return (
       <div className="text-center py-12 text-muted-foreground">
@@ -663,7 +656,6 @@ function SocialPlaceholderTab({
     <Suspense fallback={<TabSkeleton />}>
       <SocialTab
         projectEntries={projects.map((p) => ({ id: p.id, name: p.name }))}
-        orgId={orgId}
       />
     </Suspense>
   );
@@ -691,7 +683,29 @@ function IntegrationsPlaceholderTab() {
 export function ClientOverview() {
   const { orgId, clientId } = useParams<{ orgId: string; clientId: string }>();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const svParam = searchParams.get('sv');
+  const validTabs: Tab[] = [
+    'overview',
+    'projects',
+    'contacts',
+    'members',
+    'pipeline',
+    'social',
+    'intel',
+    'integrations',
+  ];
+  const [tab, setTab] = useState<Tab>(() =>
+    validTabs.includes(svParam as Tab) ? (svParam as Tab) : 'overview'
+  );
+
+  const switchTab = (t: Tab) => {
+    setTab(t);
+    const params = new URLSearchParams(searchParams);
+    if (t === 'overview') params.delete('sv');
+    else params.set('sv', t);
+    setSearchParams(params, { replace: true });
+  };
   const [membersOpen, setMembersOpen] = useState(false);
 
   const { data: client, isLoading } = useQuery<ClientOverviewData>({
@@ -815,7 +829,7 @@ export function ClientOverview() {
               variant="outline"
               size="sm"
               className="gap-1.5 border-indigo-700/60 text-indigo-400 hover:bg-indigo-950/40"
-              onClick={() => setTab('intel')}
+              onClick={() => switchTab('intel')}
             >
               <Brain className="h-4 w-4" /> Intel
             </Button>
@@ -859,63 +873,56 @@ export function ClientOverview() {
         <div className="flex gap-1 border-b border-border pb-1 pt-4 flex-wrap -mx-0">
           <TabBtn
             active={tab === 'overview'}
-            onClick={() => setTab('overview')}
+            onClick={() => switchTab('overview')}
             icon={BarChart3}
           >
             Overview
           </TabBtn>
           <TabBtn
             active={tab === 'projects'}
-            onClick={() => setTab('projects')}
+            onClick={() => switchTab('projects')}
             icon={FolderKanban}
           >
             Projects{allProjects.length > 0 && ` (${allProjects.length})`}
           </TabBtn>
           <TabBtn
             active={tab === 'contacts'}
-            onClick={() => setTab('contacts')}
+            onClick={() => switchTab('contacts')}
             icon={Users}
           >
             People
           </TabBtn>
           <TabBtn
             active={tab === 'members'}
-            onClick={() => setTab('members')}
+            onClick={() => switchTab('members')}
             icon={Users}
           >
             Members
           </TabBtn>
           <TabBtn
             active={tab === 'pipeline'}
-            onClick={() => setTab('pipeline')}
+            onClick={() => switchTab('pipeline')}
             icon={Package}
           >
             Pipeline
           </TabBtn>
           <TabBtn
             active={tab === 'social'}
-            onClick={() => setTab('social')}
+            onClick={() => switchTab('social')}
             icon={Share2}
           >
             Social
           </TabBtn>
           <TabBtn
-            active={tab === 'intelligence'}
-            onClick={() => setTab('intelligence')}
-            icon={BookOpen}
-          >
-            Intelligence
-          </TabBtn>
-          <TabBtn
             active={tab === 'intel'}
-            onClick={() => setTab('intel')}
+            onClick={() => switchTab('intel')}
             icon={Brain}
           >
             Intel
           </TabBtn>
           <TabBtn
             active={tab === 'integrations'}
-            onClick={() => setTab('integrations')}
+            onClick={() => switchTab('integrations')}
             icon={Plug}
           >
             Integrations
@@ -947,20 +954,7 @@ export function ClientOverview() {
           {tab === 'pipeline' && (
             <PipelineTab orgId={orgId!} clientId={clientId!} />
           )}
-          {tab === 'social' && (
-            <SocialPlaceholderTab projects={allProjects} orgId={orgId!} />
-          )}
-          {tab === 'intelligence' && (
-            <Suspense fallback={<TabSkeleton />}>
-              <KnowledgeTab
-                orgId={orgId!}
-                projectEntries={allProjects.map((p) => ({
-                  id: p.id,
-                  name: p.name,
-                }))}
-              />
-            </Suspense>
-          )}
+          {tab === 'social' && <SocialPlaceholderTab projects={allProjects} />}
           {tab === 'intel' &&
             (client.company_id ? (
               <div className="space-y-4">

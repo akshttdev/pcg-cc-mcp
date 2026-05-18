@@ -169,6 +169,12 @@ impl ExecutionEngine {
         tracing::info!("[EXECUTION_ENGINE] Database pool configured for workflow persistence");
     }
 
+    /// Get a clone of the database pool (if configured)
+    pub async fn db(&self) -> Option<SqlitePool> {
+        let db = self.db.read().await;
+        db.clone()
+    }
+
     /// Set the cinematics service for image/video generation
     pub async fn set_cinematics(&self, cinematics: Arc<CinematicsService>) {
         let mut cine = self.cinematics.write().await;

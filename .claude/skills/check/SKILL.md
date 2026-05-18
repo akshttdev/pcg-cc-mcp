@@ -7,62 +7,29 @@ allowed-tools: Bash, Read, Grep
 
 # Full Project Check
 
-Run all 5 CI checks and report results.
+Run all checks and report a summary. Execute these in parallel where possible:
 
-**CRITICAL**: Each Bash tool call starts with a fresh working directory. You MUST `cd` to the correct directory at the START of every single command. Do NOT rely on `cd` from a previous Bash call.
-
-## Run all checks
-
-Run steps 1, 3, 4, 5 in parallel (they're independent). Step 2 (clippy) is slow — run in background or last.
-
-### Step 1: Rust Format
-
+## Backend (run inside `flox activate`)
 ```bash
-cd $(git rev-parse --show-toplevel) && cargo fmt --all && cargo fmt --all -- --check
+flox activate -- cargo fmt --all -- --check
+flox activate -- cargo clippy --all --all-targets --all-features -- -D warnings
+flox activate -- cargo test --workspace --no-fail-fast 2>&1 | tail -20
 ```
 
-If this changes files, `git diff --stat` will show them. **Stop and commit before continuing.**
-
-### Step 2: Rust Clippy (slow — run in background)
-
-Read the `-A clippy::*` flags from `.github/workflows/ci.yml` (the lines after `cargo clippy`), then run:
-
+## Frontend
 ```bash
-cd $(git rev-parse --show-toplevel) && flox activate -- cargo clippy --all --all-targets -- -D warnings [paste -A flags from ci.yml here]
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run format:check
 ```
 
-**Do NOT use `grep -oP`** to extract flags — macOS zsh doesn't support Perl regex. Instead, read the ci.yml file and copy the flags directly.
-
-### Step 3: TypeScript
-
+## Type Sync
 ```bash
-cd $(git rev-parse --show-toplevel)/frontend && npx tsc --noEmit
+npm run generate-types:check
 ```
 
-### Step 4: ESLint
-
-```bash
-cd $(git rev-parse --show-toplevel)/frontend && npx eslint . --ext ts,tsx
-```
-
-0 errors required. Warnings are pre-existing and acceptable.
-
-### Step 5: Type Generation
-
-```bash
-cd $(git rev-parse --show-toplevel) && npm run generate-types:check
-```
-
-## Report
-
+Report results as a summary table:
 | Check | Status | Issues |
 |-------|--------|--------|
-| cargo fmt | PASS/FAIL | N diffs |
-| cargo clippy | PASS/FAIL | N errors |
-| tsc | PASS/FAIL | N errors |
-| eslint | PASS/FAIL | N errors, N warnings |
-| generate-types | PASS/FAIL | up to date? |
 
-If any fail, show first 10 lines of errors and suggest fixes.
-
-If all pass: **"All 5 checks pass. Ready to push."**
+If any check fails, show the first 10 lines of errors and suggest fixes.

@@ -815,3 +815,77 @@ export const discordApi = {
     return handleApiResponse(response);
   },
 };
+
+export interface MeetingSession {
+  id: string;
+  title: string | null;
+  status: string;
+  started_at: string;
+  ended_at?: string | null;
+  duration_seconds?: number | null;
+  participant_count?: number | null;
+  segment_count?: number | null;
+  project_id: string | null;
+  started_by: string | null;
+  notes: string | null;
+}
+export interface MeetingSegment {
+  id: string;
+  meeting_session_id: string;
+  speaker_label: string | null;
+  text: string;
+  segment_index: number;
+  start_time_ms?: number | null;
+  end_time_ms?: number | null;
+  is_topsi_addressed?: boolean;
+  created_at: string;
+}
+export const meetingSessionsApi = {
+  listSessions: async (status?: string): Promise<MeetingSession[]> => {
+    const qs = status ? `?status=${status}` : '';
+    const r = await makeRequest(`/api/topsi/meeting/list${qs}`);
+    const body = await handleApiResponse<{
+      meetings: MeetingSession[];
+      total: number;
+    }>(r);
+    return body.meetings ?? [];
+  },
+  listSegments: async (sessionId: string): Promise<MeetingSegment[]> => {
+    const r = await makeRequest(`/api/topsi/meeting/transcript/${sessionId}`);
+    const body = await handleApiResponse<{
+      session_id: string;
+      segments: MeetingSegment[];
+      total_count: number;
+    }>(r);
+    return body.segments ?? [];
+  },
+};
+
+export interface AuriTaskSummary {
+  id: string;
+  title: string;
+  status: string | null;
+  github_repo: string | null;
+  github_branch: string | null;
+  auri_pr_url: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface AuriTaskLog {
+  task_id: string;
+  status: string;
+  log: string | null;
+  pr_url: string | null;
+  branch: string | null;
+}
+export const auriApi = {
+  listTasks: async (): Promise<AuriTaskSummary[]> => {
+    const r = await makeRequest('/api/auri/tasks');
+    const body = await handleApiResponse<{ tasks?: AuriTaskSummary[] }>(r);
+    return body.tasks ?? [];
+  },
+  getLog: async (taskId: string): Promise<AuriTaskLog> => {
+    const r = await makeRequest(`/api/auri/tasks/${taskId}/log`);
+    return handleApiResponse<AuriTaskLog>(r);
+  },
+};

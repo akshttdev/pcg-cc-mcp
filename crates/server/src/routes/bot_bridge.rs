@@ -92,6 +92,7 @@ async fn bot_chat_topsi(
 
     let topsi_req = TopsiRequest::new(TopsiRequestType::Chat {
         message: req.message,
+        model_id: None,
     });
 
     let resp = topsi

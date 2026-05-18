@@ -104,14 +104,19 @@ pub async fn get_tasks(
     Query(query): Query<TaskQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TaskWithAttemptStatus>>>, ApiError> {
     if let Some(ref project_id) = query.project_id {
-        // Verify user has at least viewer access to this project
-        access_context
-            .check_project_access(
+        // Return empty list for inaccessible projects rather than 403 — prevents
+        // 403 storms when the project list fetches task counts for all visible projects.
+        let has_access = access_context
+            .try_check_project_access(
                 &deployment.db().pool,
                 &project_id.to_string(),
                 crate::middleware::access_control::ProjectRole::Viewer,
             )
             .await?;
+
+        if has_access.is_none() {
+            return Ok(ResponseJson(ApiResponse::success(vec![])));
+        }
 
         let tasks = Task::find_by_project_id_with_attempt_status(
             &deployment.db().pool,
@@ -801,6 +806,60 @@ pub async fn update_task(
         };
         if let Err(e) = ActivityLog::create(&deployment.db().pool, &log_entry).await {
             tracing::warn!("Failed to log task update activity: {e}");
+        }
+    }
+
+    // Slack notifications for assignee change + completion. Soft-fail.
+    {
+        let pool = &deployment.db().pool;
+        let assignee_changed = old_assignee_id != task.assignee_id;
+        let just_completed =
+            old_status != task.status && task.status == db::models::task::TaskStatus::Done;
+
+        if assignee_changed || just_completed {
+            // Resolve org_id via the task's project (Task itself has no org_id).
+            let org_id =
+                match db::models::project::Project::find_by_id(pool, &task.project_id).await {
+                    Ok(Some(p)) => p.organization_id,
+                    _ => None,
+                };
+            if let Some(org_str) = org_id {
+                let org_db = db::db_uuid::DbUuid::from_string(org_str.clone());
+
+                if assignee_changed && task.assignee_id.is_some() {
+                    let payload = serde_json::json!({
+                        "task_title": task.title,
+                        "assignee": task.assignee_id,
+                        "project": task.project_id,
+                        "task_url": format!(
+                            "/organizations/{}/projects/{}/tasks/{}",
+                            org_str, task.project_id, task.id
+                        ),
+                    });
+                    let _ = services::services::slack::dispatch_event(
+                        pool,
+                        &org_db,
+                        db::models::slack_channel_route::SlackEventType::TaskAssigned,
+                        &payload,
+                    )
+                    .await;
+                }
+
+                if just_completed {
+                    let payload = serde_json::json!({
+                        "task_title": task.title,
+                        "project": task.project_id,
+                        "completed_by": access_context.user_id.to_string(),
+                    });
+                    let _ = services::services::slack::dispatch_event(
+                        pool,
+                        &org_db,
+                        db::models::slack_channel_route::SlackEventType::TaskCompleted,
+                        &payload,
+                    )
+                    .await;
+                }
+            }
         }
     }
 

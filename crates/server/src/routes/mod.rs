@@ -10,37 +10,37 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use crate::{middleware as app_middleware, DeploymentImpl};
 
 pub mod activity;
+pub mod agent_chat;
 pub mod agent_flow_events;
 pub mod agent_flows;
+pub mod agent_wallets;
+pub mod agents;
 pub mod airtable;
 pub mod apn_data;
 pub mod approvals;
 pub mod aptos;
 pub mod artifact_reviews;
 pub mod artifacts;
+pub mod auri;
 pub mod auth;
-pub mod bowser;
-pub mod cms;
-pub mod collaboration;
-pub mod comments;
-pub mod config;
-pub mod containers;
-pub mod dav;
-pub mod editron_export;
-pub mod filesystem;
-// pub mod github;
-pub mod agent_chat;
-pub mod agent_wallets;
-pub mod agents;
 pub mod automations;
 pub mod autonomy;
+pub mod avatar_engine;
+pub mod billing;
 pub mod board_shares;
 pub mod bot_bridge;
+pub mod bowser;
+pub mod calendar;
 pub mod cinematics;
 pub mod clients;
+pub mod cms;
+pub mod collaboration;
 pub mod command_center;
+pub mod comments;
 pub mod communications;
 pub mod companies;
+pub mod config;
+pub mod containers;
 pub mod crm_activities;
 pub mod crm_contacts;
 pub mod crm_deal_automations;
@@ -49,9 +49,11 @@ pub mod crm_deals;
 pub mod crm_pipelines;
 pub mod data_source_workflows;
 pub mod data_sources;
+pub mod dav;
 pub mod deliverables;
 pub mod discord;
 pub mod dropbox;
+pub mod editron_export;
 pub mod email_accounts;
 pub mod entity_conversion;
 pub mod event_stream;
@@ -59,11 +61,14 @@ pub mod events;
 pub mod execution_processes;
 pub mod execution_summaries;
 pub mod feedback;
+pub mod filesystem;
 pub mod frontend;
+pub mod github;
 pub mod graph;
 pub mod health;
 pub mod images;
 pub mod intake;
+pub mod integrations;
 pub mod intelligence;
 pub mod invitations;
 pub mod invite_dispatch;
@@ -82,6 +87,7 @@ pub mod notifications;
 pub mod onboarding;
 pub mod operator_rates;
 pub mod orcha;
+pub mod orchestration;
 pub mod org_cloud;
 pub mod org_invitations;
 pub mod org_onboarding;
@@ -106,9 +112,16 @@ pub mod review;
 pub mod scratch;
 pub mod sessions;
 pub mod sidebar;
+pub mod slack;
 pub mod social_accounts;
 pub mod social_inbox;
+pub mod social_intelligence;
+pub mod social_media_upload;
+pub mod social_metrics_sync;
+pub mod social_oauth;
 pub mod social_posts;
+pub mod social_publisher;
+pub mod storage;
 pub mod system_metrics;
 pub mod tags;
 pub mod task_artifacts;
@@ -161,6 +174,12 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(social_accounts::router(&deployment))
         .merge(social_posts::router(&deployment))
         .merge(social_inbox::router(&deployment))
+        .merge(social_intelligence::router(&deployment))
+        .merge(social_oauth::protected_router(&deployment))
+        .merge(integrations::router(&deployment))
+        .merge(github::router(&deployment))
+        .merge(storage::router(&deployment))
+        .merge(social_media_upload::router(&deployment))
         .merge(email_accounts::router(&deployment))
         .merge(crm_contacts::router(&deployment))
         .merge(crm_pipelines::router(&deployment))
@@ -168,6 +187,9 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(crm_activities::router(&deployment))
         .merge(dropbox::router())
         .merge(quickbooks::router(&deployment))
+        .merge(calendar::router(&deployment))
+        .merge(billing::router(&deployment))
+        .merge(slack::router(&deployment))
         .merge(agents::routes())
         .merge(agent_chat::routes())
         .merge(comments::router())
@@ -218,11 +240,12 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(topsi::topsi_routes())
         .merge(nora_classifier::router(&deployment))
         .merge(org_cloud::router(&deployment))
+        .merge(video_gen::router(&deployment))
         .merge(feedback::router(&deployment))
         .merge(agent_flows::router(&deployment))
         .merge(agent_flow_events::router(&deployment))
-        .merge(video_gen::router(&deployment))
         .merge(pipeline_events::router())
+        .merge(orchestration::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -250,6 +273,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(activity::router())
         .merge(aptos::router(&deployment))
         .merge(webhooks::router())
+        .merge(billing::webhook_router(&deployment))
         .merge(mission_control::router(&deployment))
         .merge(bowser::router(&deployment))
         .merge(collaboration::router(&deployment))
@@ -271,15 +295,20 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(model_pricing::router(&deployment))
         .merge(vibe_treasury::public_router(&deployment))
         .merge(meet::meet_routes(&deployment))
+        .merge(auri::router(&deployment))
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))
+        .merge(social_posts::public_router(&deployment))
+        .merge(social_oauth::public_router(&deployment))
+        .merge(video_gen::public_router(&deployment))
         .merge(orcha::orcha_routes())
+        .merge(media_library::public_router(&deployment))
+        .merge(social_media_upload::public_router(&deployment))
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(marketplace::public_router(&deployment))
         .merge(nora_classifier::public_router(&deployment))
         .merge(workflow_triggers::public_router(&deployment))
-        .merge(video_gen::public_router(&deployment))
         .merge(pythia::router(&deployment))
         .merge(pcg_router::router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))

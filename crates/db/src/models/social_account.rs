@@ -5,6 +5,8 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::db_uuid::DbUuid;
+
 #[derive(Debug, Error)]
 pub enum SocialAccountError {
     #[error(transparent)]
@@ -90,7 +92,13 @@ pub enum AccountStatus {
 #[ts(export)]
 pub struct SocialAccount {
     pub id: Uuid,
-    pub project_id: Uuid,
+    // DbUuid because this column stores TEXT to match the projects.id FK target.
+    // NULL for org-owned or user-owned accounts.
+    pub project_id: Option<DbUuid>,
+    /// Set for org-brand accounts (Sirak Studios LinkedIn, etc.)
+    pub organization_id: Option<String>,
+    /// Set for personal/individual accounts (Phase D).
+    pub user_id: Option<String>,
     pub platform: String,
     pub account_type: String,
     pub platform_account_id: String,
@@ -98,7 +106,14 @@ pub struct SocialAccount {
     pub display_name: Option<String>,
     pub profile_url: Option<String>,
     pub avatar_url: Option<String>,
+    // Legacy plaintext tokens — populated only for accounts created before
+    // the OAuth Token Manager migration (20260428). New accounts leave these
+    // NULL and read tokens via `integration_connection_id`.
+    #[serde(skip_serializing)]
+    #[ts(skip)]
     pub access_token: Option<String>,
+    #[serde(skip_serializing)]
+    #[ts(skip)]
     pub refresh_token: Option<String>,
     pub token_expires_at: Option<DateTime<Utc>>,
     pub follower_count: Option<i64>,
@@ -110,12 +125,20 @@ pub struct SocialAccount {
     pub last_error: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// FK into `integration_connections` for OAuth-managed tokens.
+    /// When set, callers should use `oauth_token_manager::get_access_token`
+    /// to obtain a fresh, decrypted token rather than reading `access_token`.
+    #[ts(optional)]
+    pub integration_connection_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateSocialAccount {
-    pub project_id: Uuid,
+    /// Exactly one of project_id / organization_id / user_id must be set.
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<String>,
+    pub user_id: Option<String>,
     pub platform: SocialPlatform,
     pub account_type: Option<AccountType>,
     pub platform_account_id: String,
@@ -163,16 +186,18 @@ impl SocialAccount {
         let account = sqlx::query_as::<_, SocialAccount>(
             r#"
             INSERT INTO social_accounts (
-                id, project_id, platform, account_type, platform_account_id,
-                username, display_name, profile_url, avatar_url,
+                id, project_id, organization_id, user_id, platform, account_type,
+                platform_account_id, username, display_name, profile_url, avatar_url,
                 access_token, refresh_token, token_expires_at, metadata
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             RETURNING *
             "#,
         )
         .bind(id)
-        .bind(data.project_id)
+        .bind(data.project_id.map(|p| p.to_string()))
+        .bind(&data.organization_id)
+        .bind(&data.user_id)
         .bind(&platform)
         .bind(&account_type)
         .bind(&data.platform_account_id)
@@ -198,6 +223,19 @@ impl SocialAccount {
             .ok_or(SocialAccountError::NotFound)
     }
 
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: &str,
+    ) -> Result<Vec<Self>, SocialAccountError> {
+        let accounts = sqlx::query_as::<_, SocialAccount>(
+            r#"SELECT * FROM social_accounts WHERE organization_id = ?1 ORDER BY platform, username"#,
+        )
+        .bind(organization_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(accounts)
+    }
+
     pub async fn find_by_project(
         pool: &SqlitePool,
         project_id: Uuid,
@@ -205,7 +243,7 @@ impl SocialAccount {
         let accounts = sqlx::query_as::<_, SocialAccount>(
             r#"SELECT * FROM social_accounts WHERE project_id = ?1 ORDER BY platform, username"#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .fetch_all(pool)
         .await?;
 
@@ -221,7 +259,7 @@ impl SocialAccount {
         let accounts = sqlx::query_as::<_, SocialAccount>(
             r#"SELECT * FROM social_accounts WHERE project_id = ?1 AND platform = ?2"#,
         )
-        .bind(project_id)
+        .bind(project_id.to_string())
         .bind(&platform_str)
         .fetch_all(pool)
         .await?;
@@ -340,7 +378,9 @@ mod tests {
         let created = SocialAccount::create(
             &pool,
             CreateSocialAccount {
-                project_id,
+                project_id: Some(project_id),
+                organization_id: None,
+                user_id: None,
                 platform: SocialPlatform::LinkedIn,
                 account_type: Some(AccountType::Business),
                 platform_account_id: "acc_123".into(),
@@ -390,7 +430,9 @@ mod tests {
         let account = SocialAccount::create(
             &pool,
             CreateSocialAccount {
-                project_id,
+                project_id: Some(project_id),
+                organization_id: None,
+                user_id: None,
                 platform: SocialPlatform::Instagram,
                 account_type: Some(AccountType::Creator),
                 platform_account_id: "acct_to_update".into(),

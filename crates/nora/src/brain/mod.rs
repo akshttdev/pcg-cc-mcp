@@ -141,6 +141,14 @@ impl Default for LLMConfig {
             max_tokens: 600,
             system_prompt: r#"You are Nora, the executive AI assistant for PowerClub Global. Respond in confident British English.
 
+GITHUB ACCESS — READ THIS FIRST:
+You have a GitHub PAT with full access to 7 organisations and 82+ repos. When ANYONE asks about GitHub repos, codebases, or "what repos do you have access to" — call github_list_repos IMMEDIATELY. This is NOT a research task. Do NOT call Scout or execute_workflow for GitHub questions. Do NOT use fetch_web_page for GitHub API URLs. Just call github_list_repos.
+- github_list_repos → lists every repo across all orgs (Powerclub-Global, Sirak-Studios-Org, Soverign-Stack, Veritwin, AlphaProtocolLabs, PCG-ARCHIVES, Emergence-Institute)
+- github_read_file(repo, path) → read a file
+- github_list_issues(repo) → open issues
+- github_list_prs(repo) → open PRs
+- assign_to_auri → delegate coding to Auri
+
 CRITICAL - TOOL USAGE REQUIREMENT:
 When the user mentions ANY of these agents or requests creative content, you MUST call the execute_workflow tool immediately. Do NOT just respond with text about "initiating" or "processing" - actually CALL THE TOOL:
 
@@ -209,9 +217,20 @@ When asked about social media, content strategy, or the Social Command team, exp
 
 WEB ACCESS — YOU HAVE FULL INTERNET ACCESS:
 - search_web: Search the internet in real-time (powered by Exa). Use this whenever asked to find, look up, research, or discover anything online.
-- fetch_web_page: Fetch and read any URL directly (static pages, docs, APIs).
+- fetch_web_page: Fetch and read any URL directly (static pages, docs, APIs). Do NOT use this for GitHub API endpoints — use the dedicated GitHub tools below.
 - render_page: Render JavaScript-heavy pages with a real browser (SPAs, dashboards, dynamic sites).
 NEVER say you lack internet access or cannot browse URLs. When asked to find something online, look up a link, or read a webpage — CALL THE TOOL IMMEDIATELY.
+
+GITHUB INTEGRATION — CRITICAL:
+You have an authenticated GitHub PAT with access to 7 organisations and 82+ repositories. You MUST use the dedicated GitHub tools — NEVER use fetch_web_page or construct GitHub API URLs manually.
+
+- github_list_repos → Call this ANY TIME someone asks what repos you have access to, wants to see the codebase landscape, or asks about any PCG GitHub repositories. It automatically lists ALL repos across ALL orgs: Powerclub-Global, Sirak-Studios-Org, Soverign-Stack, Veritwin, AlphaProtocolLabs, PCG-ARCHIVES, Emergence-Institute.
+- github_read_file(repo, path) → Read a specific file from a repo before asking Auri to modify anything.
+- github_list_issues(repo) → List open issues in a repo.
+- github_list_prs(repo) → List open pull requests.
+- assign_to_auri(project_id, title, description, github_repo) → Delegate a coding task to Auri (the coding agent), who clones the repo, runs Claude Code, commits, and opens a PR.
+
+When asked "what repos do you have access to?", "list my GitHub repos", or anything about PCG codebases — call github_list_repos IMMEDIATELY. Never say you don't have GitHub access.
 
 Provide concise executive summaries and surface actionable next steps."#.to_string(),
             endpoint: None,
@@ -266,6 +285,14 @@ impl LLMClient {
             }
         }
 
+        Self::with_explicit_key(config, api_key)
+    }
+
+    /// Construct an LLMClient with an explicit API key (skipping env-var lookup).
+    ///
+    /// Used by PCG Router-driven per-call model overrides where the key comes from
+    /// the router model record rather than process environment.
+    pub fn with_explicit_key(config: LLMConfig, api_key: Option<String>) -> Self {
         // Check for local Ollama fallback (local LLM models)
         let fallback_endpoint = std::env::var("OLLAMA_ENDPOINT").ok().or_else(|| {
             // Check if Ollama is running on default port
@@ -1643,7 +1670,10 @@ impl LLMClient {
     ) -> Result<String> {
         use providers::{ChatConfig, ChatMessage, ChatRequest};
 
-        let provider = AnthropicProvider::new();
+        let provider = AnthropicProvider::with_explicit_key(
+            self.api_key.clone(),
+            self.config.endpoint.clone(),
+        );
         if !provider.is_configured() {
             return Err(NoraError::ConfigError(
                 "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
@@ -1695,7 +1725,10 @@ impl LLMClient {
         use futures::StreamExt;
         use providers::{ChatConfig, ChatMessage, ChatRequest};
 
-        let provider = AnthropicProvider::new();
+        let provider = AnthropicProvider::with_explicit_key(
+            self.api_key.clone(),
+            self.config.endpoint.clone(),
+        );
         if !provider.is_configured() {
             return Err(NoraError::ConfigError(
                 "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
@@ -1750,7 +1783,10 @@ impl LLMClient {
     ) -> Result<LLMResponse> {
         use providers::{ChatConfig, ChatMessage, ChatRequest, ToolDefinition};
 
-        let provider = AnthropicProvider::new();
+        let provider = AnthropicProvider::with_explicit_key(
+            self.api_key.clone(),
+            self.config.endpoint.clone(),
+        );
         if !provider.is_configured() {
             return Err(NoraError::ConfigError(
                 "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
@@ -1858,7 +1894,10 @@ impl LLMClient {
     ) -> Result<LLMResponse> {
         use providers::{ChatConfig, ChatMessage, ChatRequest, ToolCallRequest, ToolDefinition};
 
-        let provider = AnthropicProvider::new();
+        let provider = AnthropicProvider::with_explicit_key(
+            self.api_key.clone(),
+            self.config.endpoint.clone(),
+        );
         if !provider.is_configured() {
             return Err(NoraError::ConfigError(
                 "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),

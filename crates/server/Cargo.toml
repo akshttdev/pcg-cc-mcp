@@ -20,6 +20,7 @@ utils = { path = "../utils" }
 services = { path = "../services" }
 nora = { path = "../nora" }
 cinematics = { path = "../cinematics" }
+video_gen = { path = "../video_gen" }
 topsi = { path = "../topsi" }
 discord-bot = { path = "../discord-bot" }
 discord-bots = { path = "../discord-bots" }
@@ -61,6 +62,7 @@ git2 = "0.18"
 prometheus = "0.13"
 lazy_static = "1.4"
 mime_guess = "2.0"
+infer = "0.16"
 rust-embed = "8.2"
 octocrab = "0.44"
 dirs = "5.0"

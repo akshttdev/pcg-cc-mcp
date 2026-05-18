@@ -111,10 +111,30 @@ pub(super) async fn process_with_nora(
         .json(&body)
         .send();
 
+    let llm_t0 = std::time::Instant::now();
     let resp = match timeout(LLM_TIMEOUT, fut).await {
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => return Err(format!("HTTP error: {}", e)),
+        Ok(Ok(r)) => {
+            crate::nora_metrics::record_voice_stage(
+                "twilio",
+                "llm",
+                llm_t0.elapsed().as_secs_f64(),
+            );
+            r
+        }
+        Ok(Err(e)) => {
+            crate::nora_metrics::record_voice_stage(
+                "twilio",
+                "llm_error",
+                llm_t0.elapsed().as_secs_f64(),
+            );
+            return Err(format!("HTTP error: {}", e));
+        }
         Err(_) => {
+            crate::nora_metrics::record_voice_stage(
+                "twilio",
+                "llm_timeout",
+                llm_t0.elapsed().as_secs_f64(),
+            );
             warn!("LLM timeout after {:?}", LLM_TIMEOUT);
             return Ok((
                 "I'm just pulling that information up — could you give me one moment?".to_string(),

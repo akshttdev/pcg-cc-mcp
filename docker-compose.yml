@@ -4,10 +4,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.release
-      args:
-        - RELEASE_VERSION=${RELEASE_VERSION:-latest}
-        - GITHUB_REPO=${GITHUB_REPO:-powerclubglobal/pcg-cc-mcp}
-        - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     container_name: pcg-cc-mcp
     restart: always
     logging:
@@ -29,6 +25,7 @@ services:
         max_attempts: 10
         window: 120s
     environment:
+      - ENABLE_AGENT_FLOW_ENGINE=1
       - HOST=0.0.0.0
       - BACKEND_PORT=3001
       - FRONTEND_PORT=3000
@@ -88,6 +85,15 @@ services:
       # GitHub OAuth
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      # GitHub PAT for Auri (coding agent) — clone/push/PR on behalf of PCG
+      - GITHUB_PAT=${GITHUB_PAT:-}
+      - GH_TOKEN=${GITHUB_PAT:-}
+      - GITHUB_ORG=${GITHUB_ORG:-Powerclub-Global}
+      # Auri coding agent paths (volumes mounted below)
+      - CLAUDE_BIN=/home/pythia/.nvm/versions/node/v22.20.0/bin/claude
+      - GH_BIN=/home/pythia/.local/bin/gh
+      - AURI_WORKSPACES_DIR=/home/pythia/auri-workspaces
+      - AURI_HOME=/home/pythia
       # APN (Alpha Protocol Network) — native peer manager (bridge retired)
       - AUTO_START_APN=${AUTO_START_APN:-false}
       - APN_NODE_ID=${APN_NODE_ID:-apn_814d37f4}
@@ -102,6 +108,12 @@ services:
       - repos_data:/repos
       # Access backups for restore on container startup
       - ./backups:/app/backups
+      # Auri coding agent: expose host claude CLI, gh CLI, and workspace dir
+      - /home/pythia/.nvm:/home/pythia/.nvm:ro
+      - /home/pythia/.local/bin:/home/pythia/.local/bin:ro
+      - /home/pythia/.config/gh:/home/pythia/.config/gh:ro
+      - /home/pythia/.claude:/home/pythia/.claude:ro
+      - /home/pythia/auri-workspaces:/home/pythia/auri-workspaces:rw
       # Share frontend dist with nginx
       - frontend-dist:/app/frontend/dist
       # Share docs site with nginx

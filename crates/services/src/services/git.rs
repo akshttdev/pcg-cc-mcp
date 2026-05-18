@@ -2,8 +2,8 @@ use std::{collections::HashMap, path::Path};
 
 use chrono::{DateTime, Utc};
 use git2::{
-    BranchType, Delta, DiffFindOptions, DiffOptions, Error as GitError, Reference, Remote,
-    Repository, Sort, build::CheckoutBuilder,
+    build::CheckoutBuilder, BranchType, Delta, DiffFindOptions, DiffOptions, Error as GitError,
+    Reference, Remote, Repository, Sort,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -525,7 +525,11 @@ impl GitService {
 
     /// Helper function to convert blob to string content
     fn blob_to_string(blob: &git2::Blob) -> Option<String> {
-        if blob.is_binary() {
+        // git2's `is_binary()` heuristic can miss very small binary files
+        // (it samples the first chunk and a 4-byte `[0,1,2,3]` blob may slip
+        // through). A direct null-byte scan catches those before we ever
+        // hand a content string back to the diff renderer.
+        if blob.is_binary() || blob.content().contains(&0) {
             None // Skip binary files
         } else {
             std::str::from_utf8(blob.content())

@@ -27,12 +27,30 @@ pub(super) async fn generate_and_cache_audio(
     // Strip markdown before TTS so symbols like * aren't read aloud
     let clean_text = strip_markdown_for_tts(text);
 
-    // Apply timeout to TTS generation
+    // Apply timeout to TTS generation (instrumented)
+    let t0 = std::time::Instant::now();
     let tts_future = nora.voice_engine.synthesize_speech_with_format(&clean_text);
     let (audio_base64, audio_format) = match timeout(TTS_TIMEOUT, tts_future).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(e)) => return Err(format!("TTS synthesis failed: {}", e)),
-        Err(_) => return Err(format!("TTS timeout after {:?}", TTS_TIMEOUT)),
+        Ok(Ok(result)) => {
+            crate::nora_metrics::record_voice_stage("twilio", "tts", t0.elapsed().as_secs_f64());
+            result
+        }
+        Ok(Err(e)) => {
+            crate::nora_metrics::record_voice_stage(
+                "twilio",
+                "tts_error",
+                t0.elapsed().as_secs_f64(),
+            );
+            return Err(format!("TTS synthesis failed: {}", e));
+        }
+        Err(_) => {
+            crate::nora_metrics::record_voice_stage(
+                "twilio",
+                "tts_timeout",
+                t0.elapsed().as_secs_f64(),
+            );
+            return Err(format!("TTS timeout after {:?}", TTS_TIMEOUT));
+        }
     };
 
     // Cache the audio using the actual format returned by the TTS provider

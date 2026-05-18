@@ -73,6 +73,17 @@ lazy_static! {
     )
     .unwrap();
 
+    /// Voice-turn pipeline stage duration (per channel × stage). Finer-grained
+    /// than NORA_VOICE_DURATION — used by Twilio/Meet/Discord voice paths to
+    /// expose VAD/STT/LLM/TTS timing per channel.
+    pub static ref NORA_VOICE_TURN: HistogramVec = register_histogram_vec!(
+        "nora_voice_turn_duration_seconds",
+        "Voice pipeline stage duration per channel and stage",
+        &["channel", "stage"],
+        vec![0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 15.0]
+    )
+    .unwrap();
+
     /// Task creation total
     pub static ref NORA_TASKS_CREATED_TOTAL: CounterVec = register_counter_vec!(
         "nora_tasks_created_total",
@@ -208,4 +219,15 @@ pub fn start_request_timer(request_type: &str) -> prometheus::HistogramTimer {
     NORA_REQUEST_DURATION
         .with_label_values(&[request_type])
         .start_timer()
+}
+
+/// Record a voice pipeline stage duration.
+///
+/// `channel` is one of `twilio` | `meet` | `discord` | `sms`.
+/// `stage` is one of `vad` | `stt` | `llm` | `tts` | `turn`, optionally
+/// suffixed with `_error` or `_timeout` for non-success terminations.
+pub fn record_voice_stage(channel: &str, stage: &str, secs: f64) {
+    NORA_VOICE_TURN
+        .with_label_values(&[channel, stage])
+        .observe(secs);
 }

@@ -649,6 +649,48 @@ impl ExecutiveTools {
                     extract_assets,
                 })
             }
+            "github_list_repos" => Some(NoraExecutiveTool::GithubListRepos {
+                org_id: arguments
+                    .get("org_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            }),
+            "github_read_file" => Some(NoraExecutiveTool::GithubReadFile {
+                repo: arguments.get("repo")?.as_str()?.to_string(),
+                path: arguments.get("path")?.as_str()?.to_string(),
+                branch: arguments
+                    .get("branch")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            }),
+            "github_list_issues" => Some(NoraExecutiveTool::GithubListIssues {
+                repo: arguments.get("repo")?.as_str()?.to_string(),
+                state: arguments
+                    .get("state")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            }),
+            "github_list_prs" => Some(NoraExecutiveTool::GithubListPrs {
+                repo: arguments.get("repo")?.as_str()?.to_string(),
+                state: arguments
+                    .get("state")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            }),
+            "assign_to_auri" => Some(NoraExecutiveTool::AssignToAuri {
+                project_id: arguments.get("project_id")?.as_str()?.to_string(),
+                board_id: arguments
+                    .get("board_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                title: arguments.get("title")?.as_str()?.to_string(),
+                description: arguments.get("description")?.as_str()?.to_string(),
+                github_repo: arguments.get("github_repo")?.as_str()?.to_string(),
+                base_branch: arguments
+                    .get("base_branch")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            }),
             _ => None,
         }
     }

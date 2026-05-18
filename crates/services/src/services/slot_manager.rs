@@ -1,10 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use db::{
-    DBService,
     models::execution_slot::{
         CreateExecutionSlot, ExecutionSlot, ExecutionSlotError, ProjectCapacity, SlotType,
     },
+    DBService,
 };
 use thiserror::Error;
 use tokio::sync::RwLock;

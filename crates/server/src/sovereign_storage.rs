@@ -71,12 +71,20 @@ impl SovereignStorageConfig {
             .parse::<u64>()
             .unwrap_or(5);
 
-        // Resolve DB path
+        // Resolve DB path.
+        //
+        // SQLx accepts both `sqlite://path` (legacy double-slash) and `sqlite:path`
+        // (modern single-colon) forms in DATABASE_URL — the project standard at
+        // dev_assets/db.sqlite uses the single-colon form. Strip whichever prefix
+        // matches so the resulting `db_path_str` is always a clean filesystem
+        // path, never a malformed URL like "/cwd/sqlite:dev_assets/db.sqlite"
+        // which silently breaks every peer sync import.
         let db_path_str = std::env::var("SOVEREIGN_STORAGE_DB_PATH")
             .or_else(|_| std::env::var("DATABASE_URL"))
             .unwrap_or_else(|_| "dev_assets/db.sqlite".to_string());
         let db_path_str = db_path_str
             .strip_prefix("sqlite://")
+            .or_else(|| db_path_str.strip_prefix("sqlite:"))
             .unwrap_or(&db_path_str)
             .to_string();
         let db_path = if db_path_str.starts_with('/') {

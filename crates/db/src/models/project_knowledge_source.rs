@@ -10,6 +10,8 @@ use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::db_uuid::DbUuid;
+
 /// Polymorphic owner scope for knowledge sources
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -77,8 +79,8 @@ impl std::str::FromStr for KnowledgeSourceType {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ProjectKnowledgeSource {
-    pub id: Uuid,
-    pub project_id: Uuid,
+    pub id: DbUuid,
+    pub project_id: DbUuid,
     pub source_type: String,
     pub source_id: String,
     pub source_title: String,
@@ -87,6 +89,7 @@ pub struct ProjectKnowledgeSource {
     pub is_active: bool,
     pub is_stale: bool,
     pub auto_registered: bool,
+    pub client_visible: bool,
     pub last_refreshed_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -96,7 +99,7 @@ pub struct ProjectKnowledgeSource {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ProjectKnowledgeCompleteness {
-    pub project_id: Uuid,
+    pub project_id: DbUuid,
     pub total_sources: i64,
     pub fresh_sources: i64,
     pub avg_coverage: f64,
