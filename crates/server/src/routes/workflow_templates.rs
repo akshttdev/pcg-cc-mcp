@@ -362,7 +362,7 @@ async fn seed_deal_knowledge(
         deal.stage, deal.probability
     ));
     if let Some(ref close) = deal.expected_close_date {
-        deal_parts.push(format!("Expected close: {}", close.format("%Y-%m-%d")));
+        deal_parts.push(format!("Expected close: {}", close));
     }
     if let Some(ref tags) = deal.tags {
         deal_parts.push(format!("Tags: {}", tags));

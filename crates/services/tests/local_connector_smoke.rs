@@ -7,7 +7,7 @@
 //! Each test reports file/folder counts + total bytes to stdout so the
 //! operator can eyeball-compare against the Dropbox client's stats.
 
-use services::services::storage::{StorageConnector, connectors::local::LocalFolderConnector};
+use services::services::storage::{connectors::local::LocalFolderConnector, StorageConnector};
 
 const SIRAK_PERSONAL: &str = "E:/topos/Sirak Studios Dropbox/Sirak Studios (sirak)";
 const SIRAK_DROPBOX_ROOT: &str = "E:/topos/Sirak Studios Dropbox";
@@ -41,7 +41,10 @@ async fn walk_and_report(label: &str, root: &str) {
     println!("  files:       {}", files.len());
     println!("  total bytes: {total_bytes} ({mb:.1} MB / {gb:.2} GB)");
     if let Some(first) = files.first() {
-        println!("  first file:  {} ({} bytes, mime={:?})", first.path, first.size_bytes, first.mime_type);
+        println!(
+            "  first file:  {} ({} bytes, mime={:?})",
+            first.path, first.size_bytes, first.mime_type
+        );
     }
     if let Some(last) = files.last() {
         println!("  last file:   {} ({} bytes)", last.path, last.size_bytes);
@@ -60,7 +63,11 @@ async fn smoke_sirak_personal_subdir() {
 #[tokio::test]
 #[ignore]
 async fn smoke_sirak_dropbox_root() {
-    walk_and_report("Sirak Studios Dropbox — full personal Dropbox", SIRAK_DROPBOX_ROOT).await;
+    walk_and_report(
+        "Sirak Studios Dropbox — full personal Dropbox",
+        SIRAK_DROPBOX_ROOT,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -79,6 +86,7 @@ async fn smoke_sirak_team() {
 #[tokio::test]
 async fn smoke_volume_resolution_for_local_paths() {
     use std::path::Path;
+
     use utils::volume::{resolve_volume_path, volume_base_path};
 
     if !Path::new(SIRAK_PERSONAL).exists() {

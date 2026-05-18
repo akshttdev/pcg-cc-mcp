@@ -1142,6 +1142,26 @@ async fn fix_blob_uuids(pool: &sqlx::SqlitePool) {
         // Fix non-PK UUID columns
         for col in *non_pk_cols {
             let col_expr = BLOB_TO_TEXT.replace("%col%", col);
+
+            // Special case: clients.organization_id has a UNIQUE(organization_id, slug)
+            // constraint. Delete BLOB rows whose TEXT-converted org_id would create a
+            // duplicate (organization_id, slug) pair before attempting the UPDATE.
+            if *table == "clients" && *col == "organization_id" {
+                let dedup_sql = format!(
+                    "DELETE FROM clients \
+                     WHERE typeof(organization_id) = 'blob' \
+                     AND EXISTS ( \
+                       SELECT 1 FROM clients c2 \
+                       WHERE c2.slug = clients.slug \
+                         AND typeof(c2.organization_id) = 'text' \
+                         AND c2.organization_id = {col_expr} \
+                     )"
+                );
+                if let Err(e) = sqlx::query(&dedup_sql).execute(pool).await {
+                    tracing::warn!("[SOVEREIGN_SYNC] clients.organization_id dedup failed: {e}");
+                }
+            }
+
             let col_sql =
                 format!("UPDATE {table} SET {col} = {col_expr} WHERE typeof({col}) = 'blob'");
             if let Err(e) = sqlx::query(&col_sql).execute(pool).await {

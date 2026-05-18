@@ -20,12 +20,12 @@ use workspace_utils::{
 };
 
 use crate::{
-    command::{CmdOverrides, CommandBuilder, apply_overrides},
+    command::{apply_overrides, CmdOverrides, CommandBuilder},
     executors::{AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor},
     logs::{
-        ActionType, FileChange, NormalizedEntry, NormalizedEntryType, TodoItem, ToolStatus,
         stderr_processor::normalize_stderr_logs,
-        utils::{EntryIndexProvider, patch::ConversationPatch},
+        utils::{patch::ConversationPatch, EntryIndexProvider},
+        ActionType, FileChange, NormalizedEntry, NormalizedEntryType, TodoItem, ToolStatus,
     },
 };
 

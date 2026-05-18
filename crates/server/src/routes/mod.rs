@@ -244,6 +244,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(feedback::router(&deployment))
         .merge(agent_flows::router(&deployment))
         .merge(agent_flow_events::router(&deployment))
+        .merge(pipeline_events::router())
         .merge(orchestration::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
@@ -288,7 +289,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))
         .merge(event_stream::router(&deployment))
-        .merge(pipeline_events::router())
         .merge(multiplayer::router(&deployment))
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))

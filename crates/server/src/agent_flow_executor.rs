@@ -280,7 +280,7 @@ impl AgentFlowExecutor {
             WorkflowLLMService::user_message(&user_prompt),
         ];
 
-        // For task flows, use the agent's preferred model as hint
+        // Extract agent model hint for conversation persistence (optional override)
         let agent_model = flow_config
             .get("agent_model")
             .and_then(|v| v.as_str())
@@ -288,7 +288,7 @@ impl AgentFlowExecutor {
 
         // Call LLM with retry logic (pass flow.id for artifact saving in simulation)
         let result = self
-            .call_llm_with_retry_model(flow, messages, &tools, &flow.id, agent_model.as_deref())
+            .call_llm_with_retry(flow, messages, &tools, &flow.id)
             .await;
 
         match result {
@@ -2859,6 +2859,29 @@ impl BackgroundWorker for AgentFlowExecutor {
             poll_secs,
             self.config.max_concurrent
         );
+
+        // On startup, mark any flows that were left in `running`/`executing`/`planning`
+        // state from a previous server boot as failed — they have no live executor.
+        match sqlx::query(
+            "UPDATE agent_flows \
+             SET status = 'failed', last_error = 'Engine restarted — flow orphaned' \
+             WHERE status IN ('running', 'executing', 'planning') \
+               AND updated_at < datetime('now', '-5 minutes')",
+        )
+        .execute(&self.pool)
+        .await
+        {
+            Ok(r) if r.rows_affected() > 0 => {
+                tracing::warn!(
+                    "[AgentFlowEngine] Cleaned up {} orphaned flow(s) from previous boot",
+                    r.rows_affected()
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!("[AgentFlowEngine] Orphan cleanup failed: {}", e);
+            }
+        }
 
         loop {
             tokio::select! {

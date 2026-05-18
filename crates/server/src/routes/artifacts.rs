@@ -72,7 +72,7 @@ async fn upload_artifact_file(
     let mut saved_filename: Option<String> = None;
     let mut saved_bytes: u64 = 0;
 
-    while let Some(field) = multipart
+    if let Some(field) = multipart
         .next_field()
         .await
         .map_err(|e| ApiError::BadRequest(e.to_string()))?
@@ -103,7 +103,6 @@ async fn upload_artifact_file(
             .map_err(|e| ApiError::BadRequest(format!("Failed to write file: {e}")))?;
 
         saved_filename = Some(safe_name);
-        break; // only first file
     }
 
     let filename = saved_filename.ok_or_else(|| ApiError::BadRequest("No file received".into()))?;

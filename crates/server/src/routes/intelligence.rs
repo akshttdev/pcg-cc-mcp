@@ -446,7 +446,30 @@ pub async fn write_intelligence_results(
     .execute(pool)
     .await?;
 
-    let affected = rows.rows_affected();
+    // If no direct match, try person bridge (legacy callers pass person_id)
+    let affected = if rows.rows_affected() == 0 {
+        sqlx::query(
+            "UPDATE crm_contacts SET \
+             intelligence_status = 'done', \
+             intelligence_summary = ?1, \
+             intelligence_raw = ?2, \
+             intelligence_confidence = ?3, \
+             intelligence_last_run_at = datetime('now','subsec'), \
+             intelligence_agent = 'scout', \
+             research_pass_count = COALESCE(research_pass_count, 0) + 1, \
+             updated_at = datetime('now','subsec') \
+             WHERE id = (SELECT crm_contact_id FROM persons WHERE CAST(id AS TEXT) = ?4)",
+        )
+        .bind(summary)
+        .bind(raw)
+        .bind(confidence)
+        .bind(contact_or_person_id)
+        .execute(pool)
+        .await?
+        .rows_affected()
+    } else {
+        rows.rows_affected()
+    };
 
     if affected == 0 {
         tracing::error!(

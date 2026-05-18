@@ -15,8 +15,10 @@
 //! start. The next sync still re-walks the full tree (cheap on local disk)
 //! but emits a deletion for paths the previous walk saw and this one didn't.
 
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -116,9 +118,15 @@ impl StorageConnector for LocalFolderConnector {
 
         Ok(SyncBatch {
             changes,
-            next_cursor: Some(serde_json::to_string(&LocalCursor { started_at, seen_ids }).map_err(
-                |e| StorageError::ProviderError(format!("failed to encode cursor: {e}")),
-            )?),
+            next_cursor: Some(
+                serde_json::to_string(&LocalCursor {
+                    started_at,
+                    seen_ids,
+                })
+                .map_err(|e| {
+                    StorageError::ProviderError(format!("failed to encode cursor: {e}"))
+                })?,
+            ),
         })
     }
 }
@@ -177,10 +185,7 @@ fn walk_root(
         seen.insert(remote_id.clone());
 
         let is_folder = entry.file_type().is_dir();
-        let name = entry
-            .file_name()
-            .to_string_lossy()
-            .to_string();
+        let name = entry.file_name().to_string_lossy().to_string();
 
         let (size_bytes, modified_at, mime_type) = if is_folder {
             (0, None, None)
@@ -240,17 +245,16 @@ fn is_hidden(path: &Path) -> bool {
         Some(n) => n.to_string_lossy(),
         None => return false,
     };
-    name.starts_with('.')
-        || name == "desktop.ini"
-        || name == "Thumbs.db"
-        || name == ".DS_Store"
+    name.starts_with('.') || name == "desktop.ini" || name == "Thumbs.db" || name == ".DS_Store"
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+
     use tempfile::TempDir;
+
+    use super::*;
 
     #[tokio::test]
     async fn walks_a_simple_tree() {
