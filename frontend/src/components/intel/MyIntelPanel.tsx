@@ -12,7 +12,10 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { knowledgeApi, type UserKnowledgeSource } from '@/lib/api/intelligence';
+import {
+  myKnowledgeApi,
+  type UserKnowledgeSource,
+} from '@/lib/api/intelligence';
 import { knowledgeKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
@@ -174,12 +177,12 @@ export function MyIntelPanel() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: knowledgeKeys.mine(),
-    queryFn: () => knowledgeApi.getMyKnowledge(),
+    queryFn: () => myKnowledgeApi.getMyKnowledge(),
     staleTime: 60_000,
   });
 
   const refreshMutation = useMutation({
-    mutationFn: (id: string) => knowledgeApi.refreshMySource(id),
+    mutationFn: (id: string) => myKnowledgeApi.refreshMySource(id),
     onMutate: (id) => setRefreshingId(id),
     onSettled: () => setRefreshingId(null),
     onSuccess: () =>

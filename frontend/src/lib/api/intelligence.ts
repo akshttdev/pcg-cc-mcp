@@ -32,7 +32,7 @@ export interface MyKnowledgeResponse {
   active: number;
 }
 
-export const knowledgeApi = {
+export const myKnowledgeApi = {
   getMyKnowledge: async (): Promise<MyKnowledgeResponse> => {
     const response = await makeRequest('/api/knowledge/mine');
     return handleApiResponse<MyKnowledgeResponse>(response);
