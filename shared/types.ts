@@ -1149,3 +1149,11 @@ profile_status: string, profile_error: string | null, };
 export type CreateAvatarProfile = { organization_id: string | null, name: string, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string | null, elevenlabs_voice_id: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, };
 
 export type UpdateAvatarProfile = { name: string | null, slug: string | null, identity_doc: string | null, style_notes: string | null, heygen_avatar_id: string | null, heygen_avatar_type: string | null, elevenlabs_voice_id: string | null, reference_image_url: string | null, thumbnail_url: string | null, default_background_url: string | null, status: string | null, bible_json: string | null, };
+
+export type AuthenticatedUser = { id: bigint, login: string, name: string | null, avatar_url: string | null, email: string | null, };
+
+export type CommitSummary = { sha: string, html_url: string, message: string, author_name: string | null, author_email: string | null, author_date?: Date | null, committer_login: string | null, };
+
+export type GitHubRepoLink = { id: string, organization_id: string, project_id: string, integration_connection_id?: string, github_repo_id: bigint, owner: string, repo_name: string, full_name: string, default_branch: string, clone_url?: string, ssh_url?: string, private: boolean, last_sync_at?: Date | null, last_synced_commit_sha?: string, last_error?: string, metadata: string, created_at: Date, updated_at: Date, };
+
+export type CreateGitHubRepoLink = { organization_id: string, project_id: string, integration_connection_id: string | null, github_repo_id: bigint, owner: string, repo_name: string, full_name: string, default_branch: string | null, clone_url: string | null, ssh_url: string | null, private: boolean | null, metadata: string | null, };
