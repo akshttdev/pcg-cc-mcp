@@ -296,7 +296,7 @@ export const DATA_TYPE_OPTIONS = [
 
 export const dataSourcesApi = {
   listAll: async (): Promise<DataSourceRecord[]> => {
-    const response = await makeRequest('/api/data-sources?all=1');
+    const response = await makeRequest('/api/data-sources/all');
     return handleApiResponse<DataSourceRecord[]>(response);
   },
 

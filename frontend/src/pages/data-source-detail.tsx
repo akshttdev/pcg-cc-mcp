@@ -1,9 +1,25 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  Clock,
+  Database,
+  ExternalLink,
+  FileText,
+  History,
+  Loader2,
+  Play,
+  Upload,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -11,26 +27,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  ArrowLeft,
-  Database,
-  FileText,
-  Upload,
-  Play,
-  Loader2,
-  CheckCircle2,
-  Circle,
-  ChevronDown,
-  ChevronRight,
-  Clock,
-
-  History,
-  ExternalLink,
-} from 'lucide-react';
-import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
-import { dataSourceKeys, workflowKeys } from '@/lib/query-keys';
-import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
 import { RunAndReviewPanel } from '@/components/workflows/RunAndReviewPanel';
+import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
+import {
+  DATA_TYPE_OPTIONS,
+  dataSourcesApi,
+  SOURCE_TYPE_OPTIONS,
+  workflowsApi,
+} from '@/lib/api';
+import { dataSourceKeys, workflowKeys } from '@/lib/query-keys';
 
 interface DataSourceArtifact {
   id: string;
@@ -60,13 +65,19 @@ import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
 import { formatDate } from '@/lib/formatters';
 
 export function DataSourceDetailPage() {
-  const { orgId, dataSourceId } = useParams<{ orgId: string; dataSourceId: string }>();
+  const { orgId, dataSourceId } = useParams<{
+    orgId: string;
+    dataSourceId: string;
+  }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
-  const [expandedArtifacts, setExpandedArtifacts] = useState<Set<string>>(new Set());
-  const [workflowResult, setWorkflowResult] = useState<WorkflowRunResult | null>(null);
+  const [expandedArtifacts, setExpandedArtifacts] = useState<Set<string>>(
+    new Set()
+  );
+  const [workflowResult, setWorkflowResult] =
+    useState<WorkflowRunResult | null>(null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [reviewRunId, setReviewRunId] = useState<string | null>(null);
@@ -96,8 +107,8 @@ export function DataSourceDetailPage() {
     staleTime: 60 * 60 * 1000,
   });
 
-
-  const effectiveModel = selectedModel || availableModels?.find((m) => m.is_default)?.id || '';
+  const effectiveModel =
+    selectedModel || availableModels?.find((m) => m.is_default)?.id || '';
 
   // Clear stale results when switching workflows
   useEffect(() => {
@@ -106,18 +117,27 @@ export function DataSourceDetailPage() {
   }, [selectedWorkflowId]);
 
   // Auto-select first workflow when loaded
-  const effectiveWorkflowId = selectedWorkflowId || (Array.isArray(workflows) && workflows.length > 0 ? workflows[0].id : '');
+  const effectiveWorkflowId =
+    selectedWorkflowId ||
+    (Array.isArray(workflows) && workflows.length > 0 ? workflows[0].id : '');
 
   const runWorkflowMutation = useMutation({
     mutationFn: (opts?: { force?: boolean }) =>
-      dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId, effectiveModel || undefined, opts?.force),
+      dataSourcesApi.runWorkflow(
+        dataSourceId!,
+        effectiveWorkflowId,
+        effectiveModel || undefined,
+        opts?.force
+      ),
     onSuccess: (data) => {
       setWorkflowResult(data);
       // Auto-open review panel if there are staged records
       if (data.workflow_run_id && data.staged_records > 0) {
         setReviewRunId(data.workflow_run_id);
       }
-      queryClient.invalidateQueries({ queryKey: dataSourceKeys.artifacts(dataSourceId!) });
+      queryClient.invalidateQueries({
+        queryKey: dataSourceKeys.artifacts(dataSourceId!),
+      });
     },
   });
 
@@ -135,9 +155,12 @@ export function DataSourceDetailPage() {
   };
 
   const statusVariants: Record<string, string> = {
-    ready: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-    processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    ready:
+      'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    pending:
+      'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+    processing:
+      'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   };
 
@@ -190,12 +213,18 @@ export function DataSourceDetailPage() {
       return <span className="text-sm font-mono">{String(data)}</span>;
     }
     if (Array.isArray(data)) {
-      if (data.length === 0) return <span className="text-muted-foreground italic">empty list</span>;
+      if (data.length === 0)
+        return <span className="text-muted-foreground italic">empty list</span>;
       return (
         <div className={depth > 0 ? 'ml-4' : ''}>
           {data.map((item, i) => (
-            <div key={i} className="py-1 border-b border-border/30 last:border-0">
-              {typeof item === 'object' ? renderStructuredData(item, depth + 1) : (
+            <div
+              key={i}
+              className="py-1 border-b border-border/30 last:border-0"
+            >
+              {typeof item === 'object' ? (
+                renderStructuredData(item, depth + 1)
+              ) : (
                 <span className="text-sm">{String(item)}</span>
               )}
             </div>
@@ -212,10 +241,11 @@ export function DataSourceDetailPage() {
                 {key.replace(/_/g, ' ')}
               </span>
               <div className="mt-0.5">
-                {typeof value === 'object' && value !== null
-                  ? renderStructuredData(value, depth + 1)
-                  : <p className="text-sm">{String(value ?? '')}</p>
-                }
+                {typeof value === 'object' && value !== null ? (
+                  renderStructuredData(value, depth + 1)
+                ) : (
+                  <p className="text-sm">{String(value ?? '')}</p>
+                )}
               </div>
             </div>
           ))}
@@ -270,12 +300,17 @@ export function DataSourceDetailPage() {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold tracking-tight">{source.title}</h1>
+              <h1 className="text-2xl font-bold tracking-tight">
+                {source.title}
+              </h1>
               <Badge variant="outline">{dataTypeLabel(source.data_type)}</Badge>
-              <Badge variant="secondary">{sourceTypeLabel(source.source_type)}</Badge>
+              <Badge variant="secondary">
+                {sourceTypeLabel(source.source_type)}
+              </Badge>
               <span
                 className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                  statusVariants[source.status] ?? 'bg-muted text-muted-foreground'
+                  statusVariants[source.status] ??
+                  'bg-muted text-muted-foreground'
                 }`}
               >
                 {source.status}
@@ -290,7 +325,8 @@ export function DataSourceDetailPage() {
                 <span className="flex items-center gap-1">
                   <Upload className="h-3 w-3" />
                   {source.file_name}
-                  {source.file_size_bytes != null && ` (${formatFileSize(source.file_size_bytes)})`}
+                  {source.file_size_bytes != null &&
+                    ` (${formatFileSize(source.file_size_bytes)})`}
                 </span>
               )}
             </div>
@@ -298,70 +334,179 @@ export function DataSourceDetailPage() {
         </div>
       </div>
 
-      {/* Content Preview */}
+      {/* File Preview */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            {source.source_type === 'file' ? (
-              <Upload className="h-4 w-4" />
-            ) : source.source_type === 'text' ? (
-              <FileText className="h-4 w-4" />
-            ) : (
-              <Database className="h-4 w-4" />
-            )}
-            Content
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              {source.source_type === 'file' ||
+              source.source_type === 'integration' ? (
+                <Upload className="h-4 w-4" />
+              ) : source.source_type === 'text' ? (
+                <FileText className="h-4 w-4" />
+              ) : (
+                <Database className="h-4 w-4" />
+              )}
+              Preview
+            </CardTitle>
+            {(source.source_type === 'file' ||
+              source.source_type === 'integration') &&
+              source.file_path && (
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/api/data-sources/${source.id}/preview`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-muted transition-colors"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open
+                  </a>
+                  <a
+                    href={`/api/data-sources/${source.id}/download`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    <Upload className="h-3.5 w-3.5 rotate-180" />
+                    Download
+                  </a>
+                </div>
+              )}
+          </div>
         </CardHeader>
         <CardContent>
           {source.source_type === 'text' && source.content ? (
             <pre className="bg-muted/50 rounded-md p-4 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-auto border">
               {source.content}
             </pre>
-          ) : source.source_type === 'file' ? (
-            <div className="space-y-2 text-sm">
-              {source.file_name && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">File:</span>
-                  <span className="font-medium">{source.file_name}</span>
+          ) : (
+            (() => {
+              const mime = source.file_type || '';
+              const previewUrl = `/api/data-sources/${source.id}/preview`;
+              const isImage = mime.startsWith('image/');
+              const isVideo = mime.startsWith('video/');
+              const isAudio = mime.startsWith('audio/');
+              const isPdf = mime === 'application/pdf';
+              const isText =
+                mime.startsWith('text/') || mime === 'application/json';
+
+              if (isImage) {
+                return (
+                  <div className="flex justify-center bg-muted/30 rounded-lg p-4">
+                    <img
+                      src={previewUrl}
+                      alt={source.title}
+                      className="max-h-[600px] max-w-full object-contain rounded"
+                    />
+                  </div>
+                );
+              }
+              if (isVideo) {
+                return (
+                  <video
+                    controls
+                    className="w-full max-h-[500px] rounded-lg bg-black"
+                  >
+                    <source src={previewUrl} type={mime} />
+                    Your browser does not support video playback.
+                  </video>
+                );
+              }
+              if (isAudio) {
+                return (
+                  <div className="bg-muted/30 rounded-lg p-6 flex flex-col items-center gap-4">
+                    <Play className="h-12 w-12 text-muted-foreground" />
+                    <audio controls className="w-full max-w-md">
+                      <source src={previewUrl} type={mime} />
+                    </audio>
+                  </div>
+                );
+              }
+              if (isPdf) {
+                return (
+                  <iframe
+                    src={previewUrl}
+                    className="w-full h-[700px] rounded-lg border"
+                    title={source.title}
+                  />
+                );
+              }
+              if (isText) {
+                return (
+                  <iframe
+                    src={previewUrl}
+                    className="w-full h-[500px] rounded-lg border bg-white"
+                    title={source.title}
+                  />
+                );
+              }
+              // Fallback: show file info
+              return (
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center justify-center py-12 bg-muted/30 rounded-lg">
+                    <div className="text-center space-y-2">
+                      <Database className="h-12 w-12 mx-auto text-muted-foreground opacity-40" />
+                      <p className="text-muted-foreground">
+                        Preview not available for this file type
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {mime || 'Unknown type'}
+                      </p>
+                    </div>
+                  </div>
+                  {source.file_name && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">File:</span>
+                      <span className="font-medium">{source.file_name}</span>
+                    </div>
+                  )}
+                  {source.file_size_bytes != null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Size:</span>
+                      <span>{formatFileSize(source.file_size_bytes)}</span>
+                    </div>
+                  )}
                 </div>
+              );
+            })()
+          )}
+          {/* File metadata below preview */}
+          {(source.source_type === 'file' ||
+            source.source_type === 'integration') && (
+            <div className="mt-4 pt-4 border-t flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+              {source.file_name && (
+                <span>
+                  Name:{' '}
+                  <span className="text-foreground">{source.file_name}</span>
+                </span>
+              )}
+              {source.file_type && (
+                <span>
+                  Type:{' '}
+                  <span className="text-foreground">{source.file_type}</span>
+                </span>
               )}
               {source.file_size_bytes != null && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Size:</span>
-                  <span>{formatFileSize(source.file_size_bytes)}</span>
-                </div>
+                <span>
+                  Size:{' '}
+                  <span className="text-foreground">
+                    {formatFileSize(source.file_size_bytes)}
+                  </span>
+                </span>
               )}
-              {metadata.mime_type && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Type:</span>
-                  <span>{metadata.mime_type}</span>
-                </div>
-              )}
-              {source.file_hash && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Hash:</span>
-                  <span className="font-mono text-xs">{source.file_hash}</span>
-                </div>
+              {metadata.storage_volume && (
+                <span>
+                  Volume:{' '}
+                  <span className="text-foreground">
+                    {metadata.storage_volume}
+                  </span>
+                </span>
               )}
             </div>
-          ) : source.source_type === 'integration' ? (
-            <div className="space-y-2 text-sm">
-              {Object.entries(metadata).map(([key, value]) => (
-                <div key={key} className="flex items-center gap-2">
-                  <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
-                  <span>{String(value)}</span>
-                </div>
-              ))}
-              {Object.keys(metadata).length === 0 && (
-                <p className="text-muted-foreground italic">No integration details available.</p>
-              )}
-            </div>
-          ) : (
-            <p className="text-muted-foreground italic">No content preview available.</p>
           )}
         </CardContent>
       </Card>
 
+      {/* Legacy metadata section for integration sources */}
       {/* Workflows */}
       <Card>
         <CardHeader>
@@ -389,10 +534,7 @@ export function DataSourceDetailPage() {
                 </Select>
               )}
               {Array.isArray(availableModels) && availableModels.length > 0 && (
-                <Select
-                  value={effectiveModel}
-                  onValueChange={setSelectedModel}
-                >
+                <Select value={effectiveModel} onValueChange={setSelectedModel}>
                   <SelectTrigger className="h-8 w-[240px] text-xs">
                     <SelectValue placeholder="Use workflow default" />
                   </SelectTrigger>
@@ -460,7 +602,9 @@ export function DataSourceDetailPage() {
           {runWorkflowMutation.isError && (
             <div className="p-4 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 mb-4">
               <p className="text-sm text-red-700 dark:text-red-300">
-                Workflow failed: {(runWorkflowMutation.error as Error)?.message ?? 'Unknown error'}
+                Workflow failed:{' '}
+                {(runWorkflowMutation.error as Error)?.message ??
+                  'Unknown error'}
               </p>
             </div>
           )}
@@ -488,23 +632,25 @@ export function DataSourceDetailPage() {
             </div>
           )}
 
-          {workflowResult && workflowResult.staged_records > 0 && workflowResult.workflow_run_id && (
-            <div className="mb-4">
-              <RunAndReviewPanel
-                runId={workflowResult.workflow_run_id}
-                stagedRecords={workflowResult.staged_records}
-                workflowName={workflowResult.workflow_name}
-                onRunAnother={() => {
-                  setWorkflowResult(null);
-                  setReviewRunId(null);
-                }}
-                onClose={() => {
-                  setWorkflowResult(null);
-                  setReviewRunId(null);
-                }}
-              />
-            </div>
-          )}
+          {workflowResult &&
+            workflowResult.staged_records > 0 &&
+            workflowResult.workflow_run_id && (
+              <div className="mb-4">
+                <RunAndReviewPanel
+                  runId={workflowResult.workflow_run_id}
+                  stagedRecords={workflowResult.staged_records}
+                  workflowName={workflowResult.workflow_name}
+                  onRunAnother={() => {
+                    setWorkflowResult(null);
+                    setReviewRunId(null);
+                  }}
+                  onClose={() => {
+                    setWorkflowResult(null);
+                    setReviewRunId(null);
+                  }}
+                />
+              </div>
+            )}
 
           {workflowResult?.steps && workflowResult.steps.length > 0 ? (
             <div className="space-y-1">
@@ -532,22 +678,25 @@ export function DataSourceDetailPage() {
                       className="flex items-start gap-3 w-full text-left p-2 rounded-md hover:bg-muted/50 transition-colors"
                       onClick={() => toggleStep(index)}
                     >
-                      <StatusIcon className={`h-5 w-5 mt-0.5 shrink-0 ${statusColor}`} />
+                      <StatusIcon
+                        className={`h-5 w-5 mt-0.5 shrink-0 ${statusColor}`}
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{step.name ?? `Step ${index + 1}`}</span>
+                          <span className="text-sm font-medium">
+                            {step.name ?? `Step ${index + 1}`}
+                          </span>
                           <Badge variant="outline" className="text-xs">
                             {step.status}
                           </Badge>
                         </div>
                       </div>
-                      {step.result != null && (
-                        isExpanded ? (
+                      {step.result != null &&
+                        (isExpanded ? (
                           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                         ) : (
                           <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                        )
-                      )}
+                        ))}
                     </button>
                     {isExpanded && step.result != null && (
                       <div className="ml-8 mb-2 p-3 rounded-md bg-muted/30 border">
@@ -572,28 +721,38 @@ export function DataSourceDetailPage() {
                   return (
                     <div className="space-y-3">
                       <p className="text-sm text-muted-foreground">
-                        <span className="font-medium text-foreground">{selectedWf.name}</span>
-                        {' '}&mdash; {selectedWf.nodes?.length ?? 0} node{(selectedWf.nodes?.length ?? 0) !== 1 ? 's' : ''}
+                        <span className="font-medium text-foreground">
+                          {selectedWf.name}
+                        </span>{' '}
+                        &mdash; {selectedWf.nodes?.length ?? 0} node
+                        {(selectedWf.nodes?.length ?? 0) !== 1 ? 's' : ''}
                       </p>
                       <div className="space-y-1.5">
                         {(selectedWf.nodes ?? []).map((node, idx: number) => {
-                          const inputs = (selectedWf.connections ?? []).filter((c) => c.target === node.id);
+                          const inputs = (selectedWf.connections ?? []).filter(
+                            (c) => c.target === node.id
+                          );
                           const inputNames = inputs.map((c) => {
-                            const src = (selectedWf.nodes ?? []).find((n) => n.id === c.source);
+                            const src = (selectedWf.nodes ?? []).find(
+                              (n) => n.id === c.source
+                            );
                             return src?.name ?? c.source;
                           });
                           return (
-                          <div key={node.id} className="flex items-center gap-2">
-                            <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
-                              {idx + 1}
+                            <div
+                              key={node.id}
+                              className="flex items-center gap-2"
+                            >
+                              <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
+                                {idx + 1}
+                              </div>
+                              <span className="text-sm">{node.name}</span>
+                              {inputNames.length > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  (from: {inputNames.join(', ')})
+                                </span>
+                              )}
                             </div>
-                            <span className="text-sm">{node.name}</span>
-                            {inputNames.length > 0 && (
-                              <span className="text-xs text-muted-foreground">
-                                (from: {inputNames.join(', ')})
-                              </span>
-                            )}
-                          </div>
                           );
                         })}
                       </div>
@@ -603,7 +762,10 @@ export function DataSourceDetailPage() {
                 return (
                   <div className="text-center py-4 text-muted-foreground">
                     <Play className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm">Select a workflow and click Run to process this data source.</p>
+                    <p className="text-sm">
+                      Select a workflow and click Run to process this data
+                      source.
+                    </p>
                   </div>
                 );
               })()}
@@ -619,7 +781,9 @@ export function DataSourceDetailPage() {
             <CardTitle className="text-base flex items-center gap-2">
               <Database className="h-4 w-4" />
               Artifacts
-              <Badge variant="secondary" className="ml-1">{artifacts.length}</Badge>
+              <Badge variant="secondary" className="ml-1">
+                {artifacts.length}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -659,7 +823,9 @@ export function DataSourceDetailPage() {
                         {artifact.content ? (
                           renderJsonContent(artifact.content)
                         ) : (
-                          <p className="text-sm text-muted-foreground italic">No content.</p>
+                          <p className="text-sm text-muted-foreground italic">
+                            No content.
+                          </p>
                         )}
                       </div>
                     </div>

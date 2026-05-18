@@ -58,7 +58,7 @@ pub struct LoginResponse {
     pub session_id: String,
 }
 
-// users.id is BLOB — DbUuid handles both BLOB and TEXT decoding
+// users.id is TEXT UUID
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: DbUuid,
@@ -105,7 +105,7 @@ pub async fn login(
     // Find user by username OR email (case-insensitive)
     let user = sqlx::query_as::<_, User>(
         "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin,
-                CASE WHEN typeof(home_organization_id) = 'blob' THEN lower(substr(hex(home_organization_id),1,8)||'-'||substr(hex(home_organization_id),9,4)||'-'||substr(hex(home_organization_id),13,4)||'-'||substr(hex(home_organization_id),17,4)||'-'||substr(hex(home_organization_id),21,12)) ELSE home_organization_id END as home_organization_id
+                home_organization_id
          FROM users
          WHERE (username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE) AND is_active = 1",
     )
@@ -213,12 +213,12 @@ pub async fn login(
         })
         .collect();
 
-    let platform_roles = load_platform_roles(pool, &user.id).await;
+    let platform_roles = load_platform_roles(pool, &user_id_str).await;
     let effective_admin =
         user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
-        id: user.id.to_string(),
+        id: user_id_str,
         username: user.username,
         email: user.email,
         full_name: user.full_name,
@@ -280,7 +280,7 @@ pub async fn get_current_user(
     // sessions.user_id — DbUuid decodes both BLOB and TEXT
     #[derive(FromRow)]
     struct Session {
-        user_id: DbUuid,
+        user_id: String,
         expires_at: String,
     }
 
@@ -349,12 +349,12 @@ pub async fn get_current_user(
         })
         .collect();
 
-    let platform_roles = load_platform_roles(pool, &user.id).await;
+    let platform_roles = load_platform_roles(pool, user_id_str).await;
     let effective_admin =
         user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
-        id: user.id.to_string(),
+        id: user_id_str.to_string(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,

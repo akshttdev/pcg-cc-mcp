@@ -304,9 +304,9 @@ pub async fn get_sidebar_tree(
                    ORDER BY p.sort_order ASC, p.name ASC"#,
             )
             .bind(org_id_str)
-            .bind(&user_id_bytes)
-            .bind(&user_id_bytes)
-            .bind(&user_id_bytes)
+            .bind(user_id)
+            .bind(user_id)
+            .bind(user_id)
             .fetch_all(pool)
             .await
             .unwrap_or_default()
@@ -337,7 +337,7 @@ pub async fn get_sidebar_tree(
                    WHERE c.organization_id = ? AND c.deleted_at IS NULL AND c.is_active = 1
                    ORDER BY c.name ASC"#,
             )
-            .bind(&user_id_bytes)
+            .bind(user_id)
             .bind(org_id_str)
             .fetch_all(pool)
             .await
@@ -475,7 +475,7 @@ pub async fn get_sidebar_tree(
                WHERE pm.user_id = ? AND p.organization_id IS NULL AND p.deleted_at IS NULL
                ORDER BY p.sort_order ASC, p.name ASC"#,
         )
-        .bind(&user_id_bytes)
+        .bind(user_id)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
