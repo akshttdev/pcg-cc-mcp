@@ -168,6 +168,8 @@ impl SocialPostCreator {
             status: None,
             deliverable_id: None,
             assignee_id: None,
+            crm_deal_id: None,
+            crm_contact_id: None,
         };
 
         SocialPost::create(&self.pool, create)
@@ -243,6 +245,8 @@ impl SocialPostCreator {
             status: None,
             deliverable_id: None,
             assignee_id: None,
+            crm_deal_id: None,
+            crm_contact_id: None,
         };
 
         SocialPost::create(&self.pool, create)
@@ -311,6 +315,8 @@ impl SocialPostCreator {
             status: None,
             deliverable_id: None,
             assignee_id: None,
+            crm_deal_id: None,
+            crm_contact_id: None,
         };
 
         SocialPost::create(&self.pool, create)
@@ -355,6 +361,8 @@ impl SocialPostCreator {
             status: None,
             deliverable_id: None,
             assignee_id: None,
+            crm_deal_id: None,
+            crm_contact_id: None,
         };
 
         SocialPost::create(&self.pool, create)

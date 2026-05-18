@@ -94,6 +94,8 @@ pub struct SocialPost {
     pub reviewed_by: Option<String>,
     pub publish_attempt: i64,
     pub assignee_id: Option<Uuid>,
+    pub crm_deal_id: Option<Uuid>,
+    pub crm_contact_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -120,6 +122,8 @@ pub struct CreateSocialPost {
     pub created_by_agent_id: Option<Uuid>,
     pub deliverable_id: Option<Uuid>,
     pub assignee_id: Option<Uuid>,
+    pub crm_deal_id: Option<Uuid>,
+    pub crm_contact_id: Option<Uuid>,
 }
 
 #[derive(Debug, Default, Deserialize, TS)]
@@ -138,6 +142,8 @@ pub struct UpdateSocialPost {
     pub is_evergreen: Option<bool>,
     pub approved_by: Option<String>,
     pub assignee_id: Option<Uuid>,
+    pub crm_deal_id: Option<Uuid>,
+    pub crm_contact_id: Option<Uuid>,
 }
 
 impl SocialPost {
@@ -170,10 +176,11 @@ impl SocialPost {
                 id, project_id, social_account_id, task_id, content_type,
                 caption, content_blocks, media_urls, hashtags, mentions,
                 platforms, platform_specific, status, scheduled_for, category,
-                is_evergreen, recycle_after_days, created_by_agent_id, deliverable_id, assignee_id
+                is_evergreen, recycle_after_days, created_by_agent_id, deliverable_id, assignee_id,
+                crm_deal_id, crm_contact_id
             )
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                    COALESCE(?13, 'draft'), ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+                    COALESCE(?13, 'draft'), ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
             RETURNING *
             "#,
         )
@@ -199,6 +206,8 @@ impl SocialPost {
         .bind(data.created_by_agent_id)
         .bind(data.deliverable_id)
         .bind(data.assignee_id)
+        .bind(data.crm_deal_id)
+        .bind(data.crm_contact_id)
         .fetch_one(pool)
         .await?;
 
@@ -379,6 +388,8 @@ impl SocialPost {
                 approved_by = COALESCE(?13, approved_by),
                 approved_at = COALESCE(?14, approved_at),
                 assignee_id = COALESCE(?15, assignee_id),
+                crm_deal_id = COALESCE(?16, crm_deal_id),
+                crm_contact_id = COALESCE(?17, crm_contact_id),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
             RETURNING *
@@ -399,6 +410,8 @@ impl SocialPost {
         .bind(&data.approved_by)
         .bind(approved_at)
         .bind(data.assignee_id)
+        .bind(data.crm_deal_id)
+        .bind(data.crm_contact_id)
         .fetch_optional(pool)
         .await?
         .ok_or(SocialPostError::NotFound)
@@ -726,6 +739,8 @@ mod tests {
                 created_by_agent_id: None,
                 deliverable_id: None,
                 assignee_id: None,
+                crm_deal_id: None,
+                crm_contact_id: None,
             },
         )
         .await

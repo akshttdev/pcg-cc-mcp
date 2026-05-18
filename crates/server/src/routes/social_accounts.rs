@@ -148,6 +148,179 @@ async fn get_best_times(
     Ok(Json(ApiResponse::success(slots)))
 }
 
+// ── Analytics endpoint ────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct AnalyticsQuery {
+    pub project_id: Uuid,
+    pub days: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AnalyticsSummary {
+    pub total_impressions: i64,
+    pub total_reach: i64,
+    pub total_likes: i64,
+    pub total_comments: i64,
+    pub total_shares: i64,
+    pub total_saves: i64,
+    pub total_clicks: i64,
+    pub posts_published: i64,
+    pub avg_engagement_rate: f64,
+    pub daily: Vec<DailyMetrics>,
+    pub by_platform: Vec<PlatformMetrics>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DailyMetrics {
+    pub date: String,
+    pub impressions: i64,
+    pub likes: i64,
+    pub comments: i64,
+    pub shares: i64,
+    pub posts: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlatformMetrics {
+    pub platform: String,
+    pub posts_published: i64,
+    pub total_impressions: i64,
+    pub total_likes: i64,
+    pub avg_engagement_rate: f64,
+}
+
+async fn get_analytics(
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Result<Json<ApiResponse<AnalyticsSummary>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let days = query.days.unwrap_or(30);
+
+    #[derive(sqlx::FromRow)]
+    struct TotalsRow {
+        total_impressions: i64,
+        total_reach: i64,
+        total_likes: i64,
+        total_comments: i64,
+        total_shares: i64,
+        total_saves: i64,
+        total_clicks: i64,
+        posts_published: i64,
+        avg_engagement_rate: f64,
+    }
+
+    let totals: TotalsRow = sqlx::query_as(
+        r#"SELECT
+            COALESCE(SUM(impressions),0) AS total_impressions,
+            COALESCE(SUM(reach),0) AS total_reach,
+            COALESCE(SUM(likes),0) AS total_likes,
+            COALESCE(SUM(comments),0) AS total_comments,
+            COALESCE(SUM(shares),0) AS total_shares,
+            COALESCE(SUM(saves),0) AS total_saves,
+            COALESCE(SUM(clicks),0) AS total_clicks,
+            COUNT(*) AS posts_published,
+            COALESCE(AVG(engagement_rate),0.0) AS avg_engagement_rate
+           FROM social_posts
+           WHERE project_id = ?1 AND status = 'published'
+             AND published_at >= datetime('now', '-' || ?2 || ' days')"#,
+    )
+    .bind(query.project_id.to_string())
+    .bind(days)
+    .fetch_one(pool)
+    .await?;
+
+    #[derive(sqlx::FromRow)]
+    struct DailyRow {
+        date: String,
+        impressions: i64,
+        likes: i64,
+        comments: i64,
+        shares: i64,
+        posts: i64,
+    }
+
+    let daily_rows: Vec<DailyRow> = sqlx::query_as(
+        r#"SELECT
+            date(published_at) AS date,
+            COALESCE(SUM(impressions),0) AS impressions,
+            COALESCE(SUM(likes),0) AS likes,
+            COALESCE(SUM(comments),0) AS comments,
+            COALESCE(SUM(shares),0) AS shares,
+            COUNT(*) AS posts
+           FROM social_posts
+           WHERE project_id = ?1 AND status = 'published'
+             AND published_at >= datetime('now', '-' || ?2 || ' days')
+           GROUP BY date(published_at)
+           ORDER BY date ASC"#,
+    )
+    .bind(query.project_id.to_string())
+    .bind(days)
+    .fetch_all(pool)
+    .await?;
+
+    #[derive(sqlx::FromRow)]
+    struct PlatformRow {
+        platform: String,
+        posts_published: i64,
+        total_impressions: i64,
+        total_likes: i64,
+        avg_engagement_rate: f64,
+    }
+
+    // social_posts.platforms is a JSON array; extract first platform name for grouping
+    let platform_rows: Vec<PlatformRow> = sqlx::query_as(
+        r#"SELECT
+            json_extract(platforms, '$[0]') AS platform,
+            COUNT(*) AS posts_published,
+            COALESCE(SUM(impressions),0) AS total_impressions,
+            COALESCE(SUM(likes),0) AS total_likes,
+            COALESCE(AVG(engagement_rate),0.0) AS avg_engagement_rate
+           FROM social_posts
+           WHERE project_id = ?1 AND status = 'published'
+             AND published_at >= datetime('now', '-' || ?2 || ' days')
+           GROUP BY json_extract(platforms, '$[0]')
+           ORDER BY posts_published DESC"#,
+    )
+    .bind(query.project_id.to_string())
+    .bind(days)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Json(ApiResponse::success(AnalyticsSummary {
+        total_impressions: totals.total_impressions,
+        total_reach: totals.total_reach,
+        total_likes: totals.total_likes,
+        total_comments: totals.total_comments,
+        total_shares: totals.total_shares,
+        total_saves: totals.total_saves,
+        total_clicks: totals.total_clicks,
+        posts_published: totals.posts_published,
+        avg_engagement_rate: totals.avg_engagement_rate,
+        daily: daily_rows
+            .into_iter()
+            .map(|r| DailyMetrics {
+                date: r.date,
+                impressions: r.impressions,
+                likes: r.likes,
+                comments: r.comments,
+                shares: r.shares,
+                posts: r.posts,
+            })
+            .collect(),
+        by_platform: platform_rows
+            .into_iter()
+            .map(|r| PlatformMetrics {
+                platform: r.platform,
+                posts_published: r.posts_published,
+                total_impressions: r.total_impressions,
+                total_likes: r.total_likes,
+                avg_engagement_rate: r.avg_engagement_rate,
+            })
+            .collect(),
+    })))
+}
+
 /// GET /bio/{username} — public Link in Bio page
 pub async fn bio_page(
     State(deployment): State<DeploymentImpl>,
@@ -255,6 +428,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/social/accounts/{id}", patch(update_account))
         .route("/social/accounts/{id}", delete(delete_account))
         .route("/social/accounts/{id}/best-times", get(get_best_times))
+        .route("/social/analytics", get(get_analytics))
         .with_state(_deployment.clone())
 }
 

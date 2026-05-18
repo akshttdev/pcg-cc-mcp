@@ -5230,37 +5230,75 @@ impl ExecutiveTools {
 
     pub(crate) async fn execute_github_list_repos(
         &self,
-        _org_id: Option<String>,
+        org_id: Option<String>,
     ) -> crate::Result<serde_json::Value> {
-        let backend = self
-            .task_executor
-            .as_ref()
-            .map(|e| {
-                format!(
-                    "http://127.0.0.1:{}",
-                    std::env::var("PORT").unwrap_or_else(|_| "3000".to_string())
-                )
-            })
-            .unwrap_or_else(|| "http://127.0.0.1:3000".to_string());
-
+        let token = self.resolve_github_token().await;
         let client = reqwest::Client::new();
-        let resp = client
-            .get(format!("{}/api/github/repositories", backend))
+
+        let make_req = |url: &str| {
+            let mut req = client
+                .get(url)
+                .header("User-Agent", "Nora-PCG/1.0")
+                .header("Accept", "application/vnd.github+json");
+            if !token.is_empty() {
+                req = req.header("Authorization", format!("token {}", token));
+            }
+            req
+        };
+
+        // If a specific org was requested, just return that org's repos
+        if let Some(ref org) = org_id.as_ref().filter(|s| !s.is_empty()) {
+            let url = format!(
+                "https://api.github.com/orgs/{}/repos?per_page=100&sort=updated",
+                org
+            );
+            let resp = make_req(&url)
+                .send()
+                .await
+                .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+            let repos: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!([]));
+            let simplified = simplify_repos(repos.as_array().cloned().unwrap_or_default());
+            return Ok(
+                serde_json::json!({ "success": true, "orgs": [org], "repositories": simplified }),
+            );
+        }
+
+        // Otherwise fetch all orgs the token belongs to, then list repos from each
+        let orgs_resp = make_req("https://api.github.com/user/orgs?per_page=100")
             .send()
             .await
             .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
+        let orgs: Vec<String> = orgs_resp
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|o| o["login"].as_str().map(|s| s.to_string()))
+            .collect();
 
-        if resp.status().is_success() {
-            let body: serde_json::Value = resp
-                .json()
-                .await
-                .map_err(|e| crate::NoraError::ToolExecutionError(e.to_string()))?;
-            Ok(serde_json::json!({ "success": true, "repositories": body }))
-        } else {
-            Ok(
-                serde_json::json!({ "success": false, "error": format!("GitHub API returned {}", resp.status()) }),
-            )
+        let mut all_repos: Vec<serde_json::Value> = Vec::new();
+        for org in &orgs {
+            let url = format!(
+                "https://api.github.com/orgs/{}/repos?per_page=100&sort=updated",
+                org
+            );
+            if let Ok(resp) = make_req(&url).send().await {
+                if let Ok(repos) = resp.json::<serde_json::Value>().await {
+                    all_repos.extend(simplify_repos(
+                        repos.as_array().cloned().unwrap_or_default(),
+                    ));
+                }
+            }
         }
+
+        Ok(serde_json::json!({
+            "success": true,
+            "orgs": orgs,
+            "total": all_repos.len(),
+            "repositories": all_repos
+        }))
     }
 
     pub(crate) async fn execute_github_read_file(
@@ -5452,8 +5490,10 @@ impl ExecutiveTools {
         }
 
         // Trigger Auri execution via the /api/auri/tasks/{id}/run endpoint
-        let backend_url =
-            std::env::var("BACKEND_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+        let backend_url = std::env::var("BACKEND_URL").unwrap_or_else(|_| {
+            let port = std::env::var("BACKEND_PORT").unwrap_or_else(|_| "3001".to_string());
+            format!("http://127.0.0.1:{}", port)
+        });
         let client = reqwest::Client::new();
         let payload = serde_json::json!({
             "github_repo": github_repo,
@@ -5484,6 +5524,22 @@ impl ExecutiveTools {
             "run_response": run_body,
         }))
     }
+}
+
+fn simplify_repos(repos: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    repos
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "name": r["name"],
+                "full_name": r["full_name"],
+                "description": r["description"],
+                "default_branch": r["default_branch"],
+                "private": r["private"],
+                "updated_at": r["updated_at"],
+            })
+        })
+        .collect()
 }
 
 fn base64_decode(s: &str) -> String {

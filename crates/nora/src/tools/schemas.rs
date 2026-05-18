@@ -1036,7 +1036,7 @@ impl ExecutiveTools {
                 "type": "function",
                 "function": {
                     "name": "github_list_repos",
-                    "description": "List GitHub repositories accessible to the connected organization. Use this to understand what codebases exist before assigning work to Auri.",
+                    "description": "List ALL GitHub repositories accessible across all organizations the token belongs to (Powerclub-Global, Sirak-Studios-Org, Soverign-Stack, Veritwin, AlphaProtocolLabs, PCG-ARCHIVES, Emergence-Institute). Returns every repo Nora and Auri can work with.",
                     "parameters": { "type": "object", "properties": {}, "required": [] }
                 }
             }),

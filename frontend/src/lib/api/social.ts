@@ -199,6 +199,76 @@ export const socialApi = {
     return handleApiResponse<SocialPostRecord>(response);
   },
 
+  listQueue: async (
+    projectId: string,
+    category?: string
+  ): Promise<SocialPostRecord[]> => {
+    const sp = new URLSearchParams({ project_id: projectId });
+    if (category) sp.set('category', category);
+    const response = await makeRequest(`/api/social/queue?${sp}`);
+    return handleApiResponse<SocialPostRecord[]>(response);
+  },
+
+  reorderQueue: async (orderedIds: string[]): Promise<void> => {
+    const response = await makeRequest('/api/social/queue/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ordered_ids: orderedIds }),
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  getAnalytics: async (
+    projectId: string,
+    days?: number
+  ): Promise<{
+    total_impressions: number;
+    total_reach: number;
+    total_likes: number;
+    total_comments: number;
+    total_shares: number;
+    total_saves: number;
+    total_clicks: number;
+    posts_published: number;
+    avg_engagement_rate: number;
+    daily: Array<{
+      date: string;
+      impressions: number;
+      likes: number;
+      comments: number;
+      shares: number;
+      posts: number;
+    }>;
+    by_platform: Array<{
+      platform: string;
+      posts_published: number;
+      total_impressions: number;
+      total_likes: number;
+      avg_engagement_rate: number;
+    }>;
+  }> => {
+    const sp = new URLSearchParams({ project_id: projectId });
+    if (days) sp.set('days', String(days));
+    const response = await makeRequest(`/api/social/analytics?${sp}`);
+    return handleApiResponse(response);
+  },
+
+  generateCaptions: async (params: {
+    platform: string;
+    topic: string;
+    tone?: string;
+    context?: string;
+    hashtags_count?: number;
+  }): Promise<string[]> => {
+    const response = await makeRequest('/api/social/captions/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const result = await handleApiResponse<{ captions: string[] }>(response);
+    return result.captions;
+  },
+
   deletePost: async (id: string): Promise<void> => {
     const response = await makeRequest(`/api/social/posts/${id}`, {
       method: 'DELETE',

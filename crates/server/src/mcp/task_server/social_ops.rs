@@ -194,6 +194,8 @@ fn build_create_post(
         created_by_agent_id: None,
         deliverable_id: None,
         assignee_id: None,
+        crm_deal_id: None,
+        crm_contact_id: None,
     })
 }
 

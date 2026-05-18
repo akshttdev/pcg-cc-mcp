@@ -88,6 +88,7 @@ services:
       # GitHub PAT for Auri (coding agent) — clone/push/PR on behalf of PCG
       - GITHUB_PAT=${GITHUB_PAT:-}
       - GH_TOKEN=${GITHUB_PAT:-}
+      - GITHUB_ORG=${GITHUB_ORG:-Powerclub-Global}
       # Auri coding agent paths (volumes mounted below)
       - CLAUDE_BIN=/home/pythia/.nvm/versions/node/v22.20.0/bin/claude
       - GH_BIN=/home/pythia/.local/bin/gh

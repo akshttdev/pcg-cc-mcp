@@ -1394,6 +1394,15 @@ async fn get_zoho_token(pool: &sqlx::SqlitePool) -> Option<String> {
 }
 
 async fn fetch_inbox_meets(token: &str, account_id: &str) -> Vec<(String, String)> {
+    fetch_inbox_meets_with_time(token, account_id)
+        .await
+        .into_iter()
+        .map(|(id, url, _)| (id, url))
+        .collect()
+}
+
+/// Returns Vec<(message_id, meet_url, received_time_ms)>
+async fn fetch_inbox_meets_with_time(token: &str, account_id: &str) -> Vec<(String, String, i64)> {
     // Returns Vec<(message_id, meet_url)> for new invites
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -1435,6 +1444,11 @@ async fn fetch_inbox_meets(token: &str, account_id: &str) -> Vec<(String, String
             Some(id) => id.to_string(),
             None => continue,
         };
+        let received_ms = msg
+            .get("receivedTime")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0);
         let summary = msg.get("summary").and_then(|v| v.as_str()).unwrap_or("");
         let subject = msg.get("subject").and_then(|v| v.as_str()).unwrap_or("");
         // Only process Google Meet invite emails
@@ -1442,7 +1456,7 @@ async fn fetch_inbox_meets(token: &str, account_id: &str) -> Vec<(String, String
             continue;
         }
         if let Some(cap) = re.find(summary) {
-            results.push((msg_id, format!("https://{}", cap.as_str())));
+            results.push((msg_id, format!("https://{}", cap.as_str()), received_ms));
         }
     }
     results
@@ -1455,12 +1469,50 @@ pub async fn start_meet_watcher(deployment: DeploymentImpl) {
         tokio::time::sleep(Duration::from_secs(20)).await;
         info!("[MEET-WATCHER] Started — polling Nora's inbox every 45s");
 
-        // Pre-populate seen IDs with current inbox to avoid joining stale meetings on boot
+        // Pre-populate seen IDs with OLD inbox messages (>30 min) — process recent ones immediately
         let pool = deployment.db().pool.clone();
         if let Some(account_id) = get_zoho_account_id(&pool).await {
             if let Some(token) = get_zoho_token(&pool).await {
-                for (msg_id, _) in fetch_inbox_meets(&token, &account_id).await {
-                    SEEN_MESSAGE_IDS.lock().await.insert(msg_id);
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+                let cutoff_ms = now_ms - 30 * 60 * 1000; // 30 minutes ago
+                for (msg_id, meet_url, received_ms) in
+                    fetch_inbox_meets_with_time(&token, &account_id).await
+                {
+                    if received_ms < cutoff_ms {
+                        // Old invite — mark as seen, don't join
+                        SEEN_MESSAGE_IDS.lock().await.insert(msg_id);
+                    } else {
+                        // Recent invite — join it now
+                        info!("[MEET-WATCHER] Startup: joining recent invite {}", meet_url);
+                        let project_id = sqlx::query_scalar::<_, String>(
+                            "SELECT lower(hex(p.id)) FROM projects p \
+                             JOIN project_members pm ON pm.project_id = p.id \
+                             JOIN users u ON u.id = pm.user_id \
+                             WHERE u.is_admin = 1 AND u.is_active = 1 \
+                             ORDER BY p.created_at DESC LIMIT 1",
+                        )
+                        .fetch_one(&pool)
+                        .await
+                        .unwrap_or_default();
+                        let req = JoinMeetRequest {
+                            meet_url: meet_url.clone(),
+                            project_id,
+                            title: Some("Nora — Auto-joined Meet".to_string()),
+                        };
+                        match join_meet(axum::extract::State(deployment.clone()), Json(req)).await {
+                            Ok(Json(resp)) => {
+                                info!("[MEET-WATCHER] Startup joined session {}", resp.session_id);
+                                SEEN_MESSAGE_IDS.lock().await.insert(msg_id);
+                            }
+                            Err((_, Json(e))) => {
+                                warn!("[MEET-WATCHER] Startup join failed {}: {:?}", meet_url, e);
+                                SEEN_MESSAGE_IDS.lock().await.insert(msg_id);
+                            }
+                        }
+                    }
                 }
                 info!("[MEET-WATCHER] Pre-seeded seen message IDs (won't re-join old invites)");
             }
@@ -1486,7 +1538,11 @@ pub async fn start_meet_watcher(deployment: DeploymentImpl) {
                 }
             };
 
-            let invites = fetch_inbox_meets(&token, &account_id).await;
+            let invites: Vec<(String, String)> = fetch_inbox_meets_with_time(&token, &account_id)
+                .await
+                .into_iter()
+                .map(|(id, url, _)| (id, url))
+                .collect();
             if invites.is_empty() {
                 continue;
             }

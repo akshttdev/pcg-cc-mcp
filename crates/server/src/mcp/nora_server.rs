@@ -1150,6 +1150,8 @@ async fn publish_now(
             deliverable_id: None,
             assignee_id: None,
             status: None,
+            crm_deal_id: None,
+            crm_contact_id: None,
         },
     )
     .await

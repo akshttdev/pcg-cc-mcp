@@ -5,6 +5,9 @@ import { useSearchParams } from 'react-router-dom';
 import type { Project } from 'shared/types';
 
 import { ContentCalendar } from '@/components/content-studio';
+import { AnalyticsDashboard } from '@/components/social/AnalyticsDashboard';
+import { ApprovalQueue } from '@/components/social/ApprovalQueue';
+import { QueueManager } from '@/components/social/QueueManager';
 import { SocialAccountConnect } from '@/components/social/SocialAccountConnect';
 import {
   UnifiedInbox,
@@ -300,30 +303,67 @@ export function SocialPage() {
             </Card>
           </div>
 
-          <Card>
-            <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle>Unified Inbox</CardTitle>
-                <CardDescription>
-                  Mentions, comments, and DMs prioritized by Nora’s engagement
-                  agent.
-                </CardDescription>
-              </div>
-              {statsQuery.isLoading ? (
-                <Skeleton className="h-6 w-40" />
-              ) : statsQuery.data ? (
-                <div className="flex gap-3 text-sm text-muted-foreground">
-                  <Badge variant="secondary">
-                    Unread: {statsQuery.data.total_unread}
-                  </Badge>
-                  <Badge variant="outline">
-                    High Priority: {statsQuery.data.high_priority}
-                  </Badge>
+          {selectedProjectId && (
+            <Card>
+              <CardContent className="pt-5">
+                <AnalyticsDashboard projectId={selectedProjectId} />
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid gap-6 lg:grid-cols-[1fr,380px]">
+            <Card>
+              <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle>Unified Inbox</CardTitle>
+                  <CardDescription>
+                    Mentions, comments, and DMs prioritized by Nora’s engagement
+                    agent.
+                  </CardDescription>
                 </div>
-              ) : null}
-            </CardHeader>
-            <CardContent>{renderInboxSection()}</CardContent>
-          </Card>
+                {statsQuery.isLoading ? (
+                  <Skeleton className="h-6 w-40" />
+                ) : statsQuery.data ? (
+                  <div className="flex gap-3 text-sm text-muted-foreground">
+                    <Badge variant="secondary">
+                      Unread: {statsQuery.data.total_unread}
+                    </Badge>
+                    <Badge variant="outline">
+                      High Priority: {statsQuery.data.high_priority}
+                    </Badge>
+                  </div>
+                ) : null}
+              </CardHeader>
+              <CardContent>{renderInboxSection()}</CardContent>
+            </Card>
+
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Approval Queue</CardTitle>
+                  <CardDescription>
+                    Posts awaiting sign-off before scheduling.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="h-[280px]">
+                  {selectedProjectId ? (
+                    <ApprovalQueue
+                      projectId={selectedProjectId}
+                      className="h-full"
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Select a project to view the queue.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {selectedProjectId && (
+                <QueueManager projectId={selectedProjectId} />
+              )}
+            </div>
+          </div>
         </>
       )}
     </div>

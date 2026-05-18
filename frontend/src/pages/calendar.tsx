@@ -174,6 +174,9 @@ export default function CalendarPage() {
   const [newPostAssigneeId, setNewPostAssigneeId] = useState('');
   const [newPostSubmitting, setNewPostSubmitting] = useState(false);
   const [newPostError, setNewPostError] = useState('');
+  const [captionTopic, setCaptionTopic] = useState('');
+  const [generatingCaptions, setGeneratingCaptions] = useState(false);
+  const [captionOptions, setCaptionOptions] = useState<string[]>([]);
 
   const queryClient = useQueryClient();
   const { data: projects = [] } = useProjectList();
@@ -664,12 +667,21 @@ export default function CalendarPage() {
             {weekDays.map((day, i) => {
               const dayEvts = byDate[dateKey(day)] ?? [];
               const isSel = selected && isSameDay(day, selected);
+              const wk = dateKey(day);
               return (
                 <div
                   key={i}
+                  onDragOver={(ev) => {
+                    ev.preventDefault();
+                    setDragOver(wk);
+                  }}
+                  onDragLeave={() => setDragOver(null)}
+                  onDrop={() => handleDrop(day)}
                   className={cn(
                     'border-r last:border-r-0 p-2 space-y-1 min-h-48',
-                    isSel && 'bg-primary/5'
+                    isSel && 'bg-primary/5',
+                    dragOver === wk &&
+                      'bg-primary/10 ring-1 ring-inset ring-primary/50'
                   )}
                 >
                   {dayEvts.map((e) => (
@@ -682,6 +694,23 @@ export default function CalendarPage() {
         </ScrollArea>
       </div>
     );
+  }
+
+  async function handleGenerateCaptions() {
+    if (!captionTopic.trim()) return;
+    setGeneratingCaptions(true);
+    setCaptionOptions([]);
+    try {
+      const captions = await socialApi.generateCaptions({
+        platform: newPostPlatform,
+        topic: captionTopic.trim(),
+      });
+      setCaptionOptions(captions);
+    } catch (err) {
+      console.error('Caption generation failed', err);
+    } finally {
+      setGeneratingCaptions(false);
+    }
   }
 
   async function handleCreatePost(e: React.FormEvent) {
@@ -744,6 +773,53 @@ export default function CalendarPage() {
                   )}
                 </SelectContent>
               </Select>
+            </div>
+            {/* AI Caption Generator */}
+            <div className="space-y-1.5 rounded-lg border border-dashed border-border p-3 bg-muted/20">
+              <Label className="text-xs text-muted-foreground">
+                AI Caption Generator
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Topic (e.g. 'NFT drop this Friday')"
+                  value={captionTopic}
+                  onChange={(e) => setCaptionTopic(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleGenerateCaptions();
+                    }
+                  }}
+                  className="h-8 text-sm"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 shrink-0"
+                  onClick={handleGenerateCaptions}
+                  disabled={generatingCaptions || !captionTopic.trim()}
+                >
+                  {generatingCaptions ? '...' : 'Generate'}
+                </Button>
+              </div>
+              {captionOptions.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  {captionOptions.map((c, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        setNewPostCaption(c);
+                        setCaptionOptions([]);
+                      }}
+                      className="w-full text-left text-xs p-2 rounded border hover:bg-muted/60 line-clamp-3 border-border/50"
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Caption</Label>
