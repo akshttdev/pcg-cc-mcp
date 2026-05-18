@@ -4,7 +4,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use db::{bind_uuid_blob, DbUuid};
+use db::DbUuid;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -216,14 +216,14 @@ impl AccessContext {
         }
 
         // 1. Try direct project_members check
-        // NOTE: project_members.project_id is TEXT, user_id is BLOB.
-        let user_id_bytes = bind_uuid_blob(&self.user_id)
-            .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {}", e)))?;
+        // NOTE: project_members.project_id is TEXT. user_id is declared BLOB but stored as
+        // TEXT (36-char UUID string) — bind as &str to match actual stored values.
+        let user_id_str = self.user_id.as_str();
 
         let member: Option<ProjectMember> =
             sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
                 .bind(project_id)
-                .bind(&user_id_bytes)
+                .bind(user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -267,13 +267,13 @@ impl AccessContext {
 
             // 2a. Check org membership — org admins get Admin access,
             // regular org members get role-based access.
-            // NOTE: organization_members.organization_id is TEXT; user_id is BLOB.
+            // NOTE: organization_members.organization_id is TEXT; user_id stored as TEXT.
             if let Some(ref org_id) = info.organization_id {
                 let org_role: Option<RoleRow> = sqlx::query_as(
                     "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?"
                 )
                 .bind(org_id)
-                .bind(&user_id_bytes)
+                .bind(user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -307,7 +307,7 @@ impl AccessContext {
                        WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin'"#,
                 )
                 .bind(client_id)
-                .bind(&user_id_bytes)
+                .bind(user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -331,7 +331,7 @@ impl AccessContext {
                     "SELECT role FROM client_members WHERE client_id = ? AND user_id = ?",
                 )
                 .bind(client_id)
-                .bind(&user_id_bytes)
+                .bind(user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -394,16 +394,16 @@ impl AccessContext {
             return Ok("full");
         }
 
-        // NOTE: project_members.project_id and projects.id are TEXT; user_id columns are BLOB.
-        let user_id_bytes = bind_uuid_blob(&self.user_id)
-            .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {}", e)))?;
+        // NOTE: project_members.project_id and projects.id are TEXT. user_id columns are
+        // declared BLOB but stored as TEXT (36-char UUID strings) — bind as &str.
+        let user_id_str = self.user_id.as_str();
 
         // Check direct project membership
         let direct: Option<i64> = sqlx::query_scalar(
             "SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? LIMIT 1",
         )
         .bind(project_id)
-        .bind(&user_id_bytes)
+        .bind(user_id_str)
         .fetch_optional(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -433,7 +433,7 @@ impl AccessContext {
                     "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1"
                 )
                 .bind(org_id)
-                .bind(&user_id_bytes)
+                .bind(user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -452,7 +452,7 @@ impl AccessContext {
                        WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin' LIMIT 1"#,
                 )
                 .bind(client_id)
-                .bind(&user_id_bytes)
+                .bind(user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -466,7 +466,7 @@ impl AccessContext {
                     "SELECT 1 FROM client_members WHERE client_id = ? AND user_id = ? LIMIT 1",
                 )
                 .bind(client_id)
-                .bind(&user_id_bytes)
+                .bind(user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
