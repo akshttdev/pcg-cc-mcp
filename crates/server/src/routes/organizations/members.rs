@@ -407,7 +407,7 @@ pub async fn add_org_person_contact(
 pub async fn list_org_companies(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
-) -> Result<Json<Vec<Company>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<Company>>>, ApiError> {
     let pool = &deployment.db().pool;
     let companies = Company::list(
         pool,
@@ -417,7 +417,7 @@ pub async fn list_org_companies(
     )
     .await
     .map_err(|e| ApiError::InternalError(e.to_string()))?;
-    Ok(Json(companies))
+    Ok(Json(ApiResponse::success(companies)))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

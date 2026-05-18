@@ -72,11 +72,6 @@ const SocialTab = lazy(() =>
       }>),
   }))
 );
-const KnowledgeTab = lazy(() =>
-  import('./organization-profile/tabs/intelligence/KnowledgeTab').then((m) => ({
-    default: m.KnowledgeTab,
-  }))
-);
 
 type Tab =
   | 'overview'
@@ -85,7 +80,6 @@ type Tab =
   | 'members'
   | 'pipeline'
   | 'social'
-  | 'intelligence'
   | 'intel'
   | 'integrations';
 
@@ -900,13 +894,6 @@ export function ClientOverview() {
             Social
           </TabBtn>
           <TabBtn
-            active={tab === 'intelligence'}
-            onClick={() => setTab('intelligence')}
-            icon={BookOpen}
-          >
-            Intelligence
-          </TabBtn>
-          <TabBtn
             active={tab === 'intel'}
             onClick={() => setTab('intel')}
             icon={Brain}
@@ -949,17 +936,6 @@ export function ClientOverview() {
           )}
           {tab === 'social' && (
             <SocialPlaceholderTab projects={allProjects} orgId={orgId!} />
-          )}
-          {tab === 'intelligence' && (
-            <Suspense fallback={<TabSkeleton />}>
-              <KnowledgeTab
-                orgId={orgId!}
-                projectEntries={allProjects.map((p) => ({
-                  id: p.id,
-                  name: p.name,
-                }))}
-              />
-            </Suspense>
           )}
           {tab === 'intel' &&
             (client.company_id ? (

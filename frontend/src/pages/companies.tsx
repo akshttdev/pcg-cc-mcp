@@ -1,22 +1,24 @@
-import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Building2, ExternalLink, Globe, Plus } from 'lucide-react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, ExternalLink, Globe } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
-import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
-import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { useOrganization } from '@/contexts/organization-context';
 import { companiesApi, type CompanyRecord } from '@/lib/api';
 import { entityKeys } from '@/lib/query-keys';
 
@@ -24,14 +26,16 @@ import { entityKeys } from '@/lib/query-keys';
 
 function IntelBadge({ status }: { status: string }) {
   const cfg: Record<string, { label: string; cls: string }> = {
-    idle:    { label: 'No Intel',  cls: 'bg-gray-100 text-gray-500' },
-    queued:  { label: 'Queued',    cls: 'bg-yellow-100 text-yellow-700' },
-    running: { label: 'Running',   cls: 'bg-blue-100 text-blue-700' },
-    done:    { label: 'Intel ✓',   cls: 'bg-green-100 text-green-700' },
-    failed:  { label: 'Failed',    cls: 'bg-red-100 text-red-700' },
+    idle: { label: 'No Intel', cls: 'bg-gray-100 text-gray-500' },
+    queued: { label: 'Queued', cls: 'bg-yellow-100 text-yellow-700' },
+    running: { label: 'Running', cls: 'bg-blue-100 text-blue-700' },
+    done: { label: 'Intel ✓', cls: 'bg-green-100 text-green-700' },
+    failed: { label: 'Failed', cls: 'bg-red-100 text-red-700' },
   };
   const { label, cls } = cfg[status] ?? cfg['idle'];
-  return <Badge className={`text-xs border-0 px-1.5 py-0 ${cls}`}>{label}</Badge>;
+  return (
+    <Badge className={`text-xs border-0 px-1.5 py-0 ${cls}`}>{label}</Badge>
+  );
 }
 
 // ── Create company dialog ─────────────────────────────────────────────────────
@@ -44,6 +48,7 @@ function CreateCompanyDialog({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const { effectiveOrgId } = useOrganization();
   const [formData, setFormData] = useState({
     name: '',
     website: '',
@@ -80,15 +85,19 @@ function CreateCompanyDialog({
         industry: formData.industry || undefined,
         description: formData.description || undefined,
         headquarters: formData.headquarters || undefined,
+        created_by_org_id: effectiveOrgId,
       }),
     onSuccess: (company) => {
       // If extra fields were provided, update them via PATCH
       const extraFields: Record<string, string> = {};
       if (formData.phone) extraFields.phone = formData.phone;
       if (formData.email) extraFields.email = formData.email;
-      if (formData.linkedin_url) extraFields.linkedin_url = formData.linkedin_url;
-      if (formData.twitter_handle) extraFields.twitter_handle = formData.twitter_handle;
-      if (formData.instagram_handle) extraFields.instagram_handle = formData.instagram_handle;
+      if (formData.linkedin_url)
+        extraFields.linkedin_url = formData.linkedin_url;
+      if (formData.twitter_handle)
+        extraFields.twitter_handle = formData.twitter_handle;
+      if (formData.instagram_handle)
+        extraFields.instagram_handle = formData.instagram_handle;
 
       if (Object.keys(extraFields).length > 0) {
         companiesApi.update(company.id, extraFields).catch(() => {
@@ -105,10 +114,11 @@ function CreateCompanyDialog({
   });
 
   const handleFieldChange = useCallback(
-    (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
-    },
-    [],
+    (field: string) =>
+      (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+      },
+    []
   );
 
   const handleSubmit = useCallback(() => {
@@ -119,7 +129,7 @@ function CreateCompanyDialog({
     (v: boolean) => {
       if (!v) onClose();
     },
-    [onClose],
+    [onClose]
   );
 
   return (
@@ -261,7 +271,7 @@ export function CompaniesPage() {
       !search ||
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       (c.industry ?? '').toLowerCase().includes(search.toLowerCase()) ||
-      (c.headquarters ?? '').toLowerCase().includes(search.toLowerCase()),
+      (c.headquarters ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -300,11 +310,19 @@ export function CompaniesPage() {
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={Building2}
-            title={search ? 'No companies match your search' : 'No companies yet'}
-            description={search
-              ? 'Try adjusting your search terms.'
-              : 'Add companies to track organizations, run intelligence, and link them to your CRM.'}
-            action={!search ? { label: "New Company", onClick: () => setShowCreate(true) } : undefined}
+            title={
+              search ? 'No companies match your search' : 'No companies yet'
+            }
+            description={
+              search
+                ? 'Try adjusting your search terms.'
+                : 'Add companies to track organizations, run intelligence, and link them to your CRM.'
+            }
+            action={
+              !search
+                ? { label: 'New Company', onClick: () => setShowCreate(true) }
+                : undefined
+            }
             className="h-48"
           />
         ) : (
@@ -332,7 +350,10 @@ export function CompaniesPage() {
         )}
       </div>
 
-      <CreateCompanyDialog open={showCreate} onClose={() => setShowCreate(false)} />
+      <CreateCompanyDialog
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+      />
     </div>
   );
 }
@@ -367,8 +388,12 @@ function CompanyRow({
           </a>
         )}
       </td>
-      <td className="py-3 pr-4 text-muted-foreground">{company.industry ?? '—'}</td>
-      <td className="py-3 pr-4 text-muted-foreground">{company.headquarters ?? '—'}</td>
+      <td className="py-3 pr-4 text-muted-foreground">
+        {company.industry ?? '—'}
+      </td>
+      <td className="py-3 pr-4 text-muted-foreground">
+        {company.headquarters ?? '—'}
+      </td>
       <td className="py-3 pr-4">
         <IntelBadge status={company.intelligence_status} />
       </td>
