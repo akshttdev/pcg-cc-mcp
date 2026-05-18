@@ -16,7 +16,7 @@ import {
   Twitter,
   Youtube,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -126,6 +126,7 @@ type ViewMode = 'month' | 'week' | 'list';
 
 interface CalEvent {
   id: string;
+  rawId: string; // UUID of underlying record (without 'post-' / 'task-' prefix)
   title: string;
   date: Date;
   kind: 'task' | 'post';
@@ -223,8 +224,10 @@ export default function CalendarPage() {
           | string
           | undefined;
         if (!rawDate) continue;
+        const rawId = t.id as string;
         out.push({
-          id: `task-${t.id as string}`,
+          id: `task-${rawId}`,
+          rawId,
           title: t.title as string,
           date: new Date(rawDate),
           kind: 'task',
@@ -247,8 +250,10 @@ export default function CalendarPage() {
         } catch {
           platform = (p.platforms as string) ?? 'globe';
         }
+        const rawId = p.id as string;
         out.push({
-          id: `post-${p.id as string}`,
+          id: `post-${rawId}`,
+          rawId,
           title:
             (p.caption as string | undefined)?.slice(0, 48) ||
             `(${platform} post)`,
@@ -292,6 +297,40 @@ export default function CalendarPage() {
     setAnchor(d);
   }
 
+  // ── Drag-and-drop rescheduling ──────────────────────────────────────────────
+  const draggingId = useRef<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
+
+  const handleDragStart = useCallback((e: React.DragEvent, event: CalEvent) => {
+    if (event.kind !== 'post') {
+      e.preventDefault();
+      return;
+    }
+    draggingId.current = event.rawId;
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleDrop = useCallback(
+    async (day: Date) => {
+      const id = draggingId.current;
+      draggingId.current = null;
+      setDragOver(null);
+      if (!id) return;
+      // Preserve original time if known; default to noon
+      const scheduled = new Date(day);
+      scheduled.setHours(12, 0, 0, 0);
+      try {
+        await socialApi.updatePost(id, {
+          scheduled_for: scheduled.toISOString(),
+        });
+        await queryClient.invalidateQueries({ queryKey: ['calendar-posts'] });
+      } catch (err) {
+        console.error('Failed to reschedule post', err);
+      }
+    },
+    [queryClient]
+  );
+
   const monthGrid = buildMonthGrid(anchor.getFullYear(), anchor.getMonth());
   const weekDays = buildWeekDays(anchor);
 
@@ -324,7 +363,9 @@ export default function CalendarPage() {
       const Icon = PLATFORM_ICONS[e.platform ?? ''] ?? Globe;
       return (
         <div
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs leading-tight truncate ${colorCls}`}
+          draggable
+          onDragStart={(ev) => handleDragStart(ev, e)}
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs leading-tight truncate cursor-grab active:cursor-grabbing ${colorCls}`}
         >
           <Icon
             className={`h-2.5 w-2.5 shrink-0 ${PLATFORM_COLORS[e.platform ?? ''] ?? ''}`}
@@ -542,10 +583,18 @@ export default function CalendarPage() {
                   <div
                     key={di}
                     onClick={() => setSelected(isSel ? null : day)}
+                    onDragOver={(ev) => {
+                      ev.preventDefault();
+                      setDragOver(key);
+                    }}
+                    onDragLeave={() => setDragOver(null)}
+                    onDrop={() => handleDrop(day)}
                     className={cn(
                       'border-r last:border-r-0 p-1 cursor-pointer hover:bg-muted/30 transition-colors min-h-[80px]',
                       !isCur && 'bg-muted/10',
-                      isSel && 'bg-primary/5 ring-1 ring-inset ring-primary/30'
+                      isSel && 'bg-primary/5 ring-1 ring-inset ring-primary/30',
+                      dragOver === key &&
+                        'bg-primary/10 ring-1 ring-inset ring-primary/50'
                     )}
                   >
                     <div

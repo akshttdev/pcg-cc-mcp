@@ -104,14 +104,19 @@ pub async fn get_tasks(
     Query(query): Query<TaskQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TaskWithAttemptStatus>>>, ApiError> {
     if let Some(ref project_id) = query.project_id {
-        // Verify user has at least viewer access to this project
-        access_context
-            .check_project_access(
+        // Return empty list for inaccessible projects rather than 403 — prevents
+        // 403 storms when the project list fetches task counts for all visible projects.
+        let has_access = access_context
+            .try_check_project_access(
                 &deployment.db().pool,
                 &project_id.to_string(),
                 crate::middleware::access_control::ProjectRole::Viewer,
             )
             .await?;
+
+        if has_access.is_none() {
+            return Ok(ResponseJson(ApiResponse::success(vec![])));
+        }
 
         let tasks = Task::find_by_project_id_with_attempt_status(
             &deployment.db().pool,

@@ -199,6 +199,24 @@ impl AccessContext {
         }
     }
 
+    /// Like check_project_access but returns None instead of 403 when access is denied.
+    /// Use when callers should silently skip inaccessible resources rather than error.
+    pub async fn try_check_project_access(
+        &self,
+        pool: &sqlx::SqlitePool,
+        project_id: &str,
+        required_role: ProjectRole,
+    ) -> Result<Option<ProjectRole>, ApiError> {
+        match self
+            .check_project_access_hierarchical(pool, project_id, required_role)
+            .await
+        {
+            Ok(role) => Ok(Some(role)),
+            Err(ApiError::Forbidden(_)) | Err(ApiError::Unauthorized(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Hierarchical project access check:
     /// 1. Direct project_members (existing logic)
     /// 2. Organization membership (if project has organization_id)
