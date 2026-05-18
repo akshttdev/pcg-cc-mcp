@@ -1,4 +1,5 @@
 use anyhow::{self, Error as AnyhowError};
+use chrono::Datelike;
 use deployment::{Deployment, DeploymentError};
 use server::{routes, DeploymentImpl};
 use sqlx::Error as SqlxError;
@@ -343,8 +344,46 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
 
+    // Spawn social intelligence engine (hourly: mention clustering + snapshot analysis;
+    // opportunity drafter runs every 30 min)
+    {
+        use chrono::Datelike as _;
+        use services::services::social::intelligence::{IntelligenceEngine, OpportunityDrafter};
+        let pool = deployment.db().pool.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                let engine = IntelligenceEngine::new(pool.clone());
+                engine.run_periodic_processors().await;
+                // Weekly processors run on Sunday (weekday 0)
+                let weekday = chrono::Utc::now().weekday();
+                if weekday == chrono::Weekday::Sun {
+                    engine.run_weekly_processors().await;
+                }
+            }
+        });
+        let pool2 = deployment.db().pool.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1800));
+            loop {
+                interval.tick().await;
+                let drafter = OpportunityDrafter::new(pool2.clone());
+                if let Err(e) = drafter.draft_pending().await {
+                    tracing::warn!("OpportunityDrafter error: {e}");
+                }
+            }
+        });
+    }
+
     // Spawn social post publish loop (checks every 15 minutes)
     routes::social_publisher::spawn_social_publish_loop(deployment.db().pool.clone());
+
+    // Spawn social metrics sync loop (runs every 30 minutes, inserts growth snapshots)
+    routes::social_metrics_sync::spawn_metrics_sync_loop(deployment.db().pool.clone());
+
+    // Spawn account follower snapshot loop (runs once per day)
+    routes::social_metrics_sync::spawn_account_snapshot_loop(deployment.db().pool.clone());
 
     // Spawn workflow schedule trigger loop (checks every 5 minutes)
     let schedule_shutdown = tokio_util::sync::CancellationToken::new();

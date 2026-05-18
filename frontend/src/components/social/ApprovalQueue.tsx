@@ -13,6 +13,7 @@ interface ApprovalQueueProps {
   projectId: string;
   reviewerName?: string;
   className?: string;
+  onPostClick?: (postId: string) => void;
 }
 
 function platformBadgeColor(platform: string) {
@@ -41,6 +42,7 @@ export function ApprovalQueue({
   projectId,
   reviewerName,
   className,
+  onPostClick,
 }: ApprovalQueueProps) {
   const queryClient = useQueryClient();
   const [actionStates, setActionStates] = useState<
@@ -149,7 +151,13 @@ export function ApprovalQueue({
                         </span>
                       )}
                     </div>
-                    <p className="text-sm line-clamp-3 text-foreground/90">
+                    <p
+                      className={cn(
+                        'text-sm line-clamp-3 text-foreground/90',
+                        onPostClick && 'cursor-pointer hover:text-primary'
+                      )}
+                      onClick={() => onPostClick?.(post.id)}
+                    >
                       {post.caption || (
                         <span className="text-muted-foreground italic">
                           No caption

@@ -93,8 +93,12 @@ pub enum AccountStatus {
 pub struct SocialAccount {
     pub id: Uuid,
     // DbUuid because this column stores TEXT to match the projects.id FK target.
-    // Plain Uuid only decodes 16-byte BLOB cells; DbUuid handles both formats.
-    pub project_id: DbUuid,
+    // NULL for org-owned or user-owned accounts.
+    pub project_id: Option<DbUuid>,
+    /// Set for org-brand accounts (Sirak Studios LinkedIn, etc.)
+    pub organization_id: Option<String>,
+    /// Set for personal/individual accounts (Phase D).
+    pub user_id: Option<String>,
     pub platform: String,
     pub account_type: String,
     pub platform_account_id: String,
@@ -131,7 +135,10 @@ pub struct SocialAccount {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateSocialAccount {
-    pub project_id: Uuid,
+    /// Exactly one of project_id / organization_id / user_id must be set.
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<String>,
+    pub user_id: Option<String>,
     pub platform: SocialPlatform,
     pub account_type: Option<AccountType>,
     pub platform_account_id: String,
@@ -179,18 +186,18 @@ impl SocialAccount {
         let account = sqlx::query_as::<_, SocialAccount>(
             r#"
             INSERT INTO social_accounts (
-                id, project_id, platform, account_type, platform_account_id,
-                username, display_name, profile_url, avatar_url,
+                id, project_id, organization_id, user_id, platform, account_type,
+                platform_account_id, username, display_name, profile_url, avatar_url,
                 access_token, refresh_token, token_expires_at, metadata
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             RETURNING *
             "#,
         )
         .bind(id)
-        // social_accounts.project_id is a legacy BLOB column whose FK targets
-        // projects.id (TEXT, 36-char UUID). Bind as text so the FK matches.
-        .bind(data.project_id.to_string())
+        .bind(data.project_id.map(|p| p.to_string()))
+        .bind(&data.organization_id)
+        .bind(&data.user_id)
         .bind(&platform)
         .bind(&account_type)
         .bind(&data.platform_account_id)
@@ -214,6 +221,19 @@ impl SocialAccount {
             .fetch_optional(pool)
             .await?
             .ok_or(SocialAccountError::NotFound)
+    }
+
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: &str,
+    ) -> Result<Vec<Self>, SocialAccountError> {
+        let accounts = sqlx::query_as::<_, SocialAccount>(
+            r#"SELECT * FROM social_accounts WHERE organization_id = ?1 ORDER BY platform, username"#,
+        )
+        .bind(organization_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(accounts)
     }
 
     pub async fn find_by_project(
@@ -358,7 +378,9 @@ mod tests {
         let created = SocialAccount::create(
             &pool,
             CreateSocialAccount {
-                project_id,
+                project_id: Some(project_id),
+                organization_id: None,
+                user_id: None,
                 platform: SocialPlatform::LinkedIn,
                 account_type: Some(AccountType::Business),
                 platform_account_id: "acc_123".into(),
@@ -408,7 +430,9 @@ mod tests {
         let account = SocialAccount::create(
             &pool,
             CreateSocialAccount {
-                project_id,
+                project_id: Some(project_id),
+                organization_id: None,
+                user_id: None,
                 platform: SocialPlatform::Instagram,
                 account_type: Some(AccountType::Creator),
                 platform_account_id: "acct_to_update".into(),

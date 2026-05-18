@@ -1,38 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import NiceModal from '@ebay/nice-modal-react';
-import { useUserSystem } from '@/components/config-provider';
-import {
-  projectsApi,
-  tasksApi,
-  emailApi,
-  socialApi,
-  type EmailAccountRecord,
-  type SocialAccountRecord,
-} from '@/lib/api';
-import { showProjectForm } from '@/lib/modals';
-import type {
-  AirtableBase,
-  BrandProfile,
-  Project,
-  ProjectAsset,
-  ProjectBoard,
-  TaskWithAttemptStatus,
-} from 'shared/types';
-import {
-  BRAND_PALETTES,
-  BRAND_PROFILE_STORAGE_PREFIX,
-} from '../types';
-import {
-  getBrandInitials,
-  getBrandTagline,
-  getRepoLabel,
-  hexToRgba,
-  slugify,
-  formatRelativeTime,
-  formatStatusLabel,
-} from '../helpers';
-import type { IntegrationCategory, ProviderStatus } from '../types';
 import {
   BarChart3,
   ClipboardCheck,
@@ -41,6 +7,39 @@ import {
   Mail,
   Share2,
 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import type {
+  AirtableBase,
+  BrandProfile,
+  Project,
+  ProjectAsset,
+  ProjectBoard,
+  TaskWithAttemptStatus,
+} from 'shared/types';
+
+import { useUserSystem } from '@/components/config-provider';
+import {
+  type EmailAccountRecord,
+  emailApi,
+  projectsApi,
+  type SocialAccountRecord,
+  socialApi,
+  tasksApi,
+} from '@/lib/api';
+import { showProjectForm } from '@/lib/modals';
+
+import {
+  formatRelativeTime,
+  formatStatusLabel,
+  getBrandInitials,
+  getBrandTagline,
+  getRepoLabel,
+  hexToRgba,
+  slugify,
+} from '../helpers';
+import type { IntegrationCategory, ProviderStatus } from '../types';
+import { BRAND_PALETTES, BRAND_PROFILE_STORAGE_PREFIX } from '../types';
 
 export function useProjectData(projectId: string, onBack: () => void) {
   const navigate = useNavigate();
@@ -64,10 +63,14 @@ export function useProjectData(projectId: string, onBack: () => void) {
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountRecord[]>([]);
   const [emailAccountsLoading, setEmailAccountsLoading] = useState(true);
   const [emailIntegrationError, setEmailIntegrationError] = useState('');
-  const [socialAccounts, setSocialAccounts] = useState<SocialAccountRecord[]>([]);
+  const [socialAccounts, setSocialAccounts] = useState<SocialAccountRecord[]>(
+    []
+  );
   const [socialAccountsLoading, setSocialAccountsLoading] = useState(true);
   const [socialIntegrationError, setSocialIntegrationError] = useState('');
-  const [airtableConnections, setAirtableConnections] = useState<AirtableBase[]>([]);
+  const [airtableConnections, setAirtableConnections] = useState<
+    AirtableBase[]
+  >([]);
   const [integrationsRefreshing, setIntegrationsRefreshing] = useState(false);
 
   // --- Board form state ---
@@ -99,7 +102,8 @@ export function useProjectData(projectId: string, onBack: () => void) {
 
   // --- Brand profile state ---
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
-  const [isBrandProfileDialogOpen, setIsBrandProfileDialogOpen] = useState(false);
+  const [isBrandProfileDialogOpen, setIsBrandProfileDialogOpen] =
+    useState(false);
   const [brandProfileDraft, setBrandProfileDraft] = useState<{
     tagline: string;
     industry: string;
@@ -128,11 +132,13 @@ export function useProjectData(projectId: string, onBack: () => void) {
     setSocialIntegrationError('');
     setSocialAccountsLoading(true);
     try {
-      const result = await socialApi.listAccounts(projectId);
+      const result = await socialApi.listAccounts({ projectId });
       setSocialAccounts(result);
     } catch (err) {
       console.error('Failed to load social accounts:', err);
-      setSocialIntegrationError('Unable to load social integrations right now.');
+      setSocialIntegrationError(
+        'Unable to load social integrations right now.'
+      );
     } finally {
       setSocialAccountsLoading(false);
     }
@@ -174,8 +180,13 @@ export function useProjectData(projectId: string, onBack: () => void) {
       setAssets(result);
     } catch (error: unknown) {
       console.error('Failed to fetch project assets:', error);
-      const message = error instanceof Error ? error.message : 'Failed to load brand assets';
-      if (error instanceof Object && 'response' in error && (error as { response?: { status?: number } }).response?.status === 404) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to load brand assets';
+      if (
+        error instanceof Object &&
+        'response' in error &&
+        (error as { response?: { status?: number } }).response?.status === 404
+      ) {
         setAssetsError('No assets found for this project.');
       } else {
         setAssetsError(message);
@@ -228,17 +239,29 @@ export function useProjectData(projectId: string, onBack: () => void) {
 
   const openStripeDashboard = useCallback(() => {
     if (typeof window === 'undefined') return;
-    window.open('https://dashboard.stripe.com/', '_blank', 'noopener,noreferrer');
+    window.open(
+      'https://dashboard.stripe.com/',
+      '_blank',
+      'noopener,noreferrer'
+    );
   }, []);
 
   const openAnalyticsDashboard = useCallback(() => {
     if (typeof window === 'undefined') return;
-    window.open('https://analytics.google.com/', '_blank', 'noopener,noreferrer');
+    window.open(
+      'https://analytics.google.com/',
+      '_blank',
+      'noopener,noreferrer'
+    );
   }, []);
 
   const openVercelDashboard = useCallback(() => {
     if (typeof window === 'undefined') return;
-    window.open('https://vercel.com/dashboard', '_blank', 'noopener,noreferrer');
+    window.open(
+      'https://vercel.com/dashboard',
+      '_blank',
+      'noopener,noreferrer'
+    );
   }, []);
 
   const openGithubAuth = useCallback(() => {
@@ -248,7 +271,10 @@ export function useProjectData(projectId: string, onBack: () => void) {
   }, []);
 
   const scrollToAirtable = useCallback(() => {
-    airtableSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    airtableSectionRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
   }, []);
 
   // --- Form reset callbacks ---
@@ -496,9 +522,15 @@ export function useProjectData(projectId: string, onBack: () => void) {
     return BRAND_PALETTES[sum % BRAND_PALETTES.length];
   }, [project]);
 
-  const brandInitials = useMemo(() => getBrandInitials(project?.name), [project?.name]);
+  const brandInitials = useMemo(
+    () => getBrandInitials(project?.name),
+    [project?.name]
+  );
   const brandTagline = useMemo(() => getBrandTagline(project), [project]);
-  const repoLabel = useMemo(() => getRepoLabel(project?.git_repo_path), [project?.git_repo_path]);
+  const repoLabel = useMemo(
+    () => getRepoLabel(project?.git_repo_path),
+    [project?.git_repo_path]
+  );
 
   const brandProfileKey = project?.id
     ? `${BRAND_PROFILE_STORAGE_PREFIX}${project.id}`
@@ -538,16 +570,23 @@ export function useProjectData(projectId: string, onBack: () => void) {
           if (stored) {
             try {
               const parsed = JSON.parse(stored);
-              const migrated = await projectsApi.upsertBrandProfile(project.id, {
-                tagline: parsed.tagline ?? null,
-                industry: parsed.industry ?? null,
-                primaryColor: parsed.primaryColor ?? defaultBrandProfileValues.primaryColor,
-                secondaryColor: parsed.secondaryColor ?? defaultBrandProfileValues.secondaryColor,
-                brandVoice: null,
-                targetAudience: null,
-                logoAssetId: null,
-                guidelinesAssetId: null,
-              });
+              const migrated = await projectsApi.upsertBrandProfile(
+                project.id,
+                {
+                  tagline: parsed.tagline ?? null,
+                  industry: parsed.industry ?? null,
+                  primaryColor:
+                    parsed.primaryColor ??
+                    defaultBrandProfileValues.primaryColor,
+                  secondaryColor:
+                    parsed.secondaryColor ??
+                    defaultBrandProfileValues.secondaryColor,
+                  brandVoice: null,
+                  targetAudience: null,
+                  logoAssetId: null,
+                  guidelinesAssetId: null,
+                }
+              );
               setBrandProfile(migrated);
               window.localStorage.removeItem(brandProfileKey);
               return;
@@ -594,12 +633,18 @@ export function useProjectData(projectId: string, onBack: () => void) {
     [project?.id]
   );
 
-  const effectiveBrandProfile = useMemo(() => ({
-    tagline: brandProfile?.tagline ?? defaultBrandProfileValues.tagline,
-    industry: brandProfile?.industry ?? defaultBrandProfileValues.industry,
-    primaryColor: brandProfile?.primaryColor ?? defaultBrandProfileValues.primaryColor,
-    secondaryColor: brandProfile?.secondaryColor ?? defaultBrandProfileValues.secondaryColor,
-  }), [brandProfile, defaultBrandProfileValues]);
+  const effectiveBrandProfile = useMemo(
+    () => ({
+      tagline: brandProfile?.tagline ?? defaultBrandProfileValues.tagline,
+      industry: brandProfile?.industry ?? defaultBrandProfileValues.industry,
+      primaryColor:
+        brandProfile?.primaryColor ?? defaultBrandProfileValues.primaryColor,
+      secondaryColor:
+        brandProfile?.secondaryColor ??
+        defaultBrandProfileValues.secondaryColor,
+    }),
+    [brandProfile, defaultBrandProfileValues]
+  );
 
   const brandHeroGradient = useMemo(
     () => ({
@@ -637,7 +682,9 @@ export function useProjectData(projectId: string, onBack: () => void) {
 
   // --- Integration categories ---
   const integrationCategories = useMemo<IntegrationCategory[]>(() => {
-    const hasGithub = Boolean(config?.github?.pat || config?.github?.oauth_token);
+    const hasGithub = Boolean(
+      config?.github?.pat || config?.github?.oauth_token
+    );
     const githubDetail = hasGithub
       ? config?.github?.username
         ? `@${config.github.username}`
@@ -691,7 +738,10 @@ export function useProjectData(projectId: string, onBack: () => void) {
       };
     };
 
-    const buildSocialProvider = (platformKey: string, label: string): ProviderStatus => {
+    const buildSocialProvider = (
+      platformKey: string,
+      label: string
+    ): ProviderStatus => {
       if (socialAccountsLoading) {
         return {
           key: platformKey,
@@ -702,10 +752,7 @@ export function useProjectData(projectId: string, onBack: () => void) {
           onAction: openSocialCommand,
         };
       }
-      const normalized =
-        platformKey === 'x'
-          ? 'twitter'
-          : platformKey;
+      const normalized = platformKey === 'x' ? 'twitter' : platformKey;
       const account = socialAccounts.find(
         (entry) => entry.platform?.toLowerCase() === normalized
       );
@@ -749,20 +796,19 @@ export function useProjectData(projectId: string, onBack: () => void) {
         airtableConnections.length > 0
           ? 'connected'
           : config?.airtable?.token
-          ? 'manual'
-          : 'missing',
+            ? 'manual'
+            : 'missing',
       detail:
         airtableConnections.length === 0
           ? config?.airtable?.token
             ? 'Token saved. Connect a base for this project.'
             : 'Add an Airtable token in Settings \u2192 Integrations'
           : airtableConnections.length === 1
-          ? firstConnection.airtable_base_name || 'Base connected'
-          : `${airtableConnections.length} bases connected`,
-      meta:
-        firstConnection?.last_synced_at
-          ? `Synced ${formatRelativeTime(firstConnection.last_synced_at)}`
-          : undefined,
+            ? firstConnection.airtable_base_name || 'Base connected'
+            : `${airtableConnections.length} bases connected`,
+      meta: firstConnection?.last_synced_at
+        ? `Synced ${formatRelativeTime(firstConnection.last_synced_at)}`
+        : undefined,
       actionLabel:
         airtableConnections.length === 0 ? 'Connect base' : 'Manage bases',
       onAction: scrollToAirtable,

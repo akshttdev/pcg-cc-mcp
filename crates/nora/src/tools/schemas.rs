@@ -843,6 +843,80 @@ impl ExecutiveTools {
                     }
                 }
             }),
+            // ── GitHub awareness + Auri coding agent tools ──────────────────
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "github_list_repos",
+                    "description": "ALWAYS use this tool to list GitHub repositories — NEVER use fetch_web_page for GitHub. Lists ALL repos across ALL organisations the PAT belongs to: Powerclub-Global, Sirak-Studios-Org, Soverign-Stack, Veritwin, AlphaProtocolLabs, PCG-ARCHIVES, Emergence-Institute (82+ repos total). Uses the authenticated PAT so no auth headers needed.",
+                    "parameters": { "type": "object", "properties": {
+                        "org_id": { "type": "string", "description": "Optional: filter to a specific org name. Leave empty to list all orgs." }
+                    }, "required": [] }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "github_read_file",
+                    "description": "Read the contents of a file in a GitHub repository. Use this to understand existing code before asking Auri to modify it.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo": { "type": "string", "description": "owner/repo format, e.g. 'Powerclub-Global/pcg-cc-mcp'" },
+                            "path": { "type": "string", "description": "File path, e.g. 'src/main.rs'" },
+                            "branch": { "type": "string", "description": "Branch (default: main)" }
+                        },
+                        "required": ["repo", "path"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "github_list_issues",
+                    "description": "List open issues in a GitHub repository.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo": { "type": "string", "description": "owner/repo format" },
+                            "state": { "type": "string", "description": "open, closed, or all (default: open)" }
+                        },
+                        "required": ["repo"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "github_list_prs",
+                    "description": "List pull requests in a GitHub repository.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo": { "type": "string", "description": "owner/repo format" },
+                            "state": { "type": "string", "description": "open, closed, or all (default: open)" }
+                        },
+                        "required": ["repo"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "assign_to_auri",
+                    "description": "Delegate a coding task to Auri (the AI coding agent). Auri will clone the GitHub repo, run Claude Code to implement the task, commit the changes, and open a pull request. Use this when the user asks to fix a bug, add a feature, or make code changes to any PCG repository.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_id": { "type": "string", "description": "PCG project UUID this task belongs to" },
+                            "title": { "type": "string", "description": "Short title for the coding task" },
+                            "description": { "type": "string", "description": "Detailed description of what Auri should implement" },
+                            "github_repo": { "type": "string", "description": "owner/repo, e.g. 'Powerclub-Global/pcg-cc-mcp'" }
+                        },
+                        "required": ["project_id", "title", "description", "github_repo"]
+                    }
+                }
+            }),
         ]
     }
 
@@ -972,7 +1046,7 @@ impl ExecutiveTools {
                 "type": "function",
                 "function": {
                     "name": "fetch_web_page",
-                    "description": "Fetch and read the content of a web page.",
+                    "description": "Fetch and read the content of a web page. Do NOT use this for GitHub API endpoints — use github_list_repos, github_read_file, github_list_issues, or github_list_prs instead.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1036,7 +1110,7 @@ impl ExecutiveTools {
                 "type": "function",
                 "function": {
                     "name": "github_list_repos",
-                    "description": "List ALL GitHub repositories accessible across all organizations the token belongs to (Powerclub-Global, Sirak-Studios-Org, Soverign-Stack, Veritwin, AlphaProtocolLabs, PCG-ARCHIVES, Emergence-Institute). Returns every repo Nora and Auri can work with.",
+                    "description": "ALWAYS use this tool to list GitHub repositories — NEVER use fetch_web_page for GitHub. Lists ALL repos across ALL organisations the PAT belongs to: Powerclub-Global, Sirak-Studios-Org, Soverign-Stack, Veritwin, AlphaProtocolLabs, PCG-ARCHIVES, Emergence-Institute (82+ repos total). Uses the authenticated PAT so no auth headers needed.",
                     "parameters": { "type": "object", "properties": {}, "required": [] }
                 }
             }),

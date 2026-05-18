@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 
+import { PostDetailModal } from '@/components/social';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -177,6 +178,7 @@ export default function CalendarPage() {
   const [captionTopic, setCaptionTopic] = useState('');
   const [generatingCaptions, setGeneratingCaptions] = useState(false);
   const [captionOptions, setCaptionOptions] = useState<string[]>([]);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { data: projects = [] } = useProjectList();
@@ -368,7 +370,15 @@ export default function CalendarPage() {
         <div
           draggable
           onDragStart={(ev) => handleDragStart(ev, e)}
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs leading-tight truncate cursor-grab active:cursor-grabbing ${colorCls}`}
+          onPointerUp={(ev) => {
+            // Use pointerUp instead of onClick to avoid drag-suppressed-click
+            // bug in Chrome where a tiny mouse movement on draggable elements
+            // prevents the click event from firing.
+            ev.stopPropagation();
+            if ((ev.target as HTMLElement).closest('[data-dragging]')) return;
+            setSelectedPostId(e.rawId);
+          }}
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs leading-tight truncate cursor-pointer hover:ring-1 hover:ring-primary/50 hover:brightness-105 active:opacity-70 select-none ${colorCls}`}
         >
           <Icon
             className={`h-2.5 w-2.5 shrink-0 ${PLATFORM_COLORS[e.platform ?? ''] ?? ''}`}
@@ -421,7 +431,10 @@ export default function CalendarPage() {
               {dayEvents.map((e) => (
                 <div
                   key={e.id}
-                  className="flex items-start gap-2 p-2 rounded-lg border border-border/40 hover:bg-muted/30"
+                  onPointerUp={() => {
+                    if (e.kind === 'post') setSelectedPostId(e.rawId);
+                  }}
+                  className={`flex items-start gap-2 p-2 rounded-lg border border-border/40 hover:bg-muted/30 ${e.kind === 'post' ? 'cursor-pointer hover:border-primary/30' : ''}`}
                 >
                   {e.kind === 'task' ? (
                     e.status === 'done' ? (
@@ -511,7 +524,10 @@ export default function CalendarPage() {
                   {evts.map((e) => (
                     <div
                       key={e.id}
-                      className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/40 border border-transparent hover:border-border/40"
+                      onPointerUp={() => {
+                        if (e.kind === 'post') setSelectedPostId(e.rawId);
+                      }}
+                      className={`flex items-center gap-2 p-2 rounded-md hover:bg-muted/40 border border-transparent hover:border-border/40 ${e.kind === 'post' ? 'cursor-pointer hover:border-primary/30' : ''}`}
                     >
                       {e.kind === 'task' ? (
                         e.status === 'done' ? (
@@ -747,6 +763,16 @@ export default function CalendarPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full bg-background">
+      {/* Post detail modal */}
+      <PostDetailModal
+        postId={selectedPostId}
+        open={!!selectedPostId}
+        onClose={() => setSelectedPostId(null)}
+        onDeleted={() =>
+          queryClient.invalidateQueries({ queryKey: ['calendar-posts'] })
+        }
+      />
+
       {/* New Post dialog */}
       <Dialog open={newPostOpen} onOpenChange={setNewPostOpen}>
         <DialogContent className="max-w-lg">

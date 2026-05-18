@@ -48,9 +48,12 @@ pub enum PostStatus {
 #[ts(export)]
 pub struct SocialPost {
     pub id: Uuid,
-    // DbUuid: legacy BLOB column FKs to projects.id (TEXT). Same pattern as
-    // email_messages and social_accounts.
-    pub project_id: DbUuid,
+    // DbUuid: legacy BLOB column FKs to projects.id (TEXT). NULL for org/user posts.
+    pub project_id: Option<DbUuid>,
+    /// Set for org-brand posts (not tied to any specific project).
+    pub organization_id: Option<String>,
+    /// Set for personal/individual posts (Phase D).
+    pub user_id: Option<String>,
     pub social_account_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
     pub content_type: String,
@@ -101,7 +104,10 @@ pub struct SocialPost {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateSocialPost {
-    pub project_id: Uuid,
+    /// Exactly one of project_id / organization_id / user_id must be set.
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<String>,
+    pub user_id: Option<String>,
     pub social_account_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
     pub content_type: Option<ContentType>,
@@ -134,12 +140,14 @@ pub struct UpdateSocialPost {
     pub media_urls: Option<Vec<String>>,
     pub hashtags: Option<Vec<String>>,
     pub mentions: Option<Vec<String>>,
+    pub platforms: Option<Vec<String>>,
     pub platform_specific: Option<serde_json::Value>,
     pub status: Option<PostStatus>,
     pub scheduled_for: Option<DateTime<Utc>>,
     pub category: Option<String>,
     pub queue_position: Option<i64>,
     pub is_evergreen: Option<bool>,
+    pub recycle_after_days: Option<i64>,
     pub approved_by: Option<String>,
     pub assignee_id: Option<Uuid>,
     pub crm_deal_id: Option<Uuid>,
@@ -173,21 +181,22 @@ impl SocialPost {
         let post = sqlx::query_as::<_, SocialPost>(
             r#"
             INSERT INTO social_posts (
-                id, project_id, social_account_id, task_id, content_type,
+                id, project_id, organization_id, user_id,
+                social_account_id, task_id, content_type,
                 caption, content_blocks, media_urls, hashtags, mentions,
                 platforms, platform_specific, status, scheduled_for, category,
                 is_evergreen, recycle_after_days, created_by_agent_id, deliverable_id, assignee_id,
                 crm_deal_id, crm_contact_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                    COALESCE(?13, 'draft'), ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+                    COALESCE(?15, 'draft'), ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)
             RETURNING *
             "#,
         )
         .bind(id)
-        // project_id stored as TEXT to match projects.id FK target (BLOB column,
-        // TEXT-stored values — see DbUuid trick used in email_messages too).
-        .bind(data.project_id.to_string())
+        .bind(data.project_id.map(|p| p.to_string()))
+        .bind(&data.organization_id)
+        .bind(&data.user_id)
         .bind(data.social_account_id)
         .bind(data.task_id)
         .bind(&content_type)
@@ -241,6 +250,22 @@ impl SocialPost {
         .fetch_all(pool)
         .await?;
 
+        Ok(posts)
+    }
+
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: &str,
+        limit: Option<i64>,
+    ) -> Result<Vec<Self>, SocialPostError> {
+        let limit = limit.unwrap_or(200);
+        let posts = sqlx::query_as::<_, SocialPost>(
+            r#"SELECT * FROM social_posts WHERE organization_id = ?1 ORDER BY created_at DESC LIMIT ?2"#,
+        )
+        .bind(organization_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
         Ok(posts)
     }
 
@@ -367,6 +392,9 @@ impl SocialPost {
         let mentions = data
             .mentions
             .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
+        let platforms = data
+            .platforms
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
         let platform_specific = data.platform_specific.map(|v| v.to_string());
 
         let approved_at = data.approved_by.as_ref().map(|_| Utc::now());
@@ -379,17 +407,19 @@ impl SocialPost {
                 media_urls = COALESCE(?4, media_urls),
                 hashtags = COALESCE(?5, hashtags),
                 mentions = COALESCE(?6, mentions),
-                platform_specific = COALESCE(?7, platform_specific),
-                status = COALESCE(?8, status),
-                scheduled_for = COALESCE(?9, scheduled_for),
-                category = COALESCE(?10, category),
-                queue_position = COALESCE(?11, queue_position),
-                is_evergreen = COALESCE(?12, is_evergreen),
-                approved_by = COALESCE(?13, approved_by),
-                approved_at = COALESCE(?14, approved_at),
-                assignee_id = COALESCE(?15, assignee_id),
-                crm_deal_id = COALESCE(?16, crm_deal_id),
-                crm_contact_id = COALESCE(?17, crm_contact_id),
+                platforms = COALESCE(?7, platforms),
+                platform_specific = COALESCE(?8, platform_specific),
+                status = COALESCE(?9, status),
+                scheduled_for = COALESCE(?10, scheduled_for),
+                category = COALESCE(?11, category),
+                queue_position = COALESCE(?12, queue_position),
+                is_evergreen = COALESCE(?13, is_evergreen),
+                recycle_after_days = COALESCE(?14, recycle_after_days),
+                approved_by = COALESCE(?15, approved_by),
+                approved_at = COALESCE(?16, approved_at),
+                assignee_id = COALESCE(?17, assignee_id),
+                crm_deal_id = COALESCE(?18, crm_deal_id),
+                crm_contact_id = COALESCE(?19, crm_contact_id),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
             RETURNING *
@@ -401,12 +431,14 @@ impl SocialPost {
         .bind(media_urls)
         .bind(hashtags)
         .bind(mentions)
+        .bind(platforms)
         .bind(platform_specific)
         .bind(&status)
         .bind(data.scheduled_for)
         .bind(&data.category)
         .bind(data.queue_position)
         .bind(data.is_evergreen)
+        .bind(data.recycle_after_days)
         .bind(&data.approved_by)
         .bind(approved_at)
         .bind(data.assignee_id)
@@ -717,7 +749,9 @@ mod tests {
         let created = SocialPost::create(
             &pool,
             CreateSocialPost {
-                project_id,
+                project_id: Some(project_id),
+                organization_id: None,
+                user_id: None,
                 social_account_id: Some(account.id),
                 task_id: None,
                 content_type: Some(ContentType::Carousel),

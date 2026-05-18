@@ -282,6 +282,32 @@ pub struct NoraTriggerQboSyncRequest {
     pub quickbooks_account_id: Option<String>,
 }
 
+/// MCP request for dispatching a task to an agent (e.g. Auri)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NoraDispatchTaskRequest {
+    #[schemars(description = "Project UUID to create the task under")]
+    pub project_id: String,
+
+    #[schemars(description = "Task title")]
+    pub title: String,
+
+    #[schemars(description = "Detailed task description")]
+    pub description: Option<String>,
+
+    #[schemars(
+        description = "Agent to assign the task to (default: 'auri'). Other values: 'nora', 'topsi', 'bodhi', 'system'."
+    )]
+    pub assigned_agent: Option<String>,
+
+    #[schemars(
+        description = "Priority level: 'low', 'medium', 'high', 'urgent' (default: 'high')"
+    )]
+    pub priority: Option<String>,
+
+    #[schemars(description = "Optional parent task UUID for sub-task hierarchy")]
+    pub parent_task_id: Option<String>,
+}
+
 /// MCP request for rapid prototyping playbook
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct NoraRapidPlaybookRequest {
@@ -995,6 +1021,76 @@ impl NoraServer {
     }
 
     #[tool(
+        description = "Dispatch a task to an agent (default: Auri, the engineering agent). Creates a task record in the project's task board with the given title, description, and priority, then assigns it to the chosen agent. Use this whenever Nora wants to delegate engineering, research, or operational work to Auri or another named agent."
+    )]
+    async fn nora_dispatch_task(
+        &self,
+        Parameters(NoraDispatchTaskRequest {
+            project_id,
+            title,
+            description,
+            assigned_agent,
+            priority,
+            parent_task_id,
+        }): Parameters<NoraDispatchTaskRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let agent = assigned_agent
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("auri")
+            .to_string();
+        let prio = priority
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("high")
+            .to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+
+        let result = sqlx::query(
+            r#"
+            INSERT INTO tasks (id, project_id, title, description, status, priority, assigned_agent, created_by, parent_task_id, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, 'todo', ?5, ?6, 'nora', ?7, datetime('now','subsec'), datetime('now','subsec'))
+            "#,
+        )
+        .bind(&task_id)
+        .bind(&project_id)
+        .bind(&title)
+        .bind(&description)
+        .bind(&prio)
+        .bind(&agent)
+        .bind(&parent_task_id)
+        .execute(&self.pool)
+        .await;
+
+        match result {
+            Ok(_) => {
+                let response = json!({
+                    "dispatched": true,
+                    "task_id": task_id,
+                    "assigned_to": agent,
+                    "project_id": project_id,
+                    "message": format!("Task dispatched to {}", agent),
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&response)
+                        .unwrap_or_else(|_| response.to_string()),
+                )]))
+            }
+            Err(e) => {
+                let error_response = json!({
+                    "dispatched": false,
+                    "error": "Failed to create task",
+                    "details": e.to_string(),
+                });
+                Ok(CallToolResult::error(vec![Content::text(
+                    serde_json::to_string_pretty(&error_response)
+                        .unwrap_or_else(|_| error_response.to_string()),
+                )]))
+            }
+        }
+    }
+
+    #[tool(
         description = "Run Nora's rapid prototyping playbook. She syncs live context, ensures the project exists, and produces an executive summary of next steps."
     )]
     async fn nora_rapid_playbook(
@@ -1054,7 +1150,7 @@ impl ServerHandler for NoraServer {
                 name: "nora-executive-mcp".to_string(),
                 version: "1.0.0".to_string(),
             },
-            instructions: Some("Nora Executive Assistant MCP provides AI-powered executive functions. Available tools: 'nora_chat' (general conversation), 'nora_coordinate_tasks' (task management), 'nora_strategic_planning' (strategic analysis), 'nora_performance_analysis' (performance insights), 'nora_voice_synthesis' (British accent TTS), 'nora_coordination_stats' (system statistics), 'nora_schedule' (calendar lookup — what's on today / when am I next meeting <person>?), 'nora_financial_summary' (org AR/AP + revenue trend from QuickBooks-synced data), 'nora_qbo_lookup_contact' (find a contact's AR balance by name/company/email), 'nora_trigger_qbo_sync' (force a QuickBooks pull), 'nora_list_social_accounts' (discover connected social handles for a project), 'nora_post_to_social' (create + publish a post in one shot to YouTube/LinkedIn/etc.), 'nora_rapid_playbook' (rapid prototyping). Nora is a professional British executive assistant who can help with strategic planning, task coordination, performance analysis, decision support, scheduling, financial reporting, and direct social publishing.".to_string()),
+            instructions: Some("Nora Executive Assistant MCP provides AI-powered executive functions. Available tools: 'nora_chat' (general conversation), 'nora_coordinate_tasks' (task management), 'nora_strategic_planning' (strategic analysis), 'nora_performance_analysis' (performance insights), 'nora_voice_synthesis' (British accent TTS), 'nora_coordination_stats' (system statistics), 'nora_schedule' (calendar lookup — what's on today / when am I next meeting <person>?), 'nora_financial_summary' (org AR/AP + revenue trend from QuickBooks-synced data), 'nora_qbo_lookup_contact' (find a contact's AR balance by name/company/email), 'nora_trigger_qbo_sync' (force a QuickBooks pull), 'nora_list_social_accounts' (discover connected social handles for a project), 'nora_post_to_social' (create + publish a post in one shot to YouTube/LinkedIn/etc.), 'nora_rapid_playbook' (rapid prototyping), 'nora_dispatch_task' (dispatch/assign a task to Auri or another agent — use this to delegate engineering, research, or operational work). Nora is a professional British executive assistant who can help with strategic planning, task coordination, performance analysis, decision support, scheduling, financial reporting, direct social publishing, and dispatching tasks to specialist agents.".to_string()),
         }
     }
 }
@@ -1131,7 +1227,9 @@ async fn publish_now(
     let post = SocialPost::create(
         pool,
         CreateSocialPost {
-            project_id: project_uuid,
+            project_id: Some(project_uuid),
+            organization_id: None,
+            user_id: None,
             social_account_id: None,
             task_id: None,
             content_type: Some(parse_content_type(content_type)),

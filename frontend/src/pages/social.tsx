@@ -7,6 +7,7 @@ import type { Project } from 'shared/types';
 import { ContentCalendar } from '@/components/content-studio';
 import { AnalyticsDashboard } from '@/components/social/AnalyticsDashboard';
 import { ApprovalQueue } from '@/components/social/ApprovalQueue';
+import { PostDetailModal } from '@/components/social/PostDetailModal';
 import { QueueManager } from '@/components/social/QueueManager';
 import { SocialAccountConnect } from '@/components/social/SocialAccountConnect';
 import {
@@ -67,6 +68,7 @@ export function SocialPage() {
   );
   const [connectingPlatform, setConnectingPlatform] =
     useState<SocialPlatform | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const projectParam = searchParams.get('projectId');
 
@@ -92,13 +94,15 @@ export function SocialPage() {
 
   const accountsQuery = useQuery<SocialAccountRecord[], Error>({
     queryKey: socialKeys.accounts(selectedProjectId),
-    queryFn: () => socialApi.listAccounts(selectedProjectId ?? undefined),
+    queryFn: () =>
+      socialApi.listAccounts({ projectId: selectedProjectId ?? undefined }),
     enabled: !!selectedProjectId,
   });
 
   const postsQuery = useQuery<SocialPostRecord[], Error>({
     queryKey: socialKeys.posts(selectedProjectId),
-    queryFn: () => socialApi.listPosts(selectedProjectId ?? undefined),
+    queryFn: () =>
+      socialApi.listPosts({ projectId: selectedProjectId ?? undefined }),
     enabled: !!selectedProjectId,
   });
 
@@ -213,7 +217,13 @@ export function SocialPage() {
         </Alert>
       );
     }
-    return <ContentCalendar posts={calendarPosts} className="border" />;
+    return (
+      <ContentCalendar
+        posts={calendarPosts}
+        className="border"
+        onPostClick={(post) => setSelectedPostId(post.id)}
+      />
+    );
   };
 
   const renderInboxSection = () => {
@@ -234,6 +244,17 @@ export function SocialPage() {
 
   return (
     <div className="p-6 space-y-6">
+      <PostDetailModal
+        postId={selectedPostId}
+        open={!!selectedPostId}
+        onClose={() => setSelectedPostId(null)}
+        onDeleted={() => {
+          queryClient.invalidateQueries({
+            queryKey: socialKeys.posts(selectedProjectId),
+          });
+        }}
+      />
+
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <CardTitle className="text-2xl">Social Command</CardTitle>
@@ -350,6 +371,7 @@ export function SocialPage() {
                     <ApprovalQueue
                       projectId={selectedProjectId}
                       className="h-full"
+                      onPostClick={setSelectedPostId}
                     />
                   ) : (
                     <p className="text-sm text-muted-foreground">

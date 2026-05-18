@@ -7,6 +7,7 @@
 //! - Analytics collection
 
 pub mod connectors;
+pub mod intelligence;
 pub mod publisher;
 pub mod scheduler;
 

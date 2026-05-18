@@ -482,6 +482,28 @@ export const socialKeys = {
     ['social-mentions-ov', projectId] as const,
   inboxStats: (projectId?: string | null) =>
     ['social-inbox-stats', projectId] as const,
+  analytics: (projectId: string, days?: number) =>
+    ['social-analytics', projectId, days] as const,
+  growth: (postId: string) => ['social', 'growth', postId] as const,
+  topPosts: (projectId: string, metric?: string) =>
+    ['social', 'top-posts', projectId, metric] as const,
+  bestTimes: (projectId: string, orgId?: string) =>
+    ['social', 'best-times', projectId, orgId] as const,
+  insights: (projectId: string, days?: number) =>
+    ['social', 'insights', projectId, days] as const,
+};
+
+// ── Social Intelligence ──────────────────────────────────────────────────────
+
+export const intelligenceKeys = {
+  opportunities: (orgId: string, status?: string, type?: string) =>
+    ['social-intel-opps', orgId, status, type] as const,
+  audienceInsights: (orgId: string, days?: number) =>
+    ['social-intel-insights', orgId, days] as const,
+  shareOfVoice: (orgId: string, days?: number, platform?: string) =>
+    ['social-intel-sov', orgId, days, platform] as const,
+  trackedEntities: (orgId: string, entityType?: string) =>
+    ['social-intel-entities', orgId, entityType] as const,
 };
 
 // ── Network ─────────────────────────────────────────────────────────────────

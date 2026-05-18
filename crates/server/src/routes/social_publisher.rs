@@ -157,7 +157,12 @@ async fn publish_post(
             .map_err(|e| anyhow::anyhow!("Account lookup failed: {}", e))?
     } else {
         // No account linked — try to find one for this project on LinkedIn
-        let accounts = SocialAccount::find_by_project(pool, Uuid::from(post.project_id.clone()))
+        let project_uuid = post
+            .project_id
+            .as_ref()
+            .map(|id| Uuid::from(id.clone()))
+            .ok_or_else(|| anyhow::anyhow!("Post has no project_id"))?;
+        let accounts = SocialAccount::find_by_project(pool, project_uuid)
             .await
             .map_err(|e| anyhow::anyhow!("Account list failed: {}", e))?;
         accounts
@@ -165,7 +170,7 @@ async fn publish_post(
             .find(|a| a.status == "active")
             .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "No active social account found for project {}",
+                    "No active social account found for project {:?}",
                     post.project_id
                 )
             })?

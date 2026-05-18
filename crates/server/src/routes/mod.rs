@@ -115,7 +115,10 @@ pub mod sidebar;
 pub mod slack;
 pub mod social_accounts;
 pub mod social_inbox;
+pub mod social_intelligence;
 pub mod social_media_upload;
+pub mod social_metrics_sync;
+pub mod social_oauth;
 pub mod social_posts;
 pub mod social_publisher;
 pub mod storage;
@@ -171,6 +174,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(social_accounts::router(&deployment))
         .merge(social_posts::router(&deployment))
         .merge(social_inbox::router(&deployment))
+        .merge(social_intelligence::router(&deployment))
+        .merge(social_oauth::protected_router(&deployment))
         .merge(integrations::router(&deployment))
         .merge(github::router(&deployment))
         .merge(storage::router(&deployment))
@@ -294,9 +299,11 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))
         .merge(social_posts::public_router(&deployment))
+        .merge(social_oauth::public_router(&deployment))
         .merge(video_gen::public_router(&deployment))
         .merge(orcha::orcha_routes())
         .merge(media_library::public_router(&deployment))
+        .merge(social_media_upload::public_router(&deployment))
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(marketplace::public_router(&deployment))

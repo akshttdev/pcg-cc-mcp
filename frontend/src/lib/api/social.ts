@@ -6,7 +6,9 @@ import { handleApiResponse, makeRequest } from './client';
 
 export interface SocialAccountRecord {
   id: string;
-  project_id: string;
+  project_id?: string | null;
+  organization_id?: string | null;
+  user_id?: string | null;
   platform: string;
   account_type: string;
   platform_account_id: string;
@@ -27,7 +29,9 @@ export interface SocialAccountRecord {
 
 export interface SocialPostRecord {
   id: string;
-  project_id: string;
+  project_id?: string | null;
+  organization_id?: string | null;
+  user_id?: string | null;
   social_account_id?: string | null;
   task_id?: string | null;
   deliverable_id?: string | null;
@@ -105,9 +109,15 @@ export interface SocialInboxStats {
 }
 
 export const socialApi = {
-  listAccounts: async (projectId?: string): Promise<SocialAccountRecord[]> => {
+  listAccounts: async (params?: {
+    projectId?: string;
+    organizationId?: string;
+  }): Promise<SocialAccountRecord[]> => {
     const searchParams = new URLSearchParams();
-    if (projectId) searchParams.set('project_id', projectId);
+    if (params?.organizationId)
+      searchParams.set('organization_id', params.organizationId);
+    else if (params?.projectId)
+      searchParams.set('project_id', params.projectId);
     const query = searchParams.toString();
     const response = await makeRequest(
       `/api/social/accounts${query ? `?${query}` : ''}`
@@ -115,9 +125,15 @@ export const socialApi = {
     return handleApiResponse<SocialAccountRecord[]>(response);
   },
 
-  listPosts: async (projectId?: string): Promise<SocialPostRecord[]> => {
+  listPosts: async (params?: {
+    projectId?: string;
+    organizationId?: string;
+  }): Promise<SocialPostRecord[]> => {
     const searchParams = new URLSearchParams();
-    if (projectId) searchParams.set('project_id', projectId);
+    if (params?.organizationId)
+      searchParams.set('organization_id', params.organizationId);
+    else if (params?.projectId)
+      searchParams.set('project_id', params.projectId);
     const query = searchParams.toString();
     const response = await makeRequest(
       `/api/social/posts${query ? `?${query}` : ''}`
@@ -147,13 +163,15 @@ export const socialApi = {
 
   listPostsFiltered: async (params: {
     projectId?: string;
+    organizationId?: string;
     status?: string;
     category?: string;
     platform?: string;
     limit?: number;
   }): Promise<SocialPostRecord[]> => {
     const sp = new URLSearchParams();
-    if (params.projectId) sp.set('project_id', params.projectId);
+    if (params.organizationId) sp.set('organization_id', params.organizationId);
+    else if (params.projectId) sp.set('project_id', params.projectId);
     if (params.status) sp.set('status', params.status);
     if (params.category) sp.set('category', params.category);
     if (params.platform) sp.set('platform', params.platform);
@@ -163,7 +181,8 @@ export const socialApi = {
   },
 
   createPost: async (data: {
-    project_id: string;
+    project_id?: string;
+    organization_id?: string;
     caption: string;
     platforms: string[];
     content_type?: string;
@@ -185,10 +204,17 @@ export const socialApi = {
     id: string,
     data: Partial<{
       caption: string;
+      media_urls: string[];
+      hashtags: string[];
+      mentions: string[];
+      platforms: string[];
+      platform_specific: Record<string, unknown>;
       status: string;
       scheduled_for: string | null;
       category: string;
-      platforms: string;
+      is_evergreen: boolean;
+      recycle_after_days: number | null;
+      assignee_id: string | null;
     }>
   ): Promise<SocialPostRecord> => {
     const response = await makeRequest(`/api/social/posts/${id}`, {
@@ -196,6 +222,11 @@ export const socialApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
+    return handleApiResponse<SocialPostRecord>(response);
+  },
+
+  getPost: async (id: string): Promise<SocialPostRecord> => {
+    const response = await makeRequest(`/api/social/posts/${id}`);
     return handleApiResponse<SocialPostRecord>(response);
   },
 
@@ -251,6 +282,93 @@ export const socialApi = {
     if (days) sp.set('days', String(days));
     const response = await makeRequest(`/api/social/analytics?${sp}`);
     return handleApiResponse(response);
+  },
+
+  getPostGrowth: async (
+    postId: string
+  ): Promise<
+    Array<{
+      captured_at: string;
+      impressions: number;
+      likes: number;
+      comments: number;
+      shares: number;
+      engagement_rate: number;
+    }>
+  > => {
+    const response = await makeRequest(
+      `/api/social/analytics/growth?post_id=${postId}`
+    );
+    return handleApiResponse(response);
+  },
+
+  getTopPosts: async (params: {
+    projectId?: string;
+    orgId?: string;
+    limit?: number;
+    metric?: 'impressions' | 'likes' | 'engagement_rate' | 'comments';
+    days?: number;
+  }): Promise<SocialPostRecord[]> => {
+    const sp = new URLSearchParams();
+    if (params.projectId) sp.set('project_id', params.projectId);
+    if (params.orgId) sp.set('org_id', params.orgId);
+    if (params.limit) sp.set('limit', String(params.limit));
+    if (params.metric) sp.set('metric', params.metric);
+    if (params.days) sp.set('days', String(params.days));
+    const response = await makeRequest(`/api/social/analytics/top-posts?${sp}`);
+    return handleApiResponse(response);
+  },
+
+  getBestTimes: async (params: {
+    projectId?: string;
+    orgId?: string;
+  }): Promise<
+    Array<{
+      day_of_week: number; // 0=Sun, 6=Sat
+      hour_of_day: number; // 0-23
+      post_count: number;
+      avg_engagement: number;
+    }>
+  > => {
+    const sp = new URLSearchParams();
+    if (params.projectId) sp.set('project_id', params.projectId);
+    if (params.orgId) sp.set('org_id', params.orgId);
+    const response = await makeRequest(
+      `/api/social/analytics/best-times?${sp}`
+    );
+    return handleApiResponse(response);
+  },
+
+  getInsights: async (params: {
+    projectId?: string;
+    orgId?: string;
+    days?: number;
+  }): Promise<{
+    summary: string;
+    top_finding: string;
+    recommendations: string[];
+    generated_at: string;
+  }> => {
+    const response = await makeRequest('/api/social/analytics/insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project_id: params.projectId,
+        org_id: params.orgId,
+        days: params.days ?? 30,
+      }),
+    });
+    return handleApiResponse(response);
+  },
+
+  connectAccount: (
+    platform: string,
+    params: { projectId?: string; orgId?: string }
+  ) => {
+    const sp = new URLSearchParams();
+    if (params.orgId) sp.set('organization_id', params.orgId);
+    if (params.projectId) sp.set('project_id', params.projectId);
+    window.location.href = `/api/social/connect/${platform}?${sp}`;
   },
 
   generateCaptions: async (params: {
@@ -357,6 +475,227 @@ export const socialApi = {
         method: 'POST',
         body: form,
       }
+    );
+    return handleApiResponse(response);
+  },
+};
+
+// =============================================================================
+// Social Intelligence API
+// =============================================================================
+
+export interface ContentOpportunity {
+  id: string;
+  type: string;
+  title: string;
+  brief: string | null;
+  suggested_format: string | null;
+  suggested_slot: string | null;
+  status: string;
+  relevance_score: number;
+  expires_at: string | null;
+  has_draft: boolean;
+  draft_post_id: string | null;
+  created_at: string;
+}
+
+export interface AudienceInsight {
+  type: string;
+  topic: string;
+  mention_count: number;
+  sentiment: string | null;
+  content_angle: string | null;
+}
+
+export interface ShareOfVoicePeriod {
+  period_start: string;
+  period_end: string;
+  own_mentions: number;
+  total_niche_mentions: number;
+  share_of_voice_pct: string | null;
+  top_keywords: unknown;
+  competitors: unknown;
+}
+
+export interface TrackedEntity {
+  id: string;
+  type: string;
+  name: string;
+  instagram: string | null;
+  twitter: string | null;
+  linkedin: string | null;
+  relevance: number;
+  notes: string | null;
+}
+
+export interface AddTrackedEntityRequest {
+  org_id: string;
+  name: string;
+  entity_type:
+    | 'competitor'
+    | 'kol_influencer'
+    | 'thought_leader'
+    | 'trade_press';
+  instagram_handle?: string;
+  twitter_handle?: string;
+  linkedin_url?: string;
+  niche_relevance?: number;
+  notes?: string;
+}
+
+export const socialIntelligenceApi = {
+  listOpportunities: async (params: {
+    orgId: string;
+    status?: string;
+    opportunityType?: string;
+    limit?: number;
+  }): Promise<{ count: number; opportunities: ContentOpportunity[] }> => {
+    const sp = new URLSearchParams();
+    if (params.status) sp.set('status', params.status);
+    if (params.opportunityType)
+      sp.set('opportunity_type', params.opportunityType);
+    if (params.limit) sp.set('limit', String(params.limit));
+    const response = await makeRequest(
+      `/api/organizations/${params.orgId}/intelligence/opportunities${sp.toString() ? `?${sp}` : ''}`
+    );
+    const raw = await handleApiResponse<Record<string, unknown>[]>(response);
+    const items = Array.isArray(raw) ? raw : [];
+    const opportunities: ContentOpportunity[] = items.map((r) => ({
+      id: r.id as string,
+      type: (r.opportunity_type ?? r.type) as string,
+      title: r.title as string,
+      brief: (r.brief ?? null) as string | null,
+      suggested_format: (r.suggested_format ?? null) as string | null,
+      suggested_slot: (r.suggested_slot ?? null) as string | null,
+      status: r.status as string,
+      relevance_score: (r.relevance_score ?? 0) as number,
+      expires_at: (r.expires_at ?? null) as string | null,
+      has_draft: !!r.draft_post_id,
+      draft_post_id: (r.draft_post_id ?? null) as string | null,
+      created_at: r.created_at as string,
+    }));
+    return { count: opportunities.length, opportunities };
+  },
+
+  approveOpportunity: async (
+    _orgId: string,
+    opportunityId: string,
+    notes?: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/social/opportunities/${opportunityId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'approved', review_notes: notes }),
+      }
+    );
+    return handleApiResponse(response);
+  },
+
+  rejectOpportunity: async (
+    _orgId: string,
+    opportunityId: string,
+    reason?: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/social/opportunities/${opportunityId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'rejected', review_notes: reason }),
+      }
+    );
+    return handleApiResponse(response);
+  },
+
+  getAudienceInsights: async (
+    orgId: string,
+    days?: number
+  ): Promise<{ insights: AudienceInsight[] }> => {
+    const sp = days ? `?period_days=${days}` : '';
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/intelligence/audience-insights${sp}`
+    );
+    const raw = await handleApiResponse<Record<string, unknown>[]>(response);
+    const items = Array.isArray(raw) ? raw : [];
+    const insights: AudienceInsight[] = items.map((r) => ({
+      type: (r.insight_type ?? r.type ?? '') as string,
+      topic: (r.topic ?? '') as string,
+      mention_count: (r.mention_count ?? 0) as number,
+      sentiment: (r.sentiment ?? null) as string | null,
+      content_angle: (r.suggested_content_angle ?? r.content_angle ?? null) as
+        | string
+        | null,
+    }));
+    return { insights };
+  },
+
+  getShareOfVoice: async (
+    orgId: string,
+    days?: number,
+    platform?: string
+  ): Promise<{ periods: ShareOfVoicePeriod[] }> => {
+    const sp = new URLSearchParams();
+    if (days) sp.set('period_days', String(days));
+    if (platform) sp.set('platform', platform);
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/intelligence/share-of-voice${sp.toString() ? `?${sp}` : ''}`
+    );
+    const raw = await handleApiResponse<Record<string, unknown>[]>(response);
+    const items = Array.isArray(raw) ? raw : [];
+    const periods: ShareOfVoicePeriod[] = items.map((r) => ({
+      period_start: (r.period_start ?? '') as string,
+      period_end: (r.period_end ?? '') as string,
+      own_mentions: (r.own_mention_count ?? r.own_mentions ?? 0) as number,
+      total_niche_mentions: (r.total_niche_mention_count ??
+        r.total_niche_mentions ??
+        0) as number,
+      share_of_voice_pct: (r.share_of_voice_pct ?? null) as string | null,
+      top_keywords: r.top_keywords ?? null,
+      competitors: r.competitor_summary ?? r.competitors ?? null,
+    }));
+    return { periods };
+  },
+
+  listTrackedEntities: async (
+    orgId: string,
+    entityType?: string
+  ): Promise<{ count: number; entities: TrackedEntity[] }> => {
+    const sp = entityType ? `?entity_type=${entityType}` : '';
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/intelligence/tracked-entities${sp}`
+    );
+    const raw = await handleApiResponse<Record<string, unknown>[]>(response);
+    const items = Array.isArray(raw) ? raw : [];
+    const entities: TrackedEntity[] = items.map((r) => ({
+      id: r.id as string,
+      type: (r.entity_type ?? r.type) as string,
+      name: r.name as string,
+      instagram: (r.instagram_handle ?? r.instagram ?? null) as string | null,
+      twitter: (r.twitter_handle ?? r.twitter ?? null) as string | null,
+      linkedin: (r.linkedin_url ?? r.linkedin ?? null) as string | null,
+      relevance: (r.niche_relevance ?? r.relevance ?? 0.5) as number,
+      notes: (r.notes ?? null) as string | null,
+    }));
+    return { count: entities.length, entities };
+  },
+
+  addTrackedEntity: async (
+    data: AddTrackedEntityRequest
+  ): Promise<{ id: string }> => {
+    const response = await makeRequest(
+      `/api/organizations/${data.org_id}/intelligence/tracked-entities`,
+      { method: 'POST', body: JSON.stringify(data) }
+    );
+    return handleApiResponse(response);
+  },
+
+  deleteTrackedEntity: async (
+    _orgId: string,
+    entityId: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/social/tracked-entities/${entityId}`,
+      { method: 'DELETE' }
     );
     return handleApiResponse(response);
   },

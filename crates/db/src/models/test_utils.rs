@@ -405,7 +405,9 @@ pub(crate) async fn create_test_social_account(
     SocialAccount::create(
         pool,
         CreateSocialAccount {
-            project_id,
+            project_id: Some(project_id),
+            organization_id: None,
+            user_id: None,
             platform: SocialPlatform::Instagram,
             account_type: None,
             platform_account_id: format!("acct-{}", Uuid::new_v4()),

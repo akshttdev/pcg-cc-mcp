@@ -242,6 +242,16 @@ async fn callback_social(
     //    FK lets new code defer to the unified store for live tokens.
     if let Some(project_id) = pending.project_id {
         upsert_social_account_link(pool, project_id, &connection, &platform_enum, &profile).await?;
+    } else {
+        // Org-owned brand account — no project_id, owned by the organization directly.
+        upsert_org_social_account_link(
+            pool,
+            &pending.organization_id.to_string(),
+            &connection,
+            &platform_enum,
+            &profile,
+        )
+        .await?;
     }
 
     let target = pending.redirect_after.unwrap_or_else(frontend_settings_url);
@@ -295,7 +305,9 @@ async fn upsert_social_account_link(
         .await?;
     } else {
         let create = CreateSocialAccount {
-            project_id,
+            project_id: Some(project_id),
+            organization_id: None,
+            user_id: None,
             platform: *platform,
             account_type: None,
             platform_account_id: profile.platform_account_id.clone(),
@@ -304,6 +316,75 @@ async fn upsert_social_account_link(
             profile_url: profile.profile_url.clone(),
             avatar_url: profile.avatar_url.clone(),
             // Tokens live in integration_connections — keep these NULL going forward.
+            access_token: None,
+            refresh_token: None,
+            token_expires_at: None,
+            metadata: None,
+        };
+        let new_account = SocialAccount::create(pool, create).await?;
+        sqlx::query("UPDATE social_accounts SET integration_connection_id = ?1 WHERE id = ?2")
+            .bind(connection.id)
+            .bind(new_account.id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Create or update a social account owned by an organization (no project_id).
+async fn upsert_org_social_account_link(
+    pool: &SqlitePool,
+    organization_id: &str,
+    connection: &IntegrationConnection,
+    platform: &SocialPlatform,
+    profile: &social::ProfileInfo,
+) -> Result<(), ApiError> {
+    let existing: Option<SocialAccount> = sqlx::query_as(
+        "SELECT * FROM social_accounts \
+         WHERE organization_id = ?1 AND platform = ?2 AND platform_account_id = ?3 \
+         LIMIT 1",
+    )
+    .bind(organization_id)
+    .bind(platform.to_string())
+    .bind(&profile.platform_account_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(existing) = existing {
+        sqlx::query(
+            "UPDATE social_accounts SET \
+                integration_connection_id = ?1, \
+                username = COALESCE(?2, username), \
+                display_name = COALESCE(?3, display_name), \
+                profile_url = COALESCE(?4, profile_url), \
+                avatar_url = COALESCE(?5, avatar_url), \
+                follower_count = COALESCE(?6, follower_count), \
+                status = 'active', \
+                last_error = NULL, \
+                updated_at = datetime('now','subsec') \
+             WHERE id = ?7",
+        )
+        .bind(connection.id)
+        .bind(&profile.username)
+        .bind(&profile.display_name)
+        .bind(&profile.profile_url)
+        .bind(&profile.avatar_url)
+        .bind(profile.follower_count)
+        .bind(existing.id)
+        .execute(pool)
+        .await?;
+    } else {
+        let create = CreateSocialAccount {
+            project_id: None,
+            organization_id: Some(organization_id.to_string()),
+            user_id: None,
+            platform: *platform,
+            account_type: None,
+            platform_account_id: profile.platform_account_id.clone(),
+            username: Some(profile.username.clone()),
+            display_name: profile.display_name.clone(),
+            profile_url: profile.profile_url.clone(),
+            avatar_url: profile.avatar_url.clone(),
             access_token: None,
             refresh_token: None,
             token_expires_at: None,

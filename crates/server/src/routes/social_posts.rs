@@ -24,6 +24,7 @@ use crate::{error::ApiError, DeploymentImpl};
 #[derive(Debug, Deserialize)]
 pub struct ListPostsQuery {
     pub project_id: Option<Uuid>,
+    pub organization_id: Option<String>,
     pub status: Option<String>,
     pub category: Option<String>,
     pub limit: Option<i64>,
@@ -37,7 +38,9 @@ async fn list_posts(
     let pool = &deployment.db().pool;
 
     // Fetch all posts for the project (or all projects), then filter in-process
-    let all_posts = if let Some(pid) = query.project_id {
+    let all_posts = if let Some(org_id) = query.organization_id.as_deref() {
+        SocialPost::find_by_organization(pool, org_id, query.limit).await?
+    } else if let Some(pid) = query.project_id {
         SocialPost::find_all_for_project(pool, pid).await?
     } else {
         SocialPost::find_all(pool).await?

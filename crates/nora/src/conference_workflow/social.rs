@@ -145,7 +145,9 @@ impl SocialPostCreator {
         let scheduled_for = self.calculate_optimal_time(&workflow.start_date, -5);
 
         let create = CreateSocialPost {
-            project_id,
+            project_id: Some(project_id),
+            organization_id: None,
+            user_id: None,
             social_account_id: None,
             task_id: None,
             content_type: Some(ContentType::Post),
@@ -222,7 +224,9 @@ impl SocialPostCreator {
         let scheduled_for = self.calculate_optimal_time(&workflow.start_date, -3);
 
         let create = CreateSocialPost {
-            project_id,
+            project_id: Some(project_id),
+            organization_id: None,
+            user_id: None,
             social_account_id: None,
             task_id: None,
             content_type: Some(ContentType::Post),
@@ -292,7 +296,9 @@ impl SocialPostCreator {
         let scheduled_for = self.calculate_optimal_time(&workflow.start_date, -2);
 
         let create = CreateSocialPost {
-            project_id,
+            project_id: Some(project_id),
+            organization_id: None,
+            user_id: None,
             social_account_id: None,
             task_id: None,
             content_type: Some(ContentType::Post),
@@ -342,7 +348,9 @@ impl SocialPostCreator {
         let scheduled_for = self.calculate_optimal_time(&workflow.start_date, -2);
 
         let create = CreateSocialPost {
-            project_id,
+            project_id: Some(project_id),
+            organization_id: None,
+            user_id: None,
             social_account_id: None,
             task_id: article.task_id,
             content_type: Some(ContentType::Article),
