@@ -4,21 +4,19 @@
 //! for optimal posting times.
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
+use db::models::{
+    conference_workflow::ConferenceWorkflow,
+    social_post::{ContentType, CreateSocialPost, SocialPost},
+};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use uuid::Uuid;
-
-use db::models::{
-    conference_workflow::ConferenceWorkflow,
-    social_post::{CreateSocialPost, ContentType, SocialPost},
-};
-
-use crate::{NoraError, Result};
 
 use super::{
     engine::ResearchFlowResult,
     parallel::{ArticleContent, ContentResult, GraphicsResult},
 };
+use crate::{NoraError, Result};
 
 /// Social post creator
 pub struct SocialPostCreator {
@@ -44,10 +42,13 @@ impl SocialPostCreator {
         let mut posts = Vec::new();
 
         // Get project ID from board
-        let board = db::models::project_board::ProjectBoard::find_by_id(&self.pool, workflow.conference_board_id)
-            .await
-            .map_err(NoraError::DatabaseError)?
-            .ok_or_else(|| NoraError::ConfigError("Board not found".to_string()))?;
+        let board = db::models::project_board::ProjectBoard::find_by_id(
+            &self.pool,
+            workflow.conference_board_id,
+        )
+        .await
+        .map_err(NoraError::DatabaseError)?
+        .ok_or_else(|| NoraError::ConfigError("Board not found".to_string()))?;
 
         let project_id = board.project_id;
 
@@ -60,7 +61,10 @@ impl SocialPostCreator {
         // Create speaker spotlight posts
         for entity in &research.entities {
             if entity.entity_type == db::models::entity::EntityType::Speaker {
-                match self.create_speaker_spotlight(workflow, project_id, entity).await {
+                match self
+                    .create_speaker_spotlight(workflow, project_id, entity)
+                    .await
+                {
                     Ok(post) => posts.push(post),
                     Err(e) => tracing::warn!("[SOCIAL] Failed to create speaker spotlight: {}", e),
                 }
@@ -69,7 +73,10 @@ impl SocialPostCreator {
 
         // Create side events post
         if !research.side_events.is_empty() {
-            match self.create_side_events_post(workflow, project_id, &research.side_events).await {
+            match self
+                .create_side_events_post(workflow, project_id, &research.side_events)
+                .await
+            {
                 Ok(post) => posts.push(post),
                 Err(e) => tracing::warn!("[SOCIAL] Failed to create side events post: {}", e),
             }
@@ -89,10 +96,13 @@ impl SocialPostCreator {
     ) -> Result<Vec<SocialPost>> {
         let mut posts = Vec::new();
 
-        let board = db::models::project_board::ProjectBoard::find_by_id(&self.pool, workflow.conference_board_id)
-            .await
-            .map_err(NoraError::DatabaseError)?
-            .ok_or_else(|| NoraError::ConfigError("Board not found".to_string()))?;
+        let board = db::models::project_board::ProjectBoard::find_by_id(
+            &self.pool,
+            workflow.conference_board_id,
+        )
+        .await
+        .map_err(NoraError::DatabaseError)?
+        .ok_or_else(|| NoraError::ConfigError("Board not found".to_string()))?;
 
         let project_id = board.project_id;
 
@@ -101,7 +111,10 @@ impl SocialPostCreator {
 
             let media_urls = thumbnail.map(|t| vec![t.url.clone()]);
 
-            match self.create_article_post(workflow, project_id, article, media_urls).await {
+            match self
+                .create_article_post(workflow, project_id, article, media_urls)
+                .await
+            {
                 Ok(post) => posts.push(post),
                 Err(e) => tracing::warn!("[SOCIAL] Failed to create article post: {}", e),
             }
@@ -152,13 +165,20 @@ impl SocialPostCreator {
             is_evergreen: Some(false),
             recycle_after_days: None,
             created_by_agent_id: None,
+            status: None,
+            deliverable_id: None,
+            assignee_id: None,
         };
 
         SocialPost::create(&self.pool, create)
             .await
             .map_err(|e| match e {
-                db::models::social_post::SocialPostError::Database(err) => NoraError::DatabaseError(err),
-                db::models::social_post::SocialPostError::NotFound => NoraError::ConfigError("Social post not found".to_string()),
+                db::models::social_post::SocialPostError::Database(err) => {
+                    NoraError::DatabaseError(err)
+                }
+                db::models::social_post::SocialPostError::NotFound => {
+                    NoraError::ConfigError("Social post not found".to_string())
+                }
             })
     }
 
@@ -184,7 +204,13 @@ impl SocialPostCreator {
             #{}",
             speaker.canonical_name,
             title_line,
-            speaker.bio.as_deref().unwrap_or("").chars().take(200).collect::<String>(),
+            speaker
+                .bio
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(200)
+                .collect::<String>(),
             workflow.conference_name,
             slugify(&workflow.conference_name)
         );
@@ -214,13 +240,20 @@ impl SocialPostCreator {
             is_evergreen: Some(false),
             recycle_after_days: None,
             created_by_agent_id: None,
+            status: None,
+            deliverable_id: None,
+            assignee_id: None,
         };
 
         SocialPost::create(&self.pool, create)
             .await
             .map_err(|e| match e {
-                db::models::social_post::SocialPostError::Database(err) => NoraError::DatabaseError(err),
-                db::models::social_post::SocialPostError::NotFound => NoraError::ConfigError("Social post not found".to_string()),
+                db::models::social_post::SocialPostError::Database(err) => {
+                    NoraError::DatabaseError(err)
+                }
+                db::models::social_post::SocialPostError::NotFound => {
+                    NoraError::ConfigError("Social post not found".to_string())
+                }
             })
     }
 
@@ -275,13 +308,20 @@ impl SocialPostCreator {
             is_evergreen: Some(false),
             recycle_after_days: None,
             created_by_agent_id: None,
+            status: None,
+            deliverable_id: None,
+            assignee_id: None,
         };
 
         SocialPost::create(&self.pool, create)
             .await
             .map_err(|e| match e {
-                db::models::social_post::SocialPostError::Database(err) => NoraError::DatabaseError(err),
-                db::models::social_post::SocialPostError::NotFound => NoraError::ConfigError("Social post not found".to_string()),
+                db::models::social_post::SocialPostError::Database(err) => {
+                    NoraError::DatabaseError(err)
+                }
+                db::models::social_post::SocialPostError::NotFound => {
+                    NoraError::ConfigError("Social post not found".to_string())
+                }
             })
     }
 
@@ -312,18 +352,29 @@ impl SocialPostCreator {
             is_evergreen: Some(false),
             recycle_after_days: None,
             created_by_agent_id: None,
+            status: None,
+            deliverable_id: None,
+            assignee_id: None,
         };
 
         SocialPost::create(&self.pool, create)
             .await
             .map_err(|e| match e {
-                db::models::social_post::SocialPostError::Database(err) => NoraError::DatabaseError(err),
-                db::models::social_post::SocialPostError::NotFound => NoraError::ConfigError("Social post not found".to_string()),
+                db::models::social_post::SocialPostError::Database(err) => {
+                    NoraError::DatabaseError(err)
+                }
+                db::models::social_post::SocialPostError::NotFound => {
+                    NoraError::ConfigError("Social post not found".to_string())
+                }
             })
     }
 
     /// Calculate optimal posting time based on conference date and offset
-    fn calculate_optimal_time(&self, conference_date_str: &str, days_offset: i64) -> Option<DateTime<Utc>> {
+    fn calculate_optimal_time(
+        &self,
+        conference_date_str: &str,
+        days_offset: i64,
+    ) -> Option<DateTime<Utc>> {
         let date = chrono::NaiveDate::parse_from_str(conference_date_str, "%Y-%m-%d").ok()?;
 
         // Schedule for 10 AM UTC
