@@ -1,9 +1,9 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use sqlx::{
-    Error, Pool, Postgres, Sqlite, SqlitePool,
     postgres::PgPoolOptions,
     sqlite::{SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePoolOptions},
+    Error, Pool, Postgres, Sqlite, SqlitePool,
 };
 use utils::assets::asset_dir;
 
@@ -16,7 +16,7 @@ pub mod models;
 pub mod repositories;
 pub mod services;
 
-pub use db_uuid::{DbUuid, bind_optional_uuid, bind_optional_uuid_blob, bind_uuid, bind_uuid_blob};
+pub use db_uuid::{bind_optional_uuid, bind_optional_uuid_blob, bind_uuid, bind_uuid_blob, DbUuid};
 
 // ============================================================================
 // Migration Locking - Prevents concurrent migration runs
@@ -72,11 +72,10 @@ async fn acquire_migration_lock(pool: &SqlitePool) -> Result<(), Error> {
         }
         Err(sqlx::Error::Database(e)) if e.message().contains("UNIQUE constraint failed") => {
             // Another process holds the lock - check who
-            let holder: Option<String> = sqlx::query_scalar(
-                "SELECT locked_by FROM _migration_lock WHERE id = 1",
-            )
-            .fetch_optional(pool)
-            .await?;
+            let holder: Option<String> =
+                sqlx::query_scalar("SELECT locked_by FROM _migration_lock WHERE id = 1")
+                    .fetch_optional(pool)
+                    .await?;
 
             let msg = format!(
                 "Migration already in progress (held by: {})",
@@ -107,14 +106,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), Error> {
     let migrator = sqlx::migrate!("./migrations");
 
     // Get already-applied migrations
-    let applied: std::collections::HashSet<i64> = sqlx::query_scalar(
-        "SELECT version FROM _sqlx_migrations ORDER BY version",
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default()
-    .into_iter()
-    .collect();
+    let applied: std::collections::HashSet<i64> =
+        sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
 
     // Log pending migrations
     let pending: Vec<_> = migrator
