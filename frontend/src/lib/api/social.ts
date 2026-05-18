@@ -54,6 +54,7 @@ export interface SocialPostRecord {
   review_note?: string | null;
   reviewed_by?: string | null;
   publish_attempt: number;
+  assignee_id?: string | null;
   platform_post_id?: string | null;
   platform_url?: string | null;
   publish_error?: string | null;
@@ -164,12 +165,13 @@ export const socialApi = {
   createPost: async (data: {
     project_id: string;
     caption: string;
-    platforms: string;
+    platforms: string[];
     content_type?: string;
     status?: string;
     scheduled_for?: string;
     category?: string;
-    hashtags?: string;
+    hashtags?: string[];
+    assignee_id?: string;
   }): Promise<SocialPostRecord> => {
     const response = await makeRequest('/api/social/posts', {
       method: 'POST',

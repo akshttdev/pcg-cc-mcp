@@ -39,6 +39,22 @@ async fn run_publish_cycle(pool: &SqlitePool) -> Result<(), anyhow::Error> {
     );
 
     for post in due_posts {
+        // Skip posts that have no real social account linked and whose platforms field
+        // contains only platform name strings (e.g. ["linkedin"]) rather than account UUIDs.
+        // These are draft/planning entries that haven't been wired to an OAuth account yet —
+        // burning publish attempts on them would flip them to 'failed' prematurely.
+        let has_account = post.social_account_id.is_some() || {
+            let platform_uuids: Result<Vec<uuid::Uuid>, _> = serde_json::from_str(&post.platforms);
+            platform_uuids.is_ok()
+        };
+        if !has_account {
+            warn!(
+                "Skipping post {} — platforms field contains no account UUIDs and no social_account_id",
+                post.id
+            );
+            continue;
+        }
+
         // Lock the post into publishing state (optimistic — ignore if already grabbed)
         let lock_result = sqlx::query(
             "UPDATE social_posts SET status = 'publishing', updated_at = datetime('now','subsec') WHERE id = ?1 AND status = 'scheduled'"

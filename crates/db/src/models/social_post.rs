@@ -93,6 +93,7 @@ pub struct SocialPost {
     pub review_note: Option<String>,
     pub reviewed_by: Option<String>,
     pub publish_attempt: i64,
+    pub assignee_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -107,14 +108,18 @@ pub struct CreateSocialPost {
     pub media_urls: Option<Vec<String>>,
     pub hashtags: Option<Vec<String>>,
     pub mentions: Option<Vec<String>>,
-    pub platforms: Vec<Uuid>,
+    // accepts platform name strings ("linkedin") or account UUID strings
+    pub platforms: Vec<String>,
     pub platform_specific: Option<serde_json::Value>,
+    // if provided, overrides the default 'draft' status on creation
+    pub status: Option<String>,
     pub scheduled_for: Option<DateTime<Utc>>,
     pub category: Option<String>,
     pub is_evergreen: Option<bool>,
     pub recycle_after_days: Option<i64>,
     pub created_by_agent_id: Option<Uuid>,
     pub deliverable_id: Option<Uuid>,
+    pub assignee_id: Option<Uuid>,
 }
 
 #[derive(Debug, Default, Deserialize, TS)]
@@ -132,6 +137,7 @@ pub struct UpdateSocialPost {
     pub queue_position: Option<i64>,
     pub is_evergreen: Option<bool>,
     pub approved_by: Option<String>,
+    pub assignee_id: Option<Uuid>,
 }
 
 impl SocialPost {
@@ -163,10 +169,11 @@ impl SocialPost {
             INSERT INTO social_posts (
                 id, project_id, social_account_id, task_id, content_type,
                 caption, content_blocks, media_urls, hashtags, mentions,
-                platforms, platform_specific, scheduled_for, category,
-                is_evergreen, recycle_after_days, created_by_agent_id, deliverable_id
+                platforms, platform_specific, status, scheduled_for, category,
+                is_evergreen, recycle_after_days, created_by_agent_id, deliverable_id, assignee_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                    COALESCE(?13, 'draft'), ?14, ?15, ?16, ?17, ?18, ?19, ?20)
             RETURNING *
             "#,
         )
@@ -184,12 +191,14 @@ impl SocialPost {
         .bind(mentions)
         .bind(&platforms)
         .bind(platform_specific)
+        .bind(&data.status)
         .bind(data.scheduled_for)
         .bind(&data.category)
         .bind(is_evergreen)
         .bind(data.recycle_after_days)
         .bind(data.created_by_agent_id)
         .bind(data.deliverable_id)
+        .bind(data.assignee_id)
         .fetch_one(pool)
         .await?;
 
@@ -279,7 +288,8 @@ impl SocialPost {
         sqlx::query_as::<_, SocialPost>(
             r#"SELECT * FROM social_posts WHERE project_id = ?1 ORDER BY COALESCE(scheduled_for, created_at) ASC"#,
         )
-        .bind(project_id)
+        // project_id is stored as TEXT (UUID string) in this BLOB column — must bind as string
+        .bind(project_id.to_string())
         .fetch_all(pool)
         .await
         .map_err(Into::into)
@@ -368,6 +378,7 @@ impl SocialPost {
                 is_evergreen = COALESCE(?12, is_evergreen),
                 approved_by = COALESCE(?13, approved_by),
                 approved_at = COALESCE(?14, approved_at),
+                assignee_id = COALESCE(?15, assignee_id),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
             RETURNING *
@@ -387,6 +398,7 @@ impl SocialPost {
         .bind(data.is_evergreen)
         .bind(&data.approved_by)
         .bind(approved_at)
+        .bind(data.assignee_id)
         .fetch_optional(pool)
         .await?
         .ok_or(SocialPostError::NotFound)
@@ -704,13 +716,16 @@ mod tests {
                 media_urls: Some(vec!["https://cdn.example.com/post.png".into()]),
                 hashtags: Some(vec!["#pcg".into(), "#social".into()]),
                 mentions: Some(vec!["@prime".into()]),
-                platforms: vec![account.id],
+                platforms: vec![account.id.to_string()],
                 platform_specific: Some(json!({"instagram": {"cta": "RSVP"}})),
+                status: None,
                 scheduled_for: Some(initial_time),
                 category: Some("launch".into()),
                 is_evergreen: Some(true),
                 recycle_after_days: Some(14),
                 created_by_agent_id: None,
+                deliverable_id: None,
+                assignee_id: None,
             },
         )
         .await
