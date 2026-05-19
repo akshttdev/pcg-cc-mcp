@@ -3,11 +3,12 @@
 //! Manages daily clip generation schedules, streak tracking,
 //! and background generation tasks.
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use chrono::{Duration, NaiveTime, Timelike, Utc};
 use db::models::topiclip::{TopiClipDailySchedule, TopiClipTriggerType};
 use sqlx::SqlitePool;
-use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
@@ -129,7 +130,8 @@ impl TopiClipsScheduler {
 
                         // Check if we should reset streak (missed day)
                         if let Some(last_date) = &schedule.last_generation_date {
-                            let yesterday = (now - Duration::days(1)).format("%Y-%m-%d").to_string();
+                            let yesterday =
+                                (now - Duration::days(1)).format("%Y-%m-%d").to_string();
                             if last_date != &yesterday {
                                 // Streak broken
                                 if let Err(e) =
@@ -148,10 +150,7 @@ impl TopiClipsScheduler {
     }
 
     /// Generate a daily clip for a project
-    async fn generate_daily_clip(
-        service: &TopiClipsService,
-        project_id: uuid::Uuid,
-    ) -> Result<()> {
+    async fn generate_daily_clip(service: &TopiClipsService, project_id: uuid::Uuid) -> Result<()> {
         // Calculate period (last 24 hours)
         let end = Utc::now();
         let start = end - Duration::hours(24);
@@ -204,10 +203,7 @@ impl TopiClipsScheduler {
     }
 
     /// Get streak info for a project
-    pub async fn get_streak_info(
-        &self,
-        project_id: uuid::Uuid,
-    ) -> Result<Option<StreakInfo>> {
+    pub async fn get_streak_info(&self, project_id: uuid::Uuid) -> Result<Option<StreakInfo>> {
         let schedule = TopiClipDailySchedule::find_by_project(&self.pool, project_id).await?;
 
         Ok(schedule.map(|s| StreakInfo {

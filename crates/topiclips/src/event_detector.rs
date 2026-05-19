@@ -159,8 +159,9 @@ pub struct EventCategories<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use uuid::Uuid;
+
+    use super::*;
 
     #[test]
     fn test_score_cluster_formed() {

@@ -535,7 +535,9 @@ impl StoryExtractor {
         let total_weight: f64 = events
             .iter()
             .map(|e| match e {
-                TopologyChange::ClusterFormed { node_count, .. } => 0.3 + (*node_count as f64 * 0.1),
+                TopologyChange::ClusterFormed { node_count, .. } => {
+                    0.3 + (*node_count as f64 * 0.1)
+                }
                 TopologyChange::ClusterDissolved { .. } => 0.4,
                 TopologyChange::RouteCreated { path_length, .. } => {
                     0.2 + (*path_length as f64 * 0.05)
@@ -629,10 +631,7 @@ impl StoryExtractor {
                     event_count
                 ));
                 if clusters_formed > 0 {
-                    parts.push(format!(
-                        "{} groups came together as one",
-                        clusters_formed
-                    ));
+                    parts.push(format!("{} groups came together as one", clusters_formed));
                 }
             }
             Theme::Loss => {

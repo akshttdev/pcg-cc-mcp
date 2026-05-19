@@ -38,7 +38,8 @@ impl SymbolMapper {
             if Self::matches_pattern_static(&symbol.event_pattern, &event_type, event) {
                 // Clone and customize the symbol with event-specific data
                 let mut matched = symbol.clone();
-                matched.prompt_template = Self::customize_prompt_static(&matched.prompt_template, event);
+                matched.prompt_template =
+                    Self::customize_prompt_static(&matched.prompt_template, event);
                 return Ok(Some(matched));
             }
         }
@@ -62,7 +63,8 @@ impl SymbolMapper {
             for symbol in &symbols {
                 if Self::matches_pattern_static(&symbol.event_pattern, &event_type, event) {
                     let mut matched = symbol.clone();
-                    matched.prompt_template = Self::customize_prompt_static(&matched.prompt_template, event);
+                    matched.prompt_template =
+                        Self::customize_prompt_static(&matched.prompt_template, event);
                     matched_symbol = Some(matched);
                     break;
                 }
@@ -134,7 +136,9 @@ impl SymbolMapper {
 
         // Replace placeholders with actual values
         match event {
-            TopologyChange::ClusterFormed { node_count, name, .. } => {
+            TopologyChange::ClusterFormed {
+                node_count, name, ..
+            } => {
                 prompt = prompt.replace("{count}", &node_count.to_string());
                 prompt = prompt.replace("{name}", name);
             }
@@ -161,7 +165,12 @@ impl SymbolMapper {
         let symbols = self.load_symbols().await?;
         Ok(symbols
             .into_iter()
-            .filter(|s| s.theme_affinity.as_ref().map(|t| t == theme).unwrap_or(false))
+            .filter(|s| {
+                s.theme_affinity
+                    .as_ref()
+                    .map(|t| t == theme)
+                    .unwrap_or(false)
+            })
             .collect())
     }
 
