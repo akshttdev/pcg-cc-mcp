@@ -4,9 +4,11 @@ use super::*;
 
 /// Synthesize speech using Nora's voice
 pub async fn synthesize_speech(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
     Json(request): Json<VoiceSynthesisRequest>,
 ) -> Result<Json<SpeechResponse>, ApiError> {
+    use services::services::editron::UsageTracker;
+
     // Apply rate limiting
     let rate_limiter = get_voice_rate_limiter().await;
     if !rate_limiter.try_consume().await {
@@ -24,17 +26,54 @@ pub async fn synthesize_speech(
 
     let start = std::time::Instant::now();
     let clean_text = crate::routes::twilio::strip_markdown_for_tts(&request.text);
-    let audio_data = nora
-        .voice_engine
-        .synthesize_speech(&clean_text)
-        .await
-        .map_err(|e| {
-            tracing::error!("Speech synthesis error: {}", e);
-            ApiError::InternalError(format!("Speech synthesis failed: {}", e))
-        })?;
+    let char_count = clean_text.chars().count() as i64;
+    let provider = nora.config.voice.tts.provider.as_str();
+
+    let result = nora.voice_engine.synthesize_speech(&clean_text).await;
 
     let duration = start.elapsed().as_secs_f64();
-    crate::nora_metrics::record_tts_call("openai", "success", duration);
+    let duration_ms = (duration * 1000.0) as i64;
+
+    // Log TTS usage
+    let pool = &state.db().pool;
+    match &result {
+        Ok(_) => {
+            crate::nora_metrics::record_tts_call(provider, "success", duration);
+            UsageTracker::log_tts_operation(
+                pool,
+                provider,
+                "synthesize",
+                Some(char_count),
+                None,
+                duration_ms,
+                true,
+                None,
+                None,
+            )
+            .await;
+        }
+        Err(e) => {
+            crate::nora_metrics::record_tts_call(provider, "error", duration);
+            let error_msg = e.to_string();
+            UsageTracker::log_tts_operation(
+                pool,
+                provider,
+                "synthesize",
+                Some(char_count),
+                None,
+                duration_ms,
+                false,
+                Some(&error_msg),
+                None,
+            )
+            .await;
+        }
+    }
+
+    let audio_data = result.map_err(|e| {
+        tracing::error!("Speech synthesis error: {}", e);
+        ApiError::InternalError(format!("Speech synthesis failed: {}", e))
+    })?;
 
     // Create a proper SpeechResponse
     let processing_time_ms = (duration * 1000.0) as u64;
@@ -51,9 +90,11 @@ pub async fn synthesize_speech(
 
 /// Transcribe speech using Nora's STT
 pub async fn transcribe_speech(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
     Json(request): Json<VoiceTranscriptionRequest>,
 ) -> Result<Json<VoiceTranscriptionResponse>, ApiError> {
+    use services::services::editron::UsageTracker;
+
     let nora_instance = get_nora_instance().await?;
     let instance = nora_instance.read().await;
     let nora = instance
@@ -61,17 +102,56 @@ pub async fn transcribe_speech(
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
 
     let start = std::time::Instant::now();
-    let transcription = nora
+    let provider = nora.config.voice.stt.provider.as_str();
+
+    let result = nora
         .voice_engine
         .transcribe_speech(&request.audio_data)
-        .await
-        .map_err(|e| {
-            tracing::error!("Speech transcription error: {}", e);
-            ApiError::InternalError(format!("Speech transcription failed: {}", e))
-        })?;
+        .await;
 
     let duration = start.elapsed().as_secs_f64();
-    crate::nora_metrics::record_stt_call("openai", "success", duration);
+    let duration_ms = (duration * 1000.0) as i64;
+
+    // Log STT usage
+    let pool = &state.db().pool;
+    match &result {
+        Ok(transcription) => {
+            crate::nora_metrics::record_stt_call(provider, "success", duration);
+            UsageTracker::log_stt_operation(
+                pool,
+                provider,
+                "transcribe",
+                None, // audio duration not easily available
+                Some(transcription.chars().count() as i64),
+                duration_ms,
+                true,
+                None,
+                None,
+            )
+            .await;
+        }
+        Err(e) => {
+            crate::nora_metrics::record_stt_call(provider, "error", duration);
+            let error_msg = e.to_string();
+            UsageTracker::log_stt_operation(
+                pool,
+                provider,
+                "transcribe",
+                None,
+                None,
+                duration_ms,
+                false,
+                Some(&error_msg),
+                None,
+            )
+            .await;
+        }
+    }
+
+    let transcription = result.map_err(|e| {
+        tracing::error!("Speech transcription error: {}", e);
+        ApiError::InternalError(format!("Speech transcription failed: {}", e))
+    })?;
 
     Ok(Json(VoiceTranscriptionResponse {
         text: transcription,
@@ -83,6 +163,8 @@ pub async fn voice_interaction(
     State(state): State<DeploymentImpl>,
     Json(request): Json<VoiceInteraction>,
 ) -> Result<Json<VoiceInteraction>, ApiError> {
+    use services::services::editron::UsageTracker;
+
     // Apply rate limiting
     let rate_limiter = get_voice_rate_limiter().await;
     if !rate_limiter.try_consume().await {
@@ -99,15 +181,52 @@ pub async fn voice_interaction(
         .as_ref()
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
 
+    let pool = &state.db().pool;
+    let stt_provider = nora.config.voice.stt.provider.as_str();
+
     // Process the voice interaction
     let mut processed_interaction = request;
 
     // If there's audio input, transcribe it
     if let Some(audio_data) = &processed_interaction.audio_input {
-        let transcription = nora
-            .voice_engine
-            .transcribe_speech(audio_data)
-            .await
+        let stt_start = std::time::Instant::now();
+        let stt_result = nora.voice_engine.transcribe_speech(audio_data).await;
+        let stt_duration_ms = stt_start.elapsed().as_millis() as i64;
+
+        // Log STT usage
+        match &stt_result {
+            Ok(t) => {
+                UsageTracker::log_stt_operation(
+                    pool,
+                    stt_provider,
+                    "transcribe",
+                    None,
+                    Some(t.chars().count() as i64),
+                    stt_duration_ms,
+                    true,
+                    None,
+                    None,
+                )
+                .await;
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                UsageTracker::log_stt_operation(
+                    pool,
+                    stt_provider,
+                    "transcribe",
+                    None,
+                    None,
+                    stt_duration_ms,
+                    false,
+                    Some(&error_msg),
+                    None,
+                )
+                .await;
+            }
+        }
+
+        let transcription = stt_result
             .map_err(|e| ApiError::InternalError(format!("Transcription failed: {}", e)))?;
         processed_interaction.transcription = Some(transcription.clone());
 
@@ -340,9 +459,18 @@ pub async fn update_voice_config(
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
 
     let new_config = request.config.clone();
-    let new_engine = VoiceEngine::new(new_config.clone())
-        .await
-        .map_err(voice_error_to_api)?;
+
+    // Use PCG Router if database is connected, otherwise fall back to config-based
+    let new_engine = if nora.pool.is_some() {
+        // Prefer PCG Router for database-driven provider selection
+        let pool_arc = std::sync::Arc::new(state.db().pool.clone());
+        UnifiedVoiceEngine::from_pool(pool_arc)
+    } else {
+        // Fall back to config-based engine
+        UnifiedVoiceEngine::from_config(new_config.clone())
+            .await
+            .map_err(voice_error_to_api)?
+    };
 
     // Update in-memory configuration
     nora.config.voice = new_config.clone();

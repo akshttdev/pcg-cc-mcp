@@ -9104,6 +9104,7 @@ dependencies = [
  "aes-gcm",
  "alpha-protocol-core",
  "anyhow",
+ "async-stream",
  "async-trait",
  "axum 0.8.8",
  "backon",

@@ -14,6 +14,7 @@ members = [
     "crates/alpha-protocol-core",
     "crates/apn-client",
     "crates/pythia-client",
+    "crates/video_gen",
     "apn-app/src-tauri",
     "frontend/src-tauri",
     "crates/topsi-cli",

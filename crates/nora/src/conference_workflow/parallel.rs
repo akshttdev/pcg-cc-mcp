@@ -3,22 +3,19 @@
 //! Runs content creation and graphics generation workflows in parallel
 //! using specialized agents (Muse for content, Maci for graphics via ComfyUI).
 
+use std::sync::Arc;
+
+use cinematics::CinematicsService;
+use db::models::conference_workflow::ConferenceWorkflow;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::sync::Arc;
 use uuid::Uuid;
 
-use db::models::conference_workflow::ConferenceWorkflow;
-use cinematics::CinematicsService;
-
+use super::{engine::ResearchFlowResult, graphics::GraphicsComposer};
 use crate::{
     execution::{research::ResearchTools, ExecutionEngine},
     NoraError, Result,
 };
-
-use super::graphics::GraphicsComposer;
-
-use super::engine::ResearchFlowResult;
 
 /// Result from content creation workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,7 +81,7 @@ impl ParallelOrchestrator {
         Self {
             pool: pool.clone(),
             execution_engine,
-            research_tools: ResearchTools::new(),
+            research_tools: ResearchTools::with_pool(Arc::new(pool.clone())),
             cinematics: cinematics.clone(),
             graphics_composer: GraphicsComposer::new(pool, cinematics),
         }
@@ -132,7 +129,10 @@ impl ParallelOrchestrator {
         // Generate Speakers Article
         match self.generate_speakers_article(workflow, research).await {
             Ok(article) => {
-                tracing::info!("[PARALLEL] Generated speakers article: {} chars", article.body.len());
+                tracing::info!(
+                    "[PARALLEL] Generated speakers article: {} chars",
+                    article.body.len()
+                );
                 articles.push(article);
             }
             Err(e) => tracing::warn!("[PARALLEL] Failed to generate speakers article: {}", e),
@@ -142,23 +142,34 @@ impl ParallelOrchestrator {
         if !research.side_events.is_empty() {
             match self.generate_side_events_article(workflow, research).await {
                 Ok(article) => {
-                    tracing::info!("[PARALLEL] Generated side events article: {} chars", article.body.len());
+                    tracing::info!(
+                        "[PARALLEL] Generated side events article: {} chars",
+                        article.body.len()
+                    );
                     articles.push(article);
                 }
-                Err(e) => tracing::warn!("[PARALLEL] Failed to generate side events article: {}", e),
+                Err(e) => {
+                    tracing::warn!("[PARALLEL] Failed to generate side events article: {}", e)
+                }
             }
         }
 
         // Generate Press Release
         match self.generate_press_release(workflow, research).await {
             Ok(article) => {
-                tracing::info!("[PARALLEL] Generated press release: {} chars", article.body.len());
+                tracing::info!(
+                    "[PARALLEL] Generated press release: {} chars",
+                    article.body.len()
+                );
                 articles.push(article);
             }
             Err(e) => tracing::warn!("[PARALLEL] Failed to generate press release: {}", e),
         }
 
-        tracing::info!("[PARALLEL] Content workflow complete: {} articles", articles.len());
+        tracing::info!(
+            "[PARALLEL] Content workflow complete: {} articles",
+            articles.len()
+        );
 
         // Collect social captions from generated articles
         let social_captions: Vec<String> = articles
@@ -194,7 +205,12 @@ impl ParallelOrchestrator {
                     s.canonical_name,
                     s.title.as_deref().unwrap_or("Speaker"),
                     s.company.as_deref().unwrap_or(""),
-                    s.bio.as_deref().unwrap_or("").chars().take(200).collect::<String>()
+                    s.bio
+                        .as_deref()
+                        .unwrap_or("")
+                        .chars()
+                        .take(200)
+                        .collect::<String>()
                 )
             })
             .collect();
@@ -237,13 +253,21 @@ Create an engaging article profiling these speakers and what attendees can expec
             speaker_data.join("\n")
         );
 
-        let response = self.research_tools.research_llm(system_prompt, &user_prompt).await
-            .map_err(|e| NoraError::ExecutionError(format!("LLM article generation failed: {}", e)))?;
+        let response = self
+            .research_tools
+            .research_llm(system_prompt, &user_prompt)
+            .await
+            .map_err(|e| {
+                NoraError::ExecutionError(format!("LLM article generation failed: {}", e))
+            })?;
 
         let parsed = parse_article_response(
             &response,
             &format!("Meet the Speakers at {}", workflow.conference_name),
-            &format!("Check out the incredible speakers at {}!", workflow.conference_name),
+            &format!(
+                "Check out the incredible speakers at {}!",
+                workflow.conference_name
+            ),
         );
 
         let mut hashtags = parsed.hashtags;
@@ -320,13 +344,21 @@ Create an engaging guide to these satellite events and networking opportunities.
             events_data.join("\n")
         );
 
-        let response = self.research_tools.research_llm(system_prompt, &user_prompt).await
-            .map_err(|e| NoraError::ExecutionError(format!("LLM article generation failed: {}", e)))?;
+        let response = self
+            .research_tools
+            .research_llm(system_prompt, &user_prompt)
+            .await
+            .map_err(|e| {
+                NoraError::ExecutionError(format!("LLM article generation failed: {}", e))
+            })?;
 
         let parsed = parse_article_response(
             &response,
             &format!("Your Guide to {} Side Events", workflow.conference_name),
-            &format!("Don't miss these {} side events!", research.side_events.len()),
+            &format!(
+                "Don't miss these {} side events!",
+                research.side_events.len()
+            ),
         );
 
         let mut hashtags = parsed.hashtags;
@@ -423,18 +455,29 @@ Create a professional press release suitable for media distribution."#,
             top_speakers.join(", ")
         );
 
-        let response = self.research_tools.research_llm(system_prompt, &user_prompt).await
-            .map_err(|e| NoraError::ExecutionError(format!("LLM press release generation failed: {}", e)))?;
+        let response = self
+            .research_tools
+            .research_llm(system_prompt, &user_prompt)
+            .await
+            .map_err(|e| {
+                NoraError::ExecutionError(format!("LLM press release generation failed: {}", e))
+            })?;
 
         let parsed = parse_article_response(
             &response,
-            &format!("Comprehensive Coverage Announced for {}", workflow.conference_name),
+            &format!(
+                "Comprehensive Coverage Announced for {}",
+                workflow.conference_name
+            ),
             &format!("Announcing our coverage of {}!", workflow.conference_name),
         );
 
         let mut hashtags = parsed.hashtags;
         if hashtags.is_empty() {
-            hashtags = vec![slugify(&workflow.conference_name), "pressrelease".to_string()];
+            hashtags = vec![
+                slugify(&workflow.conference_name),
+                "pressrelease".to_string(),
+            ];
         }
 
         Ok(ArticleContent {
@@ -478,7 +521,8 @@ Create a professional press release suitable for media distribution."#,
         let press_title = format!("Coverage Announcement: {}", workflow.conference_name);
 
         // Compose Speakers Article Thumbnail
-        match self.graphics_composer
+        match self
+            .graphics_composer
             .compose_speakers_thumbnail(&workflow.conference_name, &speakers_title, &assets)
             .await
         {
@@ -488,16 +532,25 @@ Create a professional press release suitable for media distribution."#,
                     composition.assets.len()
                 );
                 // Render the composition (for now returns background URL)
-                match self.graphics_composer.render_composition(&composition).await {
+                match self
+                    .graphics_composer
+                    .render_composition(&composition)
+                    .await
+                {
                     Ok(url) => {
-                        thumbnails.insert("speakers".to_string(), ThumbnailAsset {
-                            url,
-                            width: composition.dimensions.width,
-                            height: composition.dimensions.height,
-                            format: "png".to_string(),
-                        });
+                        thumbnails.insert(
+                            "speakers".to_string(),
+                            ThumbnailAsset {
+                                url,
+                                width: composition.dimensions.width,
+                                height: composition.dimensions.height,
+                                format: "png".to_string(),
+                            },
+                        );
                     }
-                    Err(e) => tracing::warn!("[PARALLEL] Failed to render speakers thumbnail: {}", e),
+                    Err(e) => {
+                        tracing::warn!("[PARALLEL] Failed to render speakers thumbnail: {}", e)
+                    }
                 }
             }
             Err(e) => tracing::warn!("[PARALLEL] Failed to compose speakers thumbnail: {}", e),
@@ -505,7 +558,8 @@ Create a professional press release suitable for media distribution."#,
 
         // Compose Side Events Article Thumbnail (with sponsor logos)
         if !research.side_events.is_empty() {
-            match self.graphics_composer
+            match self
+                .graphics_composer
                 .compose_side_events_thumbnail(
                     &workflow.conference_name,
                     &side_events_title,
@@ -519,42 +573,67 @@ Create a professional press release suitable for media distribution."#,
                         "[PARALLEL] Composed side events thumbnail with {} sponsor logos",
                         composition.assets.len()
                     );
-                    match self.graphics_composer.render_composition(&composition).await {
+                    match self
+                        .graphics_composer
+                        .render_composition(&composition)
+                        .await
+                    {
                         Ok(url) => {
-                            thumbnails.insert("side_events".to_string(), ThumbnailAsset {
-                                url,
-                                width: composition.dimensions.width,
-                                height: composition.dimensions.height,
-                                format: "png".to_string(),
-                            });
+                            thumbnails.insert(
+                                "side_events".to_string(),
+                                ThumbnailAsset {
+                                    url,
+                                    width: composition.dimensions.width,
+                                    height: composition.dimensions.height,
+                                    format: "png".to_string(),
+                                },
+                            );
                         }
-                        Err(e) => tracing::warn!("[PARALLEL] Failed to render side events thumbnail: {}", e),
+                        Err(e) => tracing::warn!(
+                            "[PARALLEL] Failed to render side events thumbnail: {}",
+                            e
+                        ),
                     }
                 }
-                Err(e) => tracing::warn!("[PARALLEL] Failed to compose side events thumbnail: {}", e),
+                Err(e) => {
+                    tracing::warn!("[PARALLEL] Failed to compose side events thumbnail: {}", e)
+                }
             }
         }
 
         // Compose Press Release Thumbnail
-        match self.graphics_composer
+        match self
+            .graphics_composer
             .compose_press_release_thumbnail(&workflow.conference_name, &press_title, &assets)
             .await
         {
             Ok(composition) => {
                 tracing::info!("[PARALLEL] Composed press release thumbnail");
-                match self.graphics_composer.render_composition(&composition).await {
+                match self
+                    .graphics_composer
+                    .render_composition(&composition)
+                    .await
+                {
                     Ok(url) => {
-                        thumbnails.insert("press_release".to_string(), ThumbnailAsset {
-                            url,
-                            width: composition.dimensions.width,
-                            height: composition.dimensions.height,
-                            format: "png".to_string(),
-                        });
+                        thumbnails.insert(
+                            "press_release".to_string(),
+                            ThumbnailAsset {
+                                url,
+                                width: composition.dimensions.width,
+                                height: composition.dimensions.height,
+                                format: "png".to_string(),
+                            },
+                        );
                     }
-                    Err(e) => tracing::warn!("[PARALLEL] Failed to render press release thumbnail: {}", e),
+                    Err(e) => {
+                        tracing::warn!("[PARALLEL] Failed to render press release thumbnail: {}", e)
+                    }
                 }
             }
-            Err(e) => tracing::warn!("[PARALLEL] Failed to compose press release thumbnail: {}", e),
+            Err(e) => tracing::warn!(
+                "[PARALLEL] Failed to compose press release thumbnail: {}",
+                e
+            ),
         }
 
         // Generate social media graphic via Maci/ComfyUI
@@ -595,11 +674,15 @@ Create a professional press release suitable for media distribution."#,
 
         // Use Maci/ComfyUI for image generation (1024x1024 square)
         let url = if let Some(ref cinematics) = self.cinematics {
-            cinematics.generate_static_image_url(&prompt, 1024, 1024).await
-                .map_err(|e| NoraError::ExecutionError(format!("Maci graphic generation failed: {}", e)))?
+            cinematics
+                .generate_static_image_url(&prompt, 1024, 1024)
+                .await
+                .map_err(|e| {
+                    NoraError::ExecutionError(format!("Maci graphic generation failed: {}", e))
+                })?
         } else {
             return Err(NoraError::ExecutionError(
-                "CinematicsService (Maci) not available for social graphic generation".to_string()
+                "CinematicsService (Maci) not available for social graphic generation".to_string(),
             ));
         };
 
@@ -618,8 +701,14 @@ Create a professional press release suitable for media distribution."#,
     ) -> std::collections::HashMap<String, serde_json::Value> {
         let mut inputs = std::collections::HashMap::new();
 
-        inputs.insert("conference_name".to_string(), serde_json::json!(workflow.conference_name));
-        inputs.insert("start_date".to_string(), serde_json::json!(workflow.start_date));
+        inputs.insert(
+            "conference_name".to_string(),
+            serde_json::json!(workflow.conference_name),
+        );
+        inputs.insert(
+            "start_date".to_string(),
+            serde_json::json!(workflow.start_date),
+        );
         inputs.insert("end_date".to_string(), serde_json::json!(workflow.end_date));
         inputs.insert("location".to_string(), serde_json::json!(workflow.location));
 
@@ -628,12 +717,14 @@ Create a professional press release suitable for media distribution."#,
             .entities
             .iter()
             .filter(|e| e.entity_type == db::models::entity::EntityType::Speaker)
-            .map(|e| serde_json::json!({
-                "name": e.canonical_name,
-                "title": e.title,
-                "company": e.company,
-                "bio": e.bio,
-            }))
+            .map(|e| {
+                serde_json::json!({
+                    "name": e.canonical_name,
+                    "title": e.title,
+                    "company": e.company,
+                    "bio": e.bio,
+                })
+            })
             .collect();
         inputs.insert("speakers".to_string(), serde_json::json!(speakers));
 
@@ -641,12 +732,14 @@ Create a professional press release suitable for media distribution."#,
         let side_events: Vec<_> = research
             .side_events
             .iter()
-            .map(|e| serde_json::json!({
-                "name": e.name,
-                "date": e.event_date,
-                "venue": e.venue_name,
-                "url": e.event_url,
-            }))
+            .map(|e| {
+                serde_json::json!({
+                    "name": e.name,
+                    "date": e.event_date,
+                    "venue": e.venue_name,
+                    "url": e.event_url,
+                })
+            })
             .collect();
         inputs.insert("side_events".to_string(), serde_json::json!(side_events));
 
@@ -661,30 +754,44 @@ Create a professional press release suitable for media distribution."#,
     ) -> std::collections::HashMap<String, serde_json::Value> {
         let mut inputs = std::collections::HashMap::new();
 
-        inputs.insert("conference_name".to_string(), serde_json::json!(workflow.conference_name));
+        inputs.insert(
+            "conference_name".to_string(),
+            serde_json::json!(workflow.conference_name),
+        );
         inputs.insert("location".to_string(), serde_json::json!(workflow.location));
 
         // Add speaker photos
         let speaker_photos: Vec<_> = research
             .entities
             .iter()
-            .filter(|e| e.entity_type == db::models::entity::EntityType::Speaker && e.photo_url.is_some())
-            .map(|e| serde_json::json!({
-                "name": e.canonical_name,
-                "photo_url": e.photo_url,
-            }))
+            .filter(|e| {
+                e.entity_type == db::models::entity::EntityType::Speaker && e.photo_url.is_some()
+            })
+            .map(|e| {
+                serde_json::json!({
+                    "name": e.canonical_name,
+                    "photo_url": e.photo_url,
+                })
+            })
             .collect();
-        inputs.insert("speaker_photos".to_string(), serde_json::json!(speaker_photos));
+        inputs.insert(
+            "speaker_photos".to_string(),
+            serde_json::json!(speaker_photos),
+        );
 
         // Add brand logos
         let brand_logos: Vec<_> = research
             .entities
             .iter()
-            .filter(|e| e.entity_type == db::models::entity::EntityType::Sponsor && e.photo_url.is_some())
-            .map(|e| serde_json::json!({
-                "name": e.canonical_name,
-                "logo_url": e.photo_url,
-            }))
+            .filter(|e| {
+                e.entity_type == db::models::entity::EntityType::Sponsor && e.photo_url.is_some()
+            })
+            .map(|e| {
+                serde_json::json!({
+                    "name": e.canonical_name,
+                    "logo_url": e.photo_url,
+                })
+            })
             .collect();
         inputs.insert("brand_logos".to_string(), serde_json::json!(brand_logos));
 
@@ -705,7 +812,11 @@ fn extract_json_from_response(response: &str) -> Option<&str> {
 }
 
 /// Parse JSON from LLM response with fallback
-fn parse_article_response(response: &str, fallback_title: &str, fallback_caption: &str) -> ArticleResponse {
+fn parse_article_response(
+    response: &str,
+    fallback_title: &str,
+    fallback_caption: &str,
+) -> ArticleResponse {
     // Try to extract JSON from the response
     let json_str = extract_json_from_response(response).unwrap_or(response);
 
@@ -716,8 +827,10 @@ fn parse_article_response(response: &str, fallback_title: &str, fallback_caption
             // Response might be the article body directly
             response.to_string()
         } else {
-            format!("Content generation completed. Raw output available for review.\n\n{}",
-                &response[..response.len().min(500)])
+            format!(
+                "Content generation completed. Raw output available for review.\n\n{}",
+                &response[..response.len().min(500)]
+            )
         };
         ArticleResponse {
             title: fallback_title.to_string(),

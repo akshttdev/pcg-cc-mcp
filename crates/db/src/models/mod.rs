@@ -131,6 +131,8 @@ pub mod meeting_session;
 pub mod operator_rate;
 pub mod oss_library;
 pub mod pcg_router_model;
+pub mod pcg_router_stt_provider;
+pub mod pcg_router_tts_provider;
 // Deprecated — migrating to crm_contact / contact_association / contact_note / contact_research_pass
 // Still referenced by intelligence.rs until it is fully migrated.
 // person_note and person_research_pass already retired

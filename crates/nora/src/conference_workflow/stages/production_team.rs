@@ -6,23 +6,22 @@
 //! - Past events produced
 //! - Media/press contacts
 
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::sync::Arc;
-use uuid::Uuid;
 
+use chrono::Utc;
 use db::models::{
     conference_workflow::ConferenceWorkflow,
     entity::{Entity, EntityType},
 };
+use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
+use uuid::Uuid;
 
+use super::{ResearchStage, ResearchStageResult};
 use crate::{
     execution::{research::ResearchTools, ExecutionEngine},
     NoraError, Result,
 };
-
-use super::{ResearchStage, ResearchStageResult};
 
 /// Production team information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,9 +53,9 @@ pub struct ProductionTeamStage {
 impl ProductionTeamStage {
     pub fn new(pool: SqlitePool, execution_engine: Arc<ExecutionEngine>) -> Self {
         Self {
-            pool,
+            pool: pool.clone(),
             execution_engine,
-            research_tools: ResearchTools::new(),
+            research_tools: ResearchTools::with_pool(Arc::new(pool)),
         }
     }
 
@@ -78,7 +77,9 @@ impl ProductionTeamStage {
                         &self.pool,
                         EntityType::ProductionCompany,
                         company_name,
-                    ).await {
+                    )
+                    .await
+                    {
                         result = result.with_entity(entity);
                     }
                 }
@@ -117,14 +118,21 @@ impl ProductionTeamStage {
         let search_queries = vec![
             format!("{} conference organizer producer", workflow.conference_name),
             format!("{} event production company", workflow.conference_name),
-            format!("{} conference press contact media", workflow.conference_name),
+            format!(
+                "{} conference press contact media",
+                workflow.conference_name
+            ),
         ];
 
         let mut all_search_results = Vec::new();
         for query in &search_queries {
             match self.research_tools.web_search(query, 5).await {
                 Ok(results) => {
-                    tracing::debug!("[PRODUCTION_TEAM] Found {} results for: {}", results.len(), query);
+                    tracing::debug!(
+                        "[PRODUCTION_TEAM] Found {} results for: {}",
+                        results.len(),
+                        query
+                    );
                     all_search_results.extend(results);
                 }
                 Err(e) => {
@@ -219,14 +227,21 @@ Identify the production company, key contacts, and press/media contacts."#,
         );
 
         // Step 3: Call LLM for analysis
-        let response = self.research_tools.research_llm(system_prompt, &user_prompt).await
+        let response = self
+            .research_tools
+            .research_llm(system_prompt, &user_prompt)
+            .await
             .map_err(|e| NoraError::ExecutionError(format!("LLM research failed: {}", e)))?;
 
         // Step 4: Parse the response - extract JSON from potential markdown fences
         let json_str = extract_json_from_response(&response);
-        let production_info: ProductionTeamInfo = serde_json::from_str(json_str)
-            .unwrap_or_else(|e| {
-                tracing::warn!("[PRODUCTION_TEAM] Failed to parse LLM response: {}. JSON: {}...", e, &json_str[..json_str.len().min(200)]);
+        let production_info: ProductionTeamInfo =
+            serde_json::from_str(json_str).unwrap_or_else(|e| {
+                tracing::warn!(
+                    "[PRODUCTION_TEAM] Failed to parse LLM response: {}. JSON: {}...",
+                    e,
+                    &json_str[..json_str.len().min(200)]
+                );
                 ProductionTeamInfo {
                     company_name: None,
                     company_website: None,

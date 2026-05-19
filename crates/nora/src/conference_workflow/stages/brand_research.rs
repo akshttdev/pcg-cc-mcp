@@ -6,26 +6,25 @@
 //! - Logo/branding assets
 //! - Sponsorship level
 
-use chrono::{Duration, Utc};
-use serde::{Deserialize, Serialize};
-use services::services::image::ImageService;
-use sqlx::SqlitePool;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
-use uuid::Uuid;
 
+use chrono::{Duration, Utc};
 use db::models::{
     conference_workflow::ConferenceWorkflow,
     entity::{CreateEntity, Entity, EntityType},
     entity_appearance::{AppearanceType, CreateEntityAppearance, EntityAppearance},
 };
+use serde::{Deserialize, Serialize};
+use services::services::image::ImageService;
+use sqlx::SqlitePool;
+use tokio::sync::Semaphore;
+use uuid::Uuid;
 
+use super::{ResearchStage, ResearchStageResult};
 use crate::{
     execution::{research::ResearchTools, ExecutionEngine},
     NoraError, Result,
 };
-
-use super::{ResearchStage, ResearchStageResult};
 
 /// Discovered brand/sponsor information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,9 +50,9 @@ pub struct BrandResearchStage {
 impl BrandResearchStage {
     pub fn new(pool: SqlitePool, execution_engine: Arc<ExecutionEngine>) -> Self {
         Self {
-            pool,
+            pool: pool.clone(),
             execution_engine,
-            research_tools: ResearchTools::new(),
+            research_tools: ResearchTools::with_pool(Arc::new(pool)),
         }
     }
 
@@ -65,7 +64,8 @@ impl BrandResearchStage {
         parallelism_limit: usize,
     ) -> Result<Vec<ResearchStageResult>> {
         // Extract sponsor names from intel result
-        let sponsor_names: Vec<String> = intel_result.data
+        let sponsor_names: Vec<String> = intel_result
+            .data
             .get("sponsor_names")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
@@ -88,18 +88,21 @@ impl BrandResearchStage {
         let mut handles = Vec::new();
 
         for brand_name in sponsor_names {
-            let permit = semaphore.clone().acquire_owned().await.map_err(|e| {
-                NoraError::ExecutionError(format!("Semaphore error: {}", e))
-            })?;
+            let permit = semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|e| NoraError::ExecutionError(format!("Semaphore error: {}", e)))?;
 
             let pool = pool.clone();
             let name = brand_name.clone();
             let conf_name = workflow.conference_name.clone();
-            // Create new ResearchTools for each task (they're lightweight)
-            let tools = ResearchTools::new();
+            // Create new ResearchTools for each task with PCG Router support
+            let tools = ResearchTools::with_pool(Arc::new(pool.clone()));
 
             let handle = tokio::spawn(async move {
-                let result = research_single_brand(&pool, &tools, &name, &conf_name, board_id).await;
+                let result =
+                    research_single_brand(&pool, &tools, &name, &conf_name, board_id).await;
                 drop(permit);
                 result
             });
@@ -150,19 +153,11 @@ async fn research_single_brand(
 
     if let Some(entity) = existing {
         if entity.is_research_fresh(Duration::days(30)) {
-            tracing::debug!(
-                "[BRAND_RESEARCH] Using cached research for: {}",
-                brand_name
-            );
+            tracing::debug!("[BRAND_RESEARCH] Using cached research for: {}", brand_name);
 
-            EntityAppearance::find_or_create(
-                pool,
-                entity.id,
-                board_id,
-                AppearanceType::Sponsor,
-            )
-            .await
-            .map_err(NoraError::DatabaseError)?;
+            EntityAppearance::find_or_create(pool, entity.id, board_id, AppearanceType::Sponsor)
+                .await
+                .map_err(NoraError::DatabaseError)?;
 
             let summary = format!("Reused existing profile for {}", brand_name);
             result = result
@@ -174,33 +169,32 @@ async fn research_single_brand(
     }
 
     // Perform new research using LLM
-    let mut brand_info = research_brand_profile(research_tools, brand_name, conference_name).await?;
+    let mut brand_info =
+        research_brand_profile(research_tools, brand_name, conference_name).await?;
 
     // Download brand logo if URL found
     let local_logo_url = if let Some(ref remote_url) = brand_info.logo_url {
         match ImageService::new(pool.clone()) {
-            Ok(image_service) => {
-                match image_service.download_image_from_url(remote_url).await {
-                    Some(image) => {
-                        let local_url = format!("/api/images/{}/file", image.id);
-                        tracing::info!(
-                            "[BRAND_RESEARCH] Downloaded logo for {}: {} -> {}",
-                            brand_name,
-                            remote_url,
-                            local_url
-                        );
-                        Some(local_url)
-                    }
-                    None => {
-                        tracing::warn!(
-                            "[BRAND_RESEARCH] Failed to download logo for {}: {}",
-                            brand_name,
-                            remote_url
-                        );
-                        Some(remote_url.clone())
-                    }
+            Ok(image_service) => match image_service.download_image_from_url(remote_url).await {
+                Some(image) => {
+                    let local_url = format!("/api/images/{}/file", image.id);
+                    tracing::info!(
+                        "[BRAND_RESEARCH] Downloaded logo for {}: {} -> {}",
+                        brand_name,
+                        remote_url,
+                        local_url
+                    );
+                    Some(local_url)
                 }
-            }
+                None => {
+                    tracing::warn!(
+                        "[BRAND_RESEARCH] Failed to download logo for {}: {}",
+                        brand_name,
+                        remote_url
+                    );
+                    Some(remote_url.clone())
+                }
+            },
             Err(e) => {
                 tracing::warn!("[BRAND_RESEARCH] ImageService unavailable: {}", e);
                 Some(remote_url.clone())
@@ -293,7 +287,11 @@ async fn research_brand_profile(
     for query in &search_queries {
         match tools.web_search(query, 5).await {
             Ok(results) => {
-                tracing::debug!("[BRAND_RESEARCH] Found {} results for: {}", results.len(), query);
+                tracing::debug!(
+                    "[BRAND_RESEARCH] Found {} results for: {}",
+                    results.len(),
+                    query
+                );
                 all_search_results.extend(results);
             }
             Err(e) => {
@@ -323,7 +321,10 @@ Output a JSON object with these exact fields:
 Return ONLY valid JSON, no markdown formatting."#;
 
     let search_context = if all_search_results.is_empty() {
-        format!("No search results available. Use your knowledge about {} if known.", name)
+        format!(
+            "No search results available. Use your knowledge about {} if known.",
+            name
+        )
     } else {
         all_search_results
             .iter()
@@ -344,39 +345,47 @@ Return ONLY valid JSON, no markdown formatting."#;
 {}
 
 Extract all available information and return a comprehensive JSON profile."#,
-        name,
-        conference_name,
-        search_context
+        name, conference_name, search_context
     );
 
     // Step 3: Call LLM for analysis
-    let response = tools.research_llm(system_prompt, &user_prompt).await
+    let response = tools
+        .research_llm(system_prompt, &user_prompt)
+        .await
         .map_err(|e| NoraError::ExecutionError(format!("LLM research failed: {}", e)))?;
 
     // Step 4: Parse the response - extract JSON from potential markdown fences
     let json_str = extract_json_from_response(&response);
-    let brand_info: BrandInfo = serde_json::from_str(json_str)
-        .unwrap_or_else(|e| {
-            tracing::warn!("[BRAND_RESEARCH] Failed to parse LLM response for {}: {}. JSON: {}", name, e, &json_str[..json_str.len().min(200)]);
-            // Return basic info
-            BrandInfo {
-                name: name.to_string(),
-                description: None,
-                website: None,
-                logo_url: None,
-                industry: None,
-                headquarters: None,
-                linkedin_url: None,
-                twitter_handle: None,
-                sponsorship_level: None,
-            }
-        });
+    let brand_info: BrandInfo = serde_json::from_str(json_str).unwrap_or_else(|e| {
+        tracing::warn!(
+            "[BRAND_RESEARCH] Failed to parse LLM response for {}: {}. JSON: {}",
+            name,
+            e,
+            &json_str[..json_str.len().min(200)]
+        );
+        // Return basic info
+        BrandInfo {
+            name: name.to_string(),
+            description: None,
+            website: None,
+            logo_url: None,
+            industry: None,
+            headquarters: None,
+            linkedin_url: None,
+            twitter_handle: None,
+            sponsorship_level: None,
+        }
+    });
 
     tracing::info!(
         "[BRAND_RESEARCH] Profile for {}: {} - {}",
         name,
         brand_info.industry.as_deref().unwrap_or("?"),
-        brand_info.description.as_ref().map(|d| format!("{} chars", d.len())).unwrap_or_else(|| "no description".to_string())
+        brand_info
+            .description
+            .as_ref()
+            .map(|d| format!("{} chars", d.len()))
+            .unwrap_or_else(|| "no description".to_string())
     );
 
     Ok(brand_info)

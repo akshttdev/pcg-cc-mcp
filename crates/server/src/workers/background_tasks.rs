@@ -419,7 +419,7 @@ impl BackgroundWorker for NoraInboxPoller {
 
                                 // Classify the email before deciding how to handle it
                                 use crate::routes::intake::report::{EmailClass, classify_email};
-                                let class = classify_email(&msg.subject, &full_body).await;
+                                let class = classify_email(&self.pool, &msg.subject, &full_body).await;
 
                                 tracing::info!(
                                     "[NORA_INBOX] Email from {} — subject: {:?} — class: {:?}",

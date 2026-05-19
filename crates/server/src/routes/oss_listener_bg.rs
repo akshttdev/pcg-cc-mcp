@@ -376,38 +376,19 @@ async fn run_nora_or_fallback(
     run_direct_anthropic(pool, prompt).await
 }
 
-async fn run_direct_anthropic(_pool: &SqlitePool, prompt: &str) -> anyhow::Result<String> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
+async fn run_direct_anthropic(pool: &SqlitePool, prompt: &str) -> anyhow::Result<String> {
+    use services::services::workflow_llm::WorkflowLLMService;
 
-    let payload = serde_json::json!({
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 2048,
-        "messages": [{ "role": "user", "content": prompt }]
-    });
+    let messages = vec![WorkflowLLMService::user_message(prompt)];
 
-    let resp = reqwest::Client::new()
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&payload)
-        .send()
-        .await?;
+    let (text, metadata) =
+        WorkflowLLMService::completion(pool, messages, Some("claude-sonnet-4-6"), Some(2048), None)
+            .await?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Anthropic fallback {}: {}", status, body);
-    }
-
-    let data: serde_json::Value = resp.json().await?;
-    let text = data["content"]
-        .as_array()
-        .and_then(|a| a.first())
-        .and_then(|c| c["text"].as_str())
-        .unwrap_or("")
-        .to_string();
+    info!(
+        "[OSS_LISTENER] Routed to {} ({})",
+        metadata.model_used, metadata.provider
+    );
 
     Ok(text)
 }

@@ -6,26 +6,25 @@
 //! - Photo/headshot
 //! - Talk topics and past presentations
 
-use chrono::{Duration, Utc};
-use serde::{Deserialize, Serialize};
-use services::services::image::ImageService;
-use sqlx::SqlitePool;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
-use uuid::Uuid;
 
+use chrono::{Duration, Utc};
 use db::models::{
     conference_workflow::ConferenceWorkflow,
     entity::{CreateEntity, Entity, EntityType},
     entity_appearance::{AppearanceType, CreateEntityAppearance, EntityAppearance},
 };
+use serde::{Deserialize, Serialize};
+use services::services::image::ImageService;
+use sqlx::SqlitePool;
+use tokio::sync::Semaphore;
+use uuid::Uuid;
 
+use super::{ResearchStage, ResearchStageResult};
 use crate::{
     execution::{research::ResearchTools, ExecutionEngine},
     NoraError, Result,
 };
-
-use super::{ResearchStage, ResearchStageResult};
 
 /// Discovered speaker information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,9 +53,9 @@ pub struct SpeakerResearchStage {
 impl SpeakerResearchStage {
     pub fn new(pool: SqlitePool, execution_engine: Arc<ExecutionEngine>) -> Self {
         Self {
-            pool,
+            pool: pool.clone(),
             execution_engine,
-            research_tools: ResearchTools::new(),
+            research_tools: ResearchTools::with_pool(Arc::new(pool)),
         }
     }
 
@@ -68,7 +67,8 @@ impl SpeakerResearchStage {
         parallelism_limit: usize,
     ) -> Result<Vec<ResearchStageResult>> {
         // Extract speaker names from intel result
-        let speaker_names: Vec<String> = intel_result.data
+        let speaker_names: Vec<String> = intel_result
+            .data
             .get("speaker_names")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
@@ -92,18 +92,21 @@ impl SpeakerResearchStage {
         let mut handles = Vec::new();
 
         for speaker_name in speaker_names {
-            let permit = semaphore.clone().acquire_owned().await.map_err(|e| {
-                NoraError::ExecutionError(format!("Semaphore error: {}", e))
-            })?;
+            let permit = semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|e| NoraError::ExecutionError(format!("Semaphore error: {}", e)))?;
 
             let pool = pool.clone();
             let name = speaker_name.clone();
             let conf_name = conference_name.clone();
-            // Create new ResearchTools for each task (they're lightweight)
-            let tools = ResearchTools::new();
+            // Create new ResearchTools for each task with PCG Router support
+            let tools = ResearchTools::with_pool(Arc::new(pool.clone()));
 
             let handle = tokio::spawn(async move {
-                let result = research_single_speaker(&pool, &tools, &name, &conf_name, board_id).await;
+                let result =
+                    research_single_speaker(&pool, &tools, &name, &conf_name, board_id).await;
                 drop(permit);
                 result
             });
@@ -160,14 +163,9 @@ async fn research_single_speaker(
             );
 
             // Create appearance linking
-            EntityAppearance::find_or_create(
-                pool,
-                entity.id,
-                board_id,
-                AppearanceType::Speaker,
-            )
-            .await
-            .map_err(NoraError::DatabaseError)?;
+            EntityAppearance::find_or_create(pool, entity.id, board_id, AppearanceType::Speaker)
+                .await
+                .map_err(NoraError::DatabaseError)?;
 
             let summary = format!("Reused existing profile for {}", speaker_name);
             result = result
@@ -179,7 +177,8 @@ async fn research_single_speaker(
     }
 
     // Perform new research using LLM
-    let mut speaker_info = research_speaker_profile(research_tools, speaker_name, conference_name).await?;
+    let mut speaker_info =
+        research_speaker_profile(research_tools, speaker_name, conference_name).await?;
 
     // Download speaker photo if URL found
     let local_photo_url = if let Some(ref remote_url) = speaker_info.photo_url {
@@ -300,7 +299,11 @@ async fn research_speaker_profile(
     for query in &search_queries {
         match tools.web_search(query, 5).await {
             Ok(results) => {
-                tracing::debug!("[SPEAKER_RESEARCH] Found {} results for: {}", results.len(), query);
+                tracing::debug!(
+                    "[SPEAKER_RESEARCH] Found {} results for: {}",
+                    results.len(),
+                    query
+                );
                 all_search_results.extend(results);
             }
             Err(e) => {
@@ -333,7 +336,10 @@ Output a JSON object with these exact fields:
 Return ONLY valid JSON, no markdown formatting."#;
 
     let search_context = if all_search_results.is_empty() {
-        format!("No search results available. Use your knowledge about {} if known.", name)
+        format!(
+            "No search results available. Use your knowledge about {} if known.",
+            name
+        )
     } else {
         all_search_results
             .iter()
@@ -354,36 +360,40 @@ Return ONLY valid JSON, no markdown formatting."#;
 {}
 
 Extract all available information and return a comprehensive JSON profile."#,
-        name,
-        conference_name,
-        search_context
+        name, conference_name, search_context
     );
 
     // Step 3: Call LLM for analysis
-    let response = tools.research_llm(system_prompt, &user_prompt).await
+    let response = tools
+        .research_llm(system_prompt, &user_prompt)
+        .await
         .map_err(|e| NoraError::ExecutionError(format!("LLM research failed: {}", e)))?;
 
     // Step 4: Parse the response - extract JSON from potential markdown fences
     let json_str = extract_json_from_response(&response);
-    let speaker_info: SpeakerInfo = serde_json::from_str(json_str)
-        .unwrap_or_else(|e| {
-            tracing::warn!("[SPEAKER_RESEARCH] Failed to parse LLM response for {}: {}. JSON: {}", name, e, &json_str[..json_str.len().min(200)]);
-            // Return basic info
-            SpeakerInfo {
-                name: name.to_string(),
-                title: None,
-                company: None,
-                bio: None,
-                talk_title: None,
-                talk_description: None,
-                photo_url: None,
-                linkedin_url: None,
-                twitter_handle: None,
-                website: None,
-                expertise: vec![],
-                past_talks: vec![],
-            }
-        });
+    let speaker_info: SpeakerInfo = serde_json::from_str(json_str).unwrap_or_else(|e| {
+        tracing::warn!(
+            "[SPEAKER_RESEARCH] Failed to parse LLM response for {}: {}. JSON: {}",
+            name,
+            e,
+            &json_str[..json_str.len().min(200)]
+        );
+        // Return basic info
+        SpeakerInfo {
+            name: name.to_string(),
+            title: None,
+            company: None,
+            bio: None,
+            talk_title: None,
+            talk_description: None,
+            photo_url: None,
+            linkedin_url: None,
+            twitter_handle: None,
+            website: None,
+            expertise: vec![],
+            past_talks: vec![],
+        }
+    });
 
     tracing::info!(
         "[SPEAKER_RESEARCH] Profile for {}: {} at {}, bio: {} chars",
@@ -420,7 +430,11 @@ fn calculate_completeness(info: &SpeakerInfo) -> f64 {
         }
     }
 
-    if total > 0.0 { score / total } else { 0.0 }
+    if total > 0.0 {
+        score / total
+    } else {
+        0.0
+    }
 }
 
 /// QA checklist for speaker research

@@ -2,12 +2,17 @@
 //!
 //! Provides real LLM-powered research capabilities with web search integration.
 //! Each workflow stage is executed as a focused research task with tool access.
+//!
+//! LLM calls are routed through PCG Router via WorkflowLLMService for centralized
+//! API key management and cost tracking.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use services::services::workflow_llm::WorkflowLLMService;
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 /// Structured data extracted from a scraped web page
@@ -43,31 +48,63 @@ pub struct ResearchContext {
 }
 
 /// Tools available to research agents
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ResearchTools {
     http_client: Client,
-    openai_api_key: Option<String>,
     exa_api_key: Option<String>,
+    /// Database pool for routing LLM calls through PCG Router.
+    pool: Option<Arc<SqlitePool>>,
+}
+
+impl std::fmt::Debug for ResearchTools {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResearchTools")
+            .field("exa_api_key", &self.exa_api_key.is_some())
+            .field("pool", &self.pool.is_some())
+            .finish()
+    }
 }
 
 impl ResearchTools {
-    pub fn new() -> Self {
+    /// Create ResearchTools with PCG Router support.
+    ///
+    /// LLM calls will be routed through WorkflowLLMService using the provided
+    /// database pool for API key lookup and cost tracking.
+    pub fn with_pool(pool: Arc<SqlitePool>) -> Self {
         let exa_api_key = std::env::var("EXA_API_KEY").ok();
         if exa_api_key.is_some() {
             tracing::info!("[RESEARCH_TOOLS] Exa neural search enabled");
         } else {
             tracing::info!(
-                "[RESEARCH_TOOLS] Exa API key not found, will fall back to OpenAI web search"
+                "[RESEARCH_TOOLS] Exa API key not found, will fall back to PCG Router LLM"
             );
         }
         Self {
             http_client: Client::new(),
-            openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
             exa_api_key,
+            pool: Some(pool),
         }
     }
 
-    /// Search the web using Exa API (if available) or fall back to OpenAI web search
+    /// Create ResearchTools without database pool (legacy mode).
+    ///
+    /// LLM calls will fail with an error since no pool is available for routing.
+    /// Use `with_pool()` for production code.
+    pub fn new() -> Self {
+        let exa_api_key = std::env::var("EXA_API_KEY").ok();
+        if exa_api_key.is_some() {
+            tracing::info!("[RESEARCH_TOOLS] Exa neural search enabled");
+        } else {
+            tracing::info!("[RESEARCH_TOOLS] Exa API key not found, LLM fallback requires pool");
+        }
+        Self {
+            http_client: Client::new(),
+            exa_api_key,
+            pool: None,
+        }
+    }
+
+    /// Search the web using Exa API (if available) or fall back to LLM-based search
     pub async fn web_search(
         &self,
         query: &str,
@@ -78,8 +115,8 @@ impl ResearchTools {
         if let Some(exa_key) = &self.exa_api_key {
             self.exa_search(query, num_results, exa_key).await
         } else {
-            // Fall back to OpenAI's built-in web search via function calling
-            self.openai_web_search(query, num_results).await
+            // Fall back to PCG Router LLM-based search
+            self.llm_web_search(query, num_results).await
         }
     }
 
@@ -135,51 +172,44 @@ impl ResearchTools {
         Ok(results)
     }
 
-    async fn openai_web_search(
+    async fn llm_web_search(
         &self,
         query: &str,
         _num_results: usize,
     ) -> Result<Vec<SearchResult>, String> {
-        // Use OpenAI to generate simulated search results based on its knowledge
-        // In production, you'd integrate with a real search API
-        let api_key = self
-            .openai_api_key
+        // Use PCG Router to generate simulated search results based on LLM knowledge
+        let pool = self
+            .pool
             .as_ref()
-            .ok_or("No OpenAI API key configured")?;
+            .ok_or("No database pool configured for LLM routing")?;
 
-        let response = self.http_client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&serde_json::json!({
-                "model": "gpt-4o",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a research assistant. Based on the query, provide relevant information you know about. Format as a JSON array of objects with 'title', 'url' (make up plausible URLs), and 'snippet' fields. Return ONLY valid JSON, no markdown."
-                    },
-                    {
-                        "role": "user",
-                        "content": format!("Research query: {}", query)
-                    }
-                ],
-                "temperature": 0.7
-            }))
-            .send()
-            .await
-            .map_err(|e| format!("OpenAI request failed: {}", e))?;
+        let system_prompt = "You are a research assistant. Based on the query, provide relevant information you know about. Format as a JSON array of objects with 'title', 'url' (make up plausible URLs), and 'snippet' fields. Return ONLY valid JSON, no markdown.";
+        let user_prompt = format!("Research query: {}", query);
 
-        let json: Value = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse OpenAI response: {}", e))?;
+        let messages = vec![
+            WorkflowLLMService::system_message(system_prompt),
+            WorkflowLLMService::user_message(&user_prompt),
+        ];
 
-        let content = json["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("[]");
+        let (content, metadata) = WorkflowLLMService::completion(
+            pool,
+            messages,
+            None, // Use default model from PCG Router
+            Some(2000),
+            Some(0.7),
+        )
+        .await
+        .map_err(|e| format!("PCG Router LLM request failed: {}", e))?;
+
+        tracing::info!(
+            "[RESEARCH_TOOLS] LLM search via PCG Router: model={}, provider={}, cost={}µ",
+            metadata.model_used,
+            metadata.provider,
+            metadata.estimated_cost_micros.unwrap_or(0)
+        );
 
         // Parse the JSON array from the response
-        let results: Vec<SearchResult> = serde_json::from_str(content).unwrap_or_default();
+        let results: Vec<SearchResult> = serde_json::from_str(&content).unwrap_or_default();
 
         Ok(results)
     }
@@ -299,18 +329,18 @@ impl ResearchTools {
         Ok(text.chars().take(10000).collect())
     }
 
-    /// Call LLM with a research prompt
+    /// Call LLM with a research prompt via PCG Router
     pub async fn research_llm(
         &self,
         system_prompt: &str,
         user_prompt: &str,
     ) -> Result<String, String> {
-        let api_key = self
-            .openai_api_key
+        let pool = self
+            .pool
             .as_ref()
-            .ok_or("No OpenAI API key configured")?;
+            .ok_or("No database pool configured for LLM routing")?;
 
-        tracing::info!("[RESEARCH_TOOLS] Calling LLM for research...");
+        tracing::info!("[RESEARCH_TOOLS] Calling LLM for research via PCG Router...");
         tracing::debug!(
             "[RESEARCH_TOOLS] System: {}...",
             &system_prompt[..system_prompt.len().min(200)]
@@ -320,41 +350,28 @@ impl ResearchTools {
             &user_prompt[..user_prompt.len().min(200)]
         );
 
-        let response = self
-            .http_client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&serde_json::json!({
-                "model": "gpt-4o",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 4000
-            }))
-            .send()
-            .await
-            .map_err(|e| format!("LLM request failed: {}", e))?;
+        let messages = vec![
+            WorkflowLLMService::system_message(system_prompt),
+            WorkflowLLMService::user_message(user_prompt),
+        ];
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(format!("OpenAI API error ({}): {}", status, body));
-        }
+        let (content, metadata) = WorkflowLLMService::completion(
+            pool,
+            messages,
+            None, // Use default model from PCG Router
+            Some(4000),
+            Some(0.7),
+        )
+        .await
+        .map_err(|e| format!("PCG Router LLM request failed: {}", e))?;
 
-        let json: Value = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse LLM response: {}", e))?;
-
-        let content = json["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-
-        tracing::info!("[RESEARCH_TOOLS] LLM response: {} chars", content.len());
+        tracing::info!(
+            "[RESEARCH_TOOLS] LLM response: {} chars, model={}, provider={}, cost={}µ",
+            content.len(),
+            metadata.model_used,
+            metadata.provider,
+            metadata.estimated_cost_micros.unwrap_or(0)
+        );
 
         Ok(content)
     }
@@ -374,6 +391,20 @@ pub struct ResearchExecutor {
 }
 
 impl ResearchExecutor {
+    /// Create a ResearchExecutor with PCG Router support.
+    ///
+    /// LLM calls will be routed through WorkflowLLMService using the provided
+    /// database pool for API key lookup and cost tracking.
+    pub fn with_pool(pool: Arc<SqlitePool>) -> Self {
+        Self {
+            tools: ResearchTools::with_pool(pool),
+        }
+    }
+
+    /// Create a ResearchExecutor without database pool (legacy mode).
+    ///
+    /// LLM calls will fail since no pool is available for routing.
+    /// Use `with_pool()` for production code.
     pub fn new() -> Self {
         Self {
             tools: ResearchTools::new(),

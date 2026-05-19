@@ -43,6 +43,16 @@ pub enum SocialError {
     MentionError(String),
 }
 
+impl SocialError {
+    /// Returns true if this error is transient and the operation should be retried.
+    pub fn should_retry(&self) -> bool {
+        matches!(
+            self,
+            SocialError::RateLimited | SocialError::NetworkError(_)
+        )
+    }
+}
+
 impl From<db::models::social_account::SocialAccountError> for SocialError {
     fn from(err: db::models::social_account::SocialAccountError) -> Self {
         SocialError::AccountError(err.to_string())
@@ -223,8 +233,40 @@ pub struct PlatformLimits {
     pub supported_media_types: Vec<String>,
 }
 
-/// Get connector for a specific platform
+/// Get connector for a specific platform.
+///
+/// All connectors are wrapped with RetryingConnector for automatic retry
+/// on transient errors (rate limiting, network failures).
 pub fn get_connector(platform: SocialPlatform) -> Result<Box<dyn PlatformConnector>, SocialError> {
+    use connectors::RetryingConnector;
+
+    match platform {
+        SocialPlatform::LinkedIn => Ok(Box::new(RetryingConnector::new(
+            connectors::linkedin::LinkedInConnector::new(),
+        ))),
+        SocialPlatform::Instagram => Ok(Box::new(RetryingConnector::new(
+            connectors::instagram::InstagramConnector::new(),
+        ))),
+        SocialPlatform::Twitter => Ok(Box::new(RetryingConnector::new(
+            connectors::twitter::TwitterConnector::new(),
+        ))),
+        SocialPlatform::TikTok => Ok(Box::new(RetryingConnector::new(
+            connectors::tiktok::TikTokConnector::new(),
+        ))),
+        SocialPlatform::Threads => Ok(Box::new(RetryingConnector::new(
+            connectors::threads::ThreadsConnector::new(),
+        ))),
+        _ => Err(SocialError::UnsupportedPlatform(platform.to_string())),
+    }
+}
+
+/// Get a raw connector without retry wrapper.
+///
+/// Use this only when you need direct access to the connector without retry logic,
+/// for example in tests or when implementing custom retry behavior.
+pub fn get_raw_connector(
+    platform: SocialPlatform,
+) -> Result<Box<dyn PlatformConnector>, SocialError> {
     match platform {
         SocialPlatform::LinkedIn => Ok(Box::new(connectors::linkedin::LinkedInConnector::new())),
         SocialPlatform::Instagram => Ok(Box::new(connectors::instagram::InstagramConnector::new())),

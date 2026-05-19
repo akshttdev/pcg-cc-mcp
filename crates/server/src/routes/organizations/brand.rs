@@ -1,4 +1,10 @@
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
+use services::services::{
+    editron::tracking::UsageTracker,
+    image_gen::{ImageGenService, ImageQuality, ImageSize, ImageStyle},
+    workflow_llm::WorkflowLLMService,
+};
+
 use super::*;
 pub async fn get_org_brand_profile(
     State(deployment): State<DeploymentImpl>,
@@ -417,10 +423,7 @@ async fn run_brand_research(
     .await?;
 
     let exa_key = std::env::var("EXA_API_KEY").unwrap_or_default();
-    let anthropic_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .unwrap_or_default();
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::new(); // Still used for Exa API calls
 
     // Read current iteration count + previous knowledge after the increment above
     #[derive(sqlx::FromRow)]
@@ -611,13 +614,15 @@ async fn run_brand_research(
             ));
         }
 
+        let num_queries = search_queries.len();
         tracing::info!(
             "[BRAND_RESEARCH] Running {} parallel Exa searches (iteration {})",
-            search_queries.len(),
+            num_queries,
             iteration
         );
 
         // First 3 queries (core identity) use full text; rest use highlights
+        let search_start = std::time::Instant::now();
         let search_futures: Vec<_> = search_queries
             .iter()
             .enumerate()
@@ -651,10 +656,13 @@ async fn run_brand_research(
             .collect();
 
         let results = futures::future::join_all(search_futures).await;
+        let search_duration_ms = search_start.elapsed().as_millis() as i64;
 
+        let mut total_results_returned = 0i64;
         for resp in results.into_iter().flatten() {
             if let Ok(data) = resp.json::<serde_json::Value>().await {
                 if let Some(items) = data["results"].as_array() {
+                    total_results_returned += items.len() as i64;
                     for r in items {
                         let title = r["title"].as_str().unwrap_or("");
                         let url = r["url"].as_str().unwrap_or("");
@@ -678,9 +686,28 @@ async fn run_brand_research(
             }
         }
 
+        // Log Phase 1 Exa searches (aggregate)
+        UsageTracker::log_search_operation(
+            pool,
+            "exa",
+            "search_batch",
+            Some(num_queries as i64),
+            Some(total_results_returned),
+            search_duration_ms,
+            true,
+            None,
+            Some(json!({
+                "phase": "PHASE1",
+                "iteration": iteration,
+                "org_id": org_id.to_string(),
+            })),
+        )
+        .await;
+
         // findSimilar for competitor discovery (8 results)
         if !website.is_empty() {
-            if let Ok(resp) = client
+            let find_similar_start = std::time::Instant::now();
+            let find_similar_result = client
                 .post("https://api.exa.ai/findSimilar")
                 .header("Authorization", format!("Bearer {}", exa_key))
                 .header("Content-Type", "application/json")
@@ -692,30 +719,63 @@ async fn run_brand_research(
                     "contents": { "highlights": { "numSentences": 2 } }
                 }))
                 .send()
-                .await
-            {
-                if let Ok(data) = resp.json::<serde_json::Value>().await {
-                    if let Some(items) = data["results"].as_array() {
-                        exa_context
-                            .push_str("\n\n## SIMILAR BRANDS / COMPETITORS (Exa findSimilar):\n");
-                        for r in items {
-                            let title = r["title"].as_str().unwrap_or("");
-                            let url = r["url"].as_str().unwrap_or("");
-                            let snip = r["highlights"]
-                                .as_array()
-                                .and_then(|h| h.first())
-                                .and_then(|h| h.as_str())
-                                .unwrap_or("");
-                            exa_context.push_str(&format!(
-                                "- {} ({}): {}\n",
-                                title,
-                                url,
-                                &snip[..snip.len().min(200)]
-                            ));
-                        }
+                .await;
+            let find_similar_duration_ms = find_similar_start.elapsed().as_millis() as i64;
+
+            let (success, results_count, error_msg) = match find_similar_result {
+                Ok(resp) => match resp.json::<serde_json::Value>().await {
+                    Ok(data) => {
+                        let count = data["results"]
+                            .as_array()
+                            .map(|items| {
+                                exa_context.push_str(
+                                    "\n\n## SIMILAR BRANDS / COMPETITORS (Exa findSimilar):\n",
+                                );
+                                for r in items {
+                                    let title = r["title"].as_str().unwrap_or("");
+                                    let url = r["url"].as_str().unwrap_or("");
+                                    let snip = r["highlights"]
+                                        .as_array()
+                                        .and_then(|h| h.first())
+                                        .and_then(|h| h.as_str())
+                                        .unwrap_or("");
+                                    exa_context.push_str(&format!(
+                                        "- {} ({}): {}\n",
+                                        title,
+                                        url,
+                                        &snip[..snip.len().min(200)]
+                                    ));
+                                }
+                                items.len() as i64
+                            })
+                            .unwrap_or(0);
+                        (true, count, None)
                     }
-                }
-            }
+                    Err(e) => (
+                        false,
+                        0i64,
+                        Some(format!("Failed to parse response: {}", e)),
+                    ),
+                },
+                Err(e) => (false, 0i64, Some(e.to_string())),
+            };
+
+            UsageTracker::log_search_operation(
+                pool,
+                "exa",
+                "findSimilar",
+                Some(8), // num_results requested
+                Some(results_count),
+                find_similar_duration_ms,
+                success,
+                error_msg.as_deref(),
+                Some(json!({
+                    "iteration": iteration,
+                    "org_id": org_id.to_string(),
+                    "website": website,
+                })),
+            )
+            .await;
         }
 
         tracing::info!(
@@ -1125,35 +1185,30 @@ KNOWN HANDLES (current DB):
         },
     );
 
-    let pass1_body = json!({
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 4096,
-        "messages": [{"role": "user", "content": synthesis_prompt}]
-    });
-
     tracing::info!(
         "[BRAND_RESEARCH] Pass 1 synthesis for {} (iteration {})",
         org_name,
         iteration
     );
-    let pass1_resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &anthropic_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .timeout(std::time::Duration::from_secs(90))
-        .json(&pass1_body)
-        .send()
-        .await?;
 
-    let pass1_json: serde_json::Value = pass1_resp.json().await?;
-    let pass1_text = pass1_json["content"]
-        .as_array()
-        .and_then(|arr| arr.iter().find(|c| c["type"] == "text"))
-        .and_then(|c| c["text"].as_str())
-        .unwrap_or("");
+    // Pass 1: Call LLM via PCG Router
+    let pass1_messages = vec![json!({ "role": "user", "content": synthesis_prompt })];
+    let (pass1_text, pass1_meta) = WorkflowLLMService::completion(
+        pool,
+        pass1_messages,
+        Some("claude-sonnet-4-6"),
+        Some(4096),
+        None,
+    )
+    .await?;
 
-    let parsed: serde_json::Value = serde_json::from_str(pass1_text)
+    tracing::info!(
+        model = %pass1_meta.model_used,
+        provider = %pass1_meta.provider,
+        "[BRAND_RESEARCH] Pass 1 LLM call completed"
+    );
+
+    let parsed: serde_json::Value = serde_json::from_str(&pass1_text)
         .or_else(|_| {
             if let Some(start) = pass1_text.find('{') {
                 if let Some(end) = pass1_text.rfind('}') {
@@ -1247,6 +1302,8 @@ KNOWN HANDLES (current DB):
         }
 
         if !gap_queries.is_empty() {
+            let num_gap_queries = gap_queries.len();
+            let gap_search_start = std::time::Instant::now();
             let gap_futures: Vec<_> = gap_queries
                 .iter()
                 .map(|q| {
@@ -1274,11 +1331,14 @@ KNOWN HANDLES (current DB):
                 .collect();
 
             let gap_results = futures::future::join_all(gap_futures).await;
+            let gap_duration_ms = gap_search_start.elapsed().as_millis() as i64;
 
             let mut gap_context = String::new();
+            let mut gap_total_results = 0i64;
             for resp in gap_results.into_iter().flatten() {
                 if let Ok(data) = resp.json::<serde_json::Value>().await {
                     if let Some(items) = data["results"].as_array() {
+                        gap_total_results += items.len() as i64;
                         for r in items {
                             let title = r["title"].as_str().unwrap_or("");
                             let url = r["url"].as_str().unwrap_or("");
@@ -1293,6 +1353,24 @@ KNOWN HANDLES (current DB):
                     }
                 }
             }
+
+            // Log gap query batch
+            UsageTracker::log_search_operation(
+                pool,
+                "exa",
+                "search_batch",
+                Some(num_gap_queries as i64),
+                Some(gap_total_results),
+                gap_duration_ms,
+                true,
+                None,
+                Some(json!({
+                    "phase": "GAP_PASS",
+                    "iteration": iteration,
+                    "org_id": org_id.to_string(),
+                })),
+            )
+            .await;
 
             tracing::info!(
                 "[BRAND_RESEARCH] Gap pass complete — {} chars",
@@ -1319,49 +1397,43 @@ Using the new research, extend and correct the existing data. Return a JSON obje
                     gap_context.chars().take(6000).collect::<String>(),
                 );
 
-                let pass2_body = json!({
-                    "model": "claude-sonnet-4-6",
-                    "max_tokens": 2048,
-                    "messages": [{"role": "user", "content": pass2_prompt}]
-                });
-
                 tracing::info!("[BRAND_RESEARCH] Pass 2 refinement for {}", org_name);
-                if let Ok(pass2_resp) = client
-                    .post("https://api.anthropic.com/v1/messages")
-                    .header("x-api-key", &anthropic_key)
-                    .header("anthropic-version", "2023-06-01")
-                    .header("content-type", "application/json")
-                    .timeout(std::time::Duration::from_secs(60))
-                    .json(&pass2_body)
-                    .send()
-                    .await
-                {
-                    if let Ok(pass2_json) = pass2_resp.json::<serde_json::Value>().await {
-                        let pass2_text = pass2_json["content"]
-                            .as_array()
-                            .and_then(|arr| arr.iter().find(|c| c["type"] == "text"))
-                            .and_then(|c| c["text"].as_str())
-                            .unwrap_or("");
 
-                        if let Ok(pass2_data) =
-                            serde_json::from_str::<serde_json::Value>(pass2_text).or_else(|_| {
-                                if let Some(s) = pass2_text.find('{') {
-                                    if let Some(e) = pass2_text.rfind('}') {
-                                        return serde_json::from_str(&pass2_text[s..=e]);
-                                    }
+                // Pass 2: Call LLM via PCG Router
+                let pass2_messages = vec![json!({ "role": "user", "content": pass2_prompt })];
+                if let Ok((pass2_text, pass2_meta)) = WorkflowLLMService::completion(
+                    pool,
+                    pass2_messages,
+                    Some("claude-sonnet-4-6"),
+                    Some(2048),
+                    None,
+                )
+                .await
+                {
+                    tracing::info!(
+                        model = %pass2_meta.model_used,
+                        provider = %pass2_meta.provider,
+                        "[BRAND_RESEARCH] Pass 2 LLM call completed"
+                    );
+
+                    if let Ok(pass2_data) = serde_json::from_str::<serde_json::Value>(&pass2_text)
+                        .or_else(|_| {
+                            if let Some(s) = pass2_text.find('{') {
+                                if let Some(e) = pass2_text.rfind('}') {
+                                    return serde_json::from_str(&pass2_text[s..=e]);
                                 }
-                                Err(serde_json::Error::io(std::io::Error::new(
-                                    std::io::ErrorKind::InvalidData,
-                                    "no JSON",
-                                )))
-                            })
-                        {
-                            final_data = merge_json(&parsed, &pass2_data);
-                            tracing::info!(
-                                "[BRAND_RESEARCH] Pass 2 merged — final confidence: {:.2}",
-                                final_data["confidence"].as_f64().unwrap_or(confidence)
-                            );
-                        }
+                            }
+                            Err(serde_json::Error::io(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                "no JSON",
+                            )))
+                        })
+                    {
+                        final_data = merge_json(&parsed, &pass2_data);
+                        tracing::info!(
+                            "[BRAND_RESEARCH] Pass 2 merged — final confidence: {:.2}",
+                            final_data["confidence"].as_f64().unwrap_or(confidence)
+                        );
                     }
                 }
             }
@@ -1566,90 +1638,92 @@ Using the new research, extend and correct the existing data. Return a JSON obje
         .execute(pool).await?;
     }
 
-    // ── 5b. DALL-E 3 mood board generation ───────────────────────────────────
-    let openai_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
-    if !openai_key.is_empty() {
-        #[derive(sqlx::FromRow)]
-        struct ProfileSnap {
-            primary_color: String,
-            accent_color: Option<String>,
-            brand_archetype: Option<String>,
-            brand_voice: Option<String>,
-            industry: Option<String>,
-            market_position: Option<String>,
-            tagline: Option<String>,
-        }
-        if let Ok(Some(snap)) = sqlx::query_as::<_, ProfileSnap>(
-            "SELECT primary_color, accent_color, brand_archetype, brand_voice, industry, market_position, tagline FROM organization_brand_profiles WHERE organization_id = ?"
-        ).bind(org_id.to_string()).fetch_optional(pool).await {
-            let archetype = snap.brand_archetype.as_deref().unwrap_or("Ruler");
-            let voice = snap.brand_voice.as_deref().unwrap_or("authoritative");
-            let industry = snap.industry.as_deref().unwrap_or("creative agency");
-            let position = snap.market_position.as_deref().unwrap_or("premium");
-            let tagline_hint = snap.tagline.as_deref().unwrap_or("");
-            let primary = &snap.primary_color;
-            let accent = snap.accent_color.as_deref().unwrap_or("#C0A050");
-            let founder = final_data["founder_name"].as_str().unwrap_or("");
-            let clients = final_data["key_clients_mentioned"].as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str()).take(3).collect::<Vec<_>>().join(", "))
-                .unwrap_or_default();
+    // ── 5b. DALL-E 3 mood board generation via PCG Router (ImageGenService) ────
+    #[derive(sqlx::FromRow)]
+    struct ProfileSnap {
+        primary_color: String,
+        accent_color: Option<String>,
+        brand_archetype: Option<String>,
+        brand_voice: Option<String>,
+        industry: Option<String>,
+        market_position: Option<String>,
+        tagline: Option<String>,
+    }
+    if let Ok(Some(snap)) = sqlx::query_as::<_, ProfileSnap>(
+        "SELECT primary_color, accent_color, brand_archetype, brand_voice, industry, market_position, tagline FROM organization_brand_profiles WHERE organization_id = ?"
+    ).bind(org_id.to_string()).fetch_optional(pool).await {
+        let archetype = snap.brand_archetype.as_deref().unwrap_or("Ruler");
+        let voice = snap.brand_voice.as_deref().unwrap_or("authoritative");
+        let industry = snap.industry.as_deref().unwrap_or("creative agency");
+        let position = snap.market_position.as_deref().unwrap_or("premium");
+        let tagline_hint = snap.tagline.as_deref().unwrap_or("");
+        let primary = &snap.primary_color;
+        let accent = snap.accent_color.as_deref().unwrap_or("#C0A050");
+        let founder = final_data["founder_name"].as_str().unwrap_or("");
+        let clients = final_data["key_clients_mentioned"].as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_str()).take(3).collect::<Vec<_>>().join(", "))
+            .unwrap_or_default();
 
-            let prompt1 = format!(
-                "Ultra-premium editorial brand mood board for '{name}', a {position} {industry}. Archetype: {archetype}. Voice: {voice}. \
-                Colors: {primary} and {accent} gold metallic. \
-                Visual: sophisticated dark luxury aesthetic, editorial typography, high-end creative production studio, \
-                international events and galas, elite professionals at work, geometric brand patterns. \
-                Photographic collage, 16:9, ultra high-end art direction. No text.",
-                name=org_name, position=position, industry=industry, archetype=archetype,
-                voice=voice, primary=primary, accent=accent
-            );
-            let prompt2 = format!(
-                "Premium brand collateral showcase for '{name}'. '{tagline}' \
-                Colors: {primary} and {accent}. \
-                Business cards with embossed foil, premium letterhead, branded notebooks, roll-up banners at a conference, \
-                branded merchandise on dark surface. {clients_hint} \
-                {voice} {position} energy. Dark moody studio photography, selective lighting.",
-                name=org_name, tagline=tagline_hint, primary=primary, accent=accent,
-                clients_hint=if clients.is_empty() { String::new() } else { format!("Clients like {}.", clients) },
-                voice=voice, position=position
-            );
+        let prompt1 = format!(
+            "Ultra-premium editorial brand mood board for '{name}', a {position} {industry}. Archetype: {archetype}. Voice: {voice}. \
+            Colors: {primary} and {accent} gold metallic. \
+            Visual: sophisticated dark luxury aesthetic, editorial typography, high-end creative production studio, \
+            international events and galas, elite professionals at work, geometric brand patterns. \
+            Photographic collage, 16:9, ultra high-end art direction. No text.",
+            name=org_name, position=position, industry=industry, archetype=archetype,
+            voice=voice, primary=primary, accent=accent
+        );
+        let prompt2 = format!(
+            "Premium brand collateral showcase for '{name}'. '{tagline}' \
+            Colors: {primary} and {accent}. \
+            Business cards with embossed foil, premium letterhead, branded notebooks, roll-up banners at a conference, \
+            branded merchandise on dark surface. {clients_hint} \
+            {voice} {position} energy. Dark moody studio photography, selective lighting.",
+            name=org_name, tagline=tagline_hint, primary=primary, accent=accent,
+            clients_hint=if clients.is_empty() { String::new() } else { format!("Clients like {}.", clients) },
+            voice=voice, position=position
+        );
 
-            let mut mood_urls: Vec<String> = vec![];
-            for prompt in [prompt1, prompt2] {
-                if let Ok(r) = client
-                    .post("https://api.openai.com/v1/images/generations")
-                    .bearer_auth(&openai_key)
-                    .json(&json!({"model":"dall-e-3","prompt":prompt,"quality":"hd","size":"1792x1024","style":"vivid","n":1}))
-                    .timeout(std::time::Duration::from_secs(60))
-                    .send().await
-                {
-                    if let Ok(j) = r.json::<serde_json::Value>().await {
-                        if let Some(url) = j["data"][0]["url"].as_str() {
-                            mood_urls.push(url.to_string());
-                        } else if let Some(err) = j["error"]["message"].as_str() {
-                            tracing::warn!("[BRAND_RESEARCH] DALL-E: {}", err);
-                        }
-                    }
+        let mut mood_urls: Vec<String> = vec![];
+        for prompt in [prompt1, prompt2] {
+            match ImageGenService::generate_image(
+                pool,
+                &prompt,
+                ImageSize::Size1792x1024,
+                ImageQuality::Hd,
+                ImageStyle::Vivid,
+            )
+            .await
+            {
+                Ok((result, metadata)) => {
+                    tracing::info!(
+                        model = %metadata.model_used,
+                        provider = %metadata.provider,
+                        cost_micros = ?metadata.estimated_cost_micros,
+                        "[BRAND_RESEARCH] Mood board image generated"
+                    );
+                    mood_urls.push(result.url);
+                }
+                Err(e) => {
+                    tracing::warn!("[BRAND_RESEARCH] DALL-E generation failed: {}", e);
                 }
             }
-            if !mood_urls.is_empty() {
-                let photo_notes = format!(
-                    "{} and {} gold palette. {} archetype. {} market. Founder: {}. Photography: selective lighting, editorial composition, luxury texture.",
-                    primary, accent, archetype, position,
-                    if founder.is_empty() { "Unknown" } else { founder }
-                );
-                let _ = sqlx::query(
-                    "UPDATE organization_brand_profiles SET mood_board_urls=?, brand_photography_notes=? WHERE organization_id=?"
-                )
-                .bind(serde_json::to_string(&mood_urls).unwrap_or_default())
-                .bind(photo_notes)
-                .bind(org_id.to_string())
-                .execute(pool).await;
-                tracing::info!("[BRAND_RESEARCH] {} mood board images generated", mood_urls.len());
-            }
         }
-    } else {
-        tracing::info!("[BRAND_RESEARCH] OPENAI_API_KEY not set — skipping mood board generation");
+        if !mood_urls.is_empty() {
+            let photo_notes = format!(
+                "{} and {} gold palette. {} archetype. {} market. Founder: {}. Photography: selective lighting, editorial composition, luxury texture.",
+                primary, accent, archetype, position,
+                if founder.is_empty() { "Unknown" } else { founder }
+            );
+            let _ = sqlx::query(
+                "UPDATE organization_brand_profiles SET mood_board_urls=?, brand_photography_notes=? WHERE organization_id=?"
+            )
+            .bind(serde_json::to_string(&mood_urls).unwrap_or_default())
+            .bind(photo_notes)
+            .bind(org_id.to_string())
+            .execute(pool).await;
+            tracing::info!("[BRAND_RESEARCH] {} mood board images generated", mood_urls.len());
+        }
     }
 
     // ── 6. Store research as deduplicated data source ─────────────────────────

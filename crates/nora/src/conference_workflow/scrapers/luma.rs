@@ -2,12 +2,15 @@
 //!
 //! Discovers events from Lu.ma (lu.ma) platform using web search + LLM analysis
 
+use std::sync::Arc;
+
 use chrono::NaiveDate;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 
-use crate::execution::research::ResearchTools;
 use super::{calculate_relevance, ScrapedEvent, ScraperError};
+use crate::execution::research::ResearchTools;
 
 /// Lu.ma event scraper
 pub struct LumaScraper {
@@ -16,6 +19,15 @@ pub struct LumaScraper {
 }
 
 impl LumaScraper {
+    /// Create a LumaScraper with PCG Router support for LLM analysis.
+    pub fn with_pool(pool: Arc<SqlitePool>) -> Self {
+        Self {
+            client: Client::new(),
+            research_tools: ResearchTools::with_pool(pool),
+        }
+    }
+
+    /// Create a LumaScraper without pool (legacy mode, LLM analysis will fail).
     pub fn new() -> Self {
         Self {
             client: Client::new(),
@@ -41,16 +53,29 @@ impl LumaScraper {
 
         // Step 1: Web search for Lu.ma events
         let search_queries = vec![
-            format!("site:lu.ma {} {} {}", conference_name, location, start_date.format("%B %Y")),
+            format!(
+                "site:lu.ma {} {} {}",
+                conference_name,
+                location,
+                start_date.format("%B %Y")
+            ),
             format!("site:lu.ma {} side event afterparty", conference_name),
-            format!("lu.ma {} {} networking", location, start_date.format("%B %Y")),
+            format!(
+                "lu.ma {} {} networking",
+                location,
+                start_date.format("%B %Y")
+            ),
         ];
 
         let mut all_search_results = Vec::new();
         for query in &search_queries {
             match self.research_tools.web_search(query, 10).await {
                 Ok(results) => {
-                    tracing::debug!("[LUMA_SCRAPER] Found {} results for: {}", results.len(), query);
+                    tracing::debug!(
+                        "[LUMA_SCRAPER] Found {} results for: {}",
+                        results.len(),
+                        query
+                    );
                     all_search_results.extend(results);
                 }
                 Err(e) => {
@@ -110,14 +135,13 @@ Return ONLY a valid JSON array, no markdown formatting. If no events are found, 
 {}
 
 Extract all events and return as JSON array."#,
-            conference_name,
-            location,
-            start_date,
-            end_date,
-            search_context
+            conference_name, location, start_date, end_date, search_context
         );
 
-        let response = self.research_tools.research_llm(system_prompt, &user_prompt).await
+        let response = self
+            .research_tools
+            .research_llm(system_prompt, &user_prompt)
+            .await
             .map_err(|e| ScraperError::ApiError(format!("LLM analysis failed: {}", e)))?;
 
         // Step 3: Parse LLM response

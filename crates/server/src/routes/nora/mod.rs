@@ -32,7 +32,7 @@ use nora::{
     memory::{BudgetStatus, ProjectContext, ProjectStatus},
     personality::PersonalityConfig,
     tools::{NoraExecutiveTool, ToolExecutionResult},
-    voice::{SpeechResponse, VoiceConfig, VoiceEngine, VoiceError, VoiceInteraction},
+    voice::{SpeechResponse, UnifiedVoiceEngine, VoiceConfig, VoiceError, VoiceInteraction},
     NoraAgent, NoraConfig, NoraError,
 };
 use serde::{Deserialize, Serialize};

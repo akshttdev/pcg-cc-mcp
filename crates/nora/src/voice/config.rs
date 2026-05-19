@@ -282,6 +282,21 @@ pub enum TTSProvider {
     Chatterbox,
 }
 
+impl TTSProvider {
+    /// Returns the provider name as a lowercase string for tracking/logging.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TTSProvider::ElevenLabs => "elevenlabs",
+            TTSProvider::Azure => "azure_speech",
+            TTSProvider::OpenAI => "openai_tts",
+            TTSProvider::System => "system",
+            TTSProvider::Google => "google_tts",
+            TTSProvider::Amazon => "amazon_polly",
+            TTSProvider::Chatterbox => "chatterbox",
+        }
+    }
+}
+
 /// STT provider options
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -292,6 +307,19 @@ pub enum STTProvider {
     Azure,
     Google,
     System,
+}
+
+impl STTProvider {
+    /// Returns the provider name as a lowercase string for tracking/logging.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            STTProvider::Whisper => "openai_whisper",
+            STTProvider::LocalWhisper => "local_whisper",
+            STTProvider::Azure => "azure_speech",
+            STTProvider::Google => "google_stt",
+            STTProvider::System => "system",
+        }
+    }
 }
 
 /// TTS quality levels

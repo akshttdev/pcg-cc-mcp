@@ -44,6 +44,17 @@ pub trait SpeechToText {
 }
 
 /// Whisper STT implementation (adapted from voice-agent-v2)
+///
+/// **DEPRECATED**: Use [`WorkflowSTTService`](services::services::workflow_stt::WorkflowSTTService)
+/// or [`PCGRouterVoiceEngine`](super::PCGRouterVoiceEngine) instead, which provide:
+/// - Database-driven provider selection via `pcg_router_stt_providers` table
+/// - Automatic fallback across providers based on priority
+/// - Cost tracking via `service_usage_log` table
+/// - Centralized API key management
+#[deprecated(
+    since = "0.0.97",
+    note = "Use WorkflowSTTService or PCGRouterVoiceEngine for database-driven provider routing and cost tracking"
+)]
 #[derive(Debug)]
 pub struct WhisperSTT {
     config: STTConfig,
@@ -289,6 +300,17 @@ impl WhisperSTT {
 }
 
 /// Azure STT implementation
+///
+/// **DEPRECATED**: Use [`WorkflowSTTService`](services::services::workflow_stt::WorkflowSTTService)
+/// or [`PCGRouterVoiceEngine`](super::PCGRouterVoiceEngine) instead, which provide:
+/// - Database-driven provider selection via `pcg_router_stt_providers` table
+/// - Automatic fallback across providers based on priority
+/// - Cost tracking via `service_usage_log` table
+/// - Centralized API key management
+#[deprecated(
+    since = "0.0.97",
+    note = "Use WorkflowSTTService or PCGRouterVoiceEngine for database-driven provider routing and cost tracking"
+)]
 #[derive(Debug)]
 pub struct AzureSTT {
     config: STTConfig,

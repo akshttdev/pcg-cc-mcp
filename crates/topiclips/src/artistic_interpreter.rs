@@ -2,12 +2,15 @@
 //!
 //! Translates data stories into surreal visual prompts using an LLM
 //! to generate creative, artistic interpretations of topology events.
+//!
+//! Uses PCG Router (WorkflowLLMService) for unified cost tracking and provider selection.
 
 use anyhow::{anyhow, Result};
 use db::models::topiclip::TopiClipCapturedEvent;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
+use sqlx::SqlitePool;
 
 use crate::story_extractor::NarrativeStory;
 
@@ -25,50 +28,87 @@ pub struct ArtisticInterpretation {
 }
 
 /// Artistic interpreter using LLM for creative prompt generation
+///
+/// Routes LLM calls through PCG Router (WorkflowLLMService) for
+/// unified cost tracking and automatic provider fallback.
+#[derive(Debug, Clone)]
 pub struct ArtisticInterpreter {
-    client: Client,
-    endpoint: String,
-    api_key: Option<String>,
-    model: String,
+    /// Optional model hint for provider selection
+    model_hint: Option<String>,
+    /// Temperature for creative generation (higher = more creative)
     temperature: f64,
 }
 
+impl Default for ArtisticInterpreter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ArtisticInterpreter {
-    pub fn new(
-        endpoint: String,
-        api_key: Option<String>,
+    /// Create a new interpreter with default settings.
+    ///
+    /// Uses PCG Router for model selection based on database configuration.
+    pub fn new() -> Self {
+        Self {
+            model_hint: None,
+            temperature: 0.8,
+        }
+    }
+
+    /// Create an interpreter with a specific model preference.
+    pub fn with_model(model: impl Into<String>) -> Self {
+        Self {
+            model_hint: Some(model.into()),
+            temperature: 0.8,
+        }
+    }
+
+    /// Create an interpreter with custom temperature.
+    pub fn with_temperature(mut self, temperature: f64) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    /// Legacy constructor for backwards compatibility.
+    ///
+    /// The endpoint and api_key parameters are ignored - all LLM calls
+    /// now route through PCG Router which manages credentials centrally.
+    #[deprecated(note = "Use ArtisticInterpreter::new() or with_model() instead")]
+    pub fn new_legacy(
+        _endpoint: String,
+        _api_key: Option<String>,
         model: String,
         temperature: f64,
     ) -> Self {
         Self {
-            client: Client::new(),
-            endpoint,
-            api_key,
-            model,
+            model_hint: Some(model),
             temperature,
         }
     }
 
-    /// Interpret a narrative story and captured events into artistic prompts
+    /// Interpret a narrative story and captured events into artistic prompts.
+    ///
+    /// Routes LLM call through PCG Router for unified cost tracking.
+    /// Falls back to template-based generation if no LLM models are configured.
     pub async fn interpret(
         &self,
+        pool: &SqlitePool,
         story: &NarrativeStory,
         events: &[TopiClipCapturedEvent],
     ) -> Result<ArtisticInterpretation> {
-        // If no API key, use fallback generation
-        if self.api_key.is_none() {
-            return Ok(self.fallback_interpret(story, events));
-        }
-
         // Build the LLM prompt
         let system_prompt = self.build_system_prompt();
         let user_prompt = self.build_user_prompt(story, events);
 
-        // Call the LLM
-        let response = self.call_llm(&system_prompt, &user_prompt).await?;
-
-        // Parse the response
-        self.parse_llm_response(&response, story, events)
+        // Call the LLM through PCG Router
+        match self.call_llm(pool, &system_prompt, &user_prompt).await {
+            Ok(response) => self.parse_llm_response(&response, story, events),
+            Err(e) => {
+                tracing::warn!("LLM call failed, using fallback interpretation: {}", e);
+                Ok(self.fallback_interpret(story, events))
+            }
+        }
     }
 
     fn build_system_prompt(&self) -> String {
@@ -95,7 +135,11 @@ Style guidelines:
 - Cinematic composition suitable for 4-second clips"#.to_string()
     }
 
-    fn build_user_prompt(&self, story: &NarrativeStory, events: &[TopiClipCapturedEvent]) -> String {
+    fn build_user_prompt(
+        &self,
+        story: &NarrativeStory,
+        events: &[TopiClipCapturedEvent],
+    ) -> String {
         let mut prompt = format!(
             r#"Create an artistic prompt for the following topology story:
 
@@ -115,7 +159,11 @@ Style guidelines:
                 .as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or("Unknown");
-            let symbol_prompt = event.symbol_prompt.as_ref().map(|s| s.as_str()).unwrap_or("");
+            let symbol_prompt = event
+                .symbol_prompt
+                .as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or("");
 
             prompt.push_str(&format!(
                 "- {} (Symbol: {}) - Base visual: {}\n",
@@ -131,48 +179,45 @@ Synthesize these symbols into a single cohesive 4-second video scene that captur
         prompt
     }
 
-    async fn call_llm(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
-        let api_key = self
-            .api_key
-            .as_ref()
-            .ok_or_else(|| anyhow!("API key not configured"))?;
+    /// Call LLM through PCG Router (WorkflowLLMService).
+    ///
+    /// Routes to the appropriate provider based on database configuration,
+    /// with automatic fallback and unified cost tracking.
+    async fn call_llm(
+        &self,
+        pool: &SqlitePool,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<String> {
+        let messages = vec![
+            json!({ "role": "system", "content": system_prompt }),
+            json!({ "role": "user", "content": user_prompt }),
+        ];
 
-        let payload = json!({
-            "model": self.model,
-            "max_tokens": 1024,
-            "temperature": self.temperature,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-        });
+        let (response, metadata) = WorkflowLLMService::completion(
+            pool,
+            messages,
+            self.model_hint.as_deref(),
+            Some(1024),
+            Some(self.temperature),
+        )
+        .await?;
 
-        let response = self
-            .client
-            .post(&self.endpoint)
-            .header("x-api-key", api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&payload)
-            .send()
-            .await?;
+        tracing::info!(
+            model = %metadata.model_used,
+            provider = %metadata.provider,
+            input_tokens = ?metadata.input_tokens,
+            output_tokens = ?metadata.output_tokens,
+            cost_micros = ?metadata.estimated_cost_micros,
+            "[ARTISTIC_INTERPRETER] LLM call completed"
+        );
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(anyhow!("LLM API error {}: {}", status, text));
+        match response {
+            LLMResponse::Text { content, .. } => Ok(content),
+            LLMResponse::ToolCalls { .. } => {
+                Err(anyhow!("Unexpected tool calls in artistic interpretation"))
+            }
         }
-
-        let response_json: Value = response.json().await?;
-
-        // Extract content from Claude's response format
-        let content = response_json["content"]
-            .as_array()
-            .and_then(|arr| arr.first())
-            .and_then(|c| c["text"].as_str())
-            .ok_or_else(|| anyhow!("Invalid LLM response format"))?;
-
-        Ok(content.to_string())
     }
 
     fn parse_llm_response(
@@ -183,10 +228,7 @@ Synthesize these symbols into a single cohesive 4-second video scene that captur
     ) -> Result<ArtisticInterpretation> {
         // Try to parse as JSON
         if let Ok(parsed) = serde_json::from_str::<Value>(response) {
-            let artistic_prompt = parsed["artistic_prompt"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
+            let artistic_prompt = parsed["artistic_prompt"].as_str().unwrap_or("").to_string();
             let negative_prompt = parsed["negative_prompt"]
                 .as_str()
                 .unwrap_or("lowres, blurry, text, watermark, distorted")
@@ -208,10 +250,8 @@ Synthesize these symbols into a single cohesive 4-second video scene that captur
             if let Some(end) = response.rfind('}') {
                 let json_str = &response[start..=end];
                 if let Ok(parsed) = serde_json::from_str::<Value>(json_str) {
-                    let artistic_prompt = parsed["artistic_prompt"]
-                        .as_str()
-                        .unwrap_or("")
-                        .to_string();
+                    let artistic_prompt =
+                        parsed["artistic_prompt"].as_str().unwrap_or("").to_string();
                     let negative_prompt = parsed["negative_prompt"]
                         .as_str()
                         .unwrap_or("lowres, blurry, text, watermark, distorted")
@@ -319,11 +359,12 @@ Synthesize these symbols into a single cohesive 4-second video scene that captur
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use chrono::Utc;
     use serde_json::json;
     use sqlx::types::Json;
     use uuid::Uuid;
+
+    use super::*;
 
     fn create_test_story() -> NarrativeStory {
         NarrativeStory {
@@ -355,12 +396,7 @@ mod tests {
 
     #[test]
     fn test_fallback_interpret() {
-        let interpreter = ArtisticInterpreter::new(
-            "https://api.anthropic.com/v1/messages".to_string(),
-            None,
-            "claude-sonnet-4-20250514".to_string(),
-            0.8,
-        );
+        let interpreter = ArtisticInterpreter::new();
 
         let story = create_test_story();
         let events = create_test_events();
@@ -374,15 +410,25 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt() {
-        let interpreter = ArtisticInterpreter::new(
-            "test".to_string(),
-            None,
-            "test".to_string(),
-            0.8,
-        );
+        let interpreter = ArtisticInterpreter::new();
 
         let prompt = interpreter.build_system_prompt();
         assert!(prompt.contains("Beeple"));
         assert!(prompt.contains("surreal"));
+    }
+
+    #[test]
+    fn test_with_model() {
+        let interpreter = ArtisticInterpreter::with_model("claude-sonnet-4-20250514");
+        assert_eq!(
+            interpreter.model_hint,
+            Some("claude-sonnet-4-20250514".to_string())
+        );
+    }
+
+    #[test]
+    fn test_with_temperature() {
+        let interpreter = ArtisticInterpreter::new().with_temperature(0.9);
+        assert!((interpreter.temperature - 0.9).abs() < f64::EPSILON);
     }
 }

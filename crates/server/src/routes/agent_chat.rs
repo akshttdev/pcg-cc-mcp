@@ -20,7 +20,9 @@ use db::models::{
 use deployment::Deployment;
 use futures::stream::Stream;
 use nora::{
-    brain::{create_client_for_agent, ConversationMessage, LLMResponse, ToolCall, ToolResult},
+    brain::{
+        create_client_for_agent_with_pool, ConversationMessage, LLMResponse, ToolCall, ToolResult,
+    },
     tools::ExecutiveTools,
     ProjectScopedContext,
 };
@@ -204,7 +206,8 @@ pub async fn agent_chat(
     } else {
         agent.clone()
     };
-    let llm = create_client_for_agent(&agent_for_llm);
+    // Use PCG Router for cost tracking and provider fallback
+    let llm = create_client_for_agent_with_pool(&agent_for_llm, std::sync::Arc::new(pool.clone()));
 
     // Load project-scoped context if project is specified
     let project_context = if let Some(project_id) = request.project_id {
@@ -543,8 +546,8 @@ pub async fn agent_chat_stream(
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to save user message: {}", e)))?;
 
-    // Create LLM client for this agent
-    let llm = create_client_for_agent(&agent);
+    // Create LLM client for this agent using PCG Router for cost tracking
+    let llm = create_client_for_agent_with_pool(&agent, std::sync::Arc::new(pool.clone()));
 
     // Load project-scoped context if project is specified
     let project_context = if let Some(project_id) = request.project_id {

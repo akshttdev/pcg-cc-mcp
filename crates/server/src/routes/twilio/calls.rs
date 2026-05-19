@@ -733,7 +733,9 @@ pub async fn handle_speech_input(
     };
 
     // Process through NORA to get response text
+    let pool = &deployment.db().pool;
     let (nora_response_raw, input_tokens, output_tokens) = match process_with_nora(
+        pool,
         &speech_text,
         &session_id,
         Some(phone_context),

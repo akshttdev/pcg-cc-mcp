@@ -39,6 +39,7 @@ pub mod premiere_xml;
 pub mod proxy;
 pub mod scene_detection;
 pub mod soundstripe;
+pub mod tracking;
 pub mod transitions;
 // visual_qc lives as a standalone module at services::services::visual_qc
 
@@ -73,6 +74,7 @@ use serde::{Deserialize, Serialize};
 pub use soundstripe::{SoundstripeClient, SoundstripeConfig, SoundstripeError};
 use thiserror::Error;
 use tokio::sync::RwLock;
+pub use tracking::UsageTracker;
 pub use transitions::{
     EasingCurve, Transition, TransitionCategory, TransitionEngine, TransitionPreset,
 };
@@ -1385,6 +1387,73 @@ impl EditronService {
         Ok(track)
     }
 
+    /// Get download URL for a Soundstripe track
+    ///
+    /// Soundstripe embeds the download URL in the track's preview_url field
+    /// (extracted from the audio_files included resources).
+    pub async fn get_soundstripe_download_url(&self, track_id: &str) -> EditronResult<String> {
+        let track = self.get_soundstripe_track(track_id).await?;
+        track.preview_url.ok_or_else(|| {
+            EditronError::Process(format!(
+                "No download URL available for Soundstripe track {}",
+                track_id
+            ))
+        })
+    }
+
+    /// Download a Soundstripe track to local storage
+    pub async fn download_soundstripe_track(
+        &self,
+        track_id: &str,
+        filename: Option<&str>,
+    ) -> EditronResult<PathBuf> {
+        let download_url = self.get_soundstripe_download_url(track_id).await?;
+        let track = self.get_soundstripe_track(track_id).await?;
+
+        let music_dir = self.work_dir.join("music").join("soundstripe");
+        tokio::fs::create_dir_all(&music_dir).await?;
+
+        let safe_filename = filename.map(|f| f.to_string()).unwrap_or_else(|| {
+            let safe_title = track
+                .title
+                .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+            let safe_artist = track
+                .artist
+                .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+            format!("{} - {}.mp3", safe_artist, safe_title)
+        });
+
+        let output_path = music_dir.join(&safe_filename);
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&download_url)
+            .send()
+            .await
+            .map_err(|e| EditronError::Process(format!("Download failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(EditronError::Process(format!(
+                "Download failed with status: {}",
+                response.status()
+            )));
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| EditronError::Process(format!("Failed to read download: {}", e)))?;
+
+        tokio::fs::write(&output_path, bytes).await?;
+
+        let mut local_track = track;
+        local_track.local_path = Some(output_path.clone());
+        local_track.license.download_date = Some(chrono::Utc::now());
+        self.register_music_track(local_track).await;
+
+        Ok(output_path)
+    }
+
     /// Search across all configured music platforms
     pub async fn search_all_platforms(
         &self,
@@ -1462,5 +1531,246 @@ impl EditronService {
     /// Get a reference to the Visual QC engine
     pub fn visual_qc_engine(&self) -> &VisualQcEngine {
         &self.visual_qc
+    }
+
+    // ============ TRACKED MUSIC OPERATIONS ============
+    // These methods wrap the underlying music operations with usage logging
+    // for cost tracking and auditing. Use these when a database pool is available.
+
+    /// Search Artlist with usage tracking
+    pub async fn search_artlist_tracked(
+        &self,
+        pool: &sqlx::SqlitePool,
+        criteria: &MusicSearchCriteria,
+        page: u32,
+        per_page: u32,
+    ) -> EditronResult<Vec<MusicTrack>> {
+        let start = std::time::Instant::now();
+        let result = self.search_artlist(criteria, page, per_page).await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        UsageTracker::log_music_operation(
+            pool,
+            "artlist",
+            "search",
+            Some(per_page as i64),
+            result.as_ref().map(|r| r.len() as i64).ok(),
+            duration_ms,
+            result.is_ok(),
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+            Some(serde_json::json!({
+                "query": criteria.query,
+                "genres": criteria.genres.iter().map(|g| format!("{:?}", g)).collect::<Vec<_>>(),
+                "moods": criteria.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
+                "page": page,
+            })),
+        )
+        .await;
+
+        result
+    }
+
+    /// Search Epidemic Sound with usage tracking
+    pub async fn search_epidemic_tracked(
+        &self,
+        pool: &sqlx::SqlitePool,
+        criteria: &MusicSearchCriteria,
+        page: u32,
+        per_page: u32,
+    ) -> EditronResult<Vec<MusicTrack>> {
+        let start = std::time::Instant::now();
+        let result = self.search_epidemic(criteria, page, per_page).await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        UsageTracker::log_music_operation(
+            pool,
+            "epidemic",
+            "search",
+            Some(per_page as i64),
+            result.as_ref().map(|r| r.len() as i64).ok(),
+            duration_ms,
+            result.is_ok(),
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+            Some(serde_json::json!({
+                "query": criteria.query,
+                "genres": criteria.genres.iter().map(|g| format!("{:?}", g)).collect::<Vec<_>>(),
+                "moods": criteria.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
+                "page": page,
+            })),
+        )
+        .await;
+
+        result
+    }
+
+    /// Search Soundstripe with usage tracking
+    pub async fn search_soundstripe_tracked(
+        &self,
+        pool: &sqlx::SqlitePool,
+        criteria: &MusicSearchCriteria,
+        page: u32,
+        per_page: u32,
+    ) -> EditronResult<Vec<MusicTrack>> {
+        let start = std::time::Instant::now();
+        let result = self.search_soundstripe(criteria, page, per_page).await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        UsageTracker::log_music_operation(
+            pool,
+            "soundstripe",
+            "search",
+            Some(per_page as i64),
+            result.as_ref().map(|r| r.len() as i64).ok(),
+            duration_ms,
+            result.is_ok(),
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+            Some(serde_json::json!({
+                "query": criteria.query,
+                "genres": criteria.genres.iter().map(|g| format!("{:?}", g)).collect::<Vec<_>>(),
+                "moods": criteria.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
+                "page": page,
+            })),
+        )
+        .await;
+
+        result
+    }
+
+    /// Download Artlist track with usage tracking
+    pub async fn download_artlist_track_tracked(
+        &self,
+        pool: &sqlx::SqlitePool,
+        track_id: &str,
+        filename: Option<&str>,
+    ) -> EditronResult<PathBuf> {
+        let start = std::time::Instant::now();
+        let result = self.download_artlist_track(track_id, filename).await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        UsageTracker::log_music_operation(
+            pool,
+            "artlist",
+            "download",
+            None,
+            Some(1), // One track downloaded
+            duration_ms,
+            result.is_ok(),
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+            Some(serde_json::json!({
+                "track_id": track_id,
+            })),
+        )
+        .await;
+
+        result
+    }
+
+    /// Download Epidemic Sound track with usage tracking
+    pub async fn download_epidemic_track_tracked(
+        &self,
+        pool: &sqlx::SqlitePool,
+        track_id: &str,
+        filename: Option<&str>,
+    ) -> EditronResult<PathBuf> {
+        let start = std::time::Instant::now();
+        let result = self.download_epidemic_track(track_id, filename).await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        UsageTracker::log_music_operation(
+            pool,
+            "epidemic",
+            "download",
+            None,
+            Some(1), // One track downloaded
+            duration_ms,
+            result.is_ok(),
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+            Some(serde_json::json!({
+                "track_id": track_id,
+            })),
+        )
+        .await;
+
+        result
+    }
+
+    /// Download Soundstripe track with usage tracking
+    pub async fn download_soundstripe_track_tracked(
+        &self,
+        pool: &sqlx::SqlitePool,
+        track_id: &str,
+        filename: Option<&str>,
+    ) -> EditronResult<PathBuf> {
+        let start = std::time::Instant::now();
+        let result = self.download_soundstripe_track(track_id, filename).await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        UsageTracker::log_music_operation(
+            pool,
+            "soundstripe",
+            "download",
+            None,
+            Some(1), // One track downloaded
+            duration_ms,
+            result.is_ok(),
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+            Some(serde_json::json!({
+                "track_id": track_id,
+            })),
+        )
+        .await;
+
+        result
+    }
+
+    /// Search all platforms with usage tracking
+    pub async fn search_all_platforms_tracked(
+        &self,
+        pool: &sqlx::SqlitePool,
+        criteria: &MusicSearchCriteria,
+    ) -> EditronResult<Vec<MusicTrack>> {
+        let start = std::time::Instant::now();
+        let mut all_tracks = Vec::new();
+
+        // Search local library first (no tracking needed)
+        let local_tracks = self.search_local_music(criteria).await;
+        all_tracks.extend(local_tracks);
+
+        // Search each platform with individual tracking
+        if self.artlist_available().await {
+            match self.search_artlist_tracked(pool, criteria, 1, 20).await {
+                Ok(tracks) => all_tracks.extend(tracks),
+                Err(e) => {
+                    tracing::warn!("Artlist search failed: {}", e);
+                }
+            }
+        }
+
+        if self.epidemic_available().await {
+            match self.search_epidemic_tracked(pool, criteria, 1, 20).await {
+                Ok(tracks) => all_tracks.extend(tracks),
+                Err(e) => {
+                    tracing::warn!("Epidemic Sound search failed: {}", e);
+                }
+            }
+        }
+
+        if self.soundstripe_available().await {
+            match self.search_soundstripe_tracked(pool, criteria, 1, 20).await {
+                Ok(tracks) => all_tracks.extend(tracks),
+                Err(e) => {
+                    tracing::warn!("Soundstripe search failed: {}", e);
+                }
+            }
+        }
+
+        let duration_ms = start.elapsed().as_millis() as i64;
+        tracing::info!(
+            duration_ms = duration_ms,
+            total_tracks = all_tracks.len(),
+            "Music search across all platforms completed"
+        );
+
+        Ok(all_tracks)
     }
 }

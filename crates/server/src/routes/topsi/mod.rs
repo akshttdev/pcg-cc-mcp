@@ -26,7 +26,7 @@ use db::models::{
 use deployment::Deployment;
 use executors::{executors::BaseCodingAgent, profile::ExecutorProfileId};
 // Import voice types from Nora
-use nora::voice::{AudioFormat, SpeechResponse, VoiceConfig, VoiceEngine};
+use nora::voice::{AudioFormat, PCGRouterVoiceEngine, SpeechResponse, VoiceConfig, VoiceEngine};
 use serde::{Deserialize, Serialize};
 use services::services::container::ContainerService;
 use sqlx;
@@ -227,7 +227,8 @@ pub(crate) static TOPSI_INSTANCE: tokio::sync::OnceCell<Arc<RwLock<Option<TopsiA
 pub(crate) static TOPSI_INIT_TIME: tokio::sync::OnceCell<DateTime<Utc>> =
     tokio::sync::OnceCell::const_new();
 
-/// Global voice engine instance for Topsi
+/// Global voice engine instance for Topsi (legacy, kept for fallback)
+#[allow(dead_code)]
 pub(crate) static TOPSI_VOICE_ENGINE: tokio::sync::OnceCell<Arc<RwLock<Option<VoiceEngine>>>> =
     tokio::sync::OnceCell::const_new();
 

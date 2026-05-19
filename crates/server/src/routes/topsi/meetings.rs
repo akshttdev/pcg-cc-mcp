@@ -1,7 +1,7 @@
 //! Meeting-related handlers for Topsi
 
 use super::{
-    voice::{get_or_init_voice_engine, sanitize_text_for_tts},
+    voice::{get_pcg_router_voice_engine, sanitize_text_for_tts},
     *,
 };
 
@@ -510,24 +510,15 @@ pub async fn meeting_audio_chunk(
     let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
     let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
-    // Step 1: Transcribe the audio using voice engine
+    // Step 1: Transcribe the audio using PCG Router voice engine
     let transcribed_text = {
-        let engine_result = get_or_init_voice_engine().await;
-        if let Ok(engine_lock) = engine_result {
-            let engine_guard = engine_lock.read().await;
-            if let Some(engine) = engine_guard.as_ref() {
-                match engine.transcribe_speech(&request.audio_data).await {
-                    Ok(text) => text,
-                    Err(e) => {
-                        tracing::warn!("Meeting transcription failed, using empty: {}", e);
-                        String::new()
-                    }
-                }
-            } else {
+        let engine = get_pcg_router_voice_engine(&state.db().pool);
+        match engine.transcribe_speech(&request.audio_data).await {
+            Ok(text) => text,
+            Err(e) => {
+                tracing::warn!("Meeting transcription failed, using empty: {}", e);
                 String::new()
             }
-        } else {
-            String::new()
         }
     };
 
@@ -569,26 +560,17 @@ pub async fn meeting_audio_chunk(
         .as_str()
         .map(|s| s.to_string());
 
-    // Step 3: If Topsi responded, synthesize audio response
+    // Step 3: If Topsi responded, synthesize audio response using PCG Router
     let topsi_audio = if let Some(ref response_text) = topsi_response_text {
-        let engine_result = get_or_init_voice_engine().await;
-        if let Ok(engine_lock) = engine_result {
-            let engine_guard = engine_lock.read().await;
-            if let Some(engine) = engine_guard.as_ref() {
-                let tts_text = sanitize_text_for_tts(response_text);
-                if !tts_text.is_empty() {
-                    match engine.synthesize_speech(&tts_text).await {
-                        Ok(audio) => Some(audio),
-                        Err(e) => {
-                            tracing::warn!("Failed to synthesize meeting response: {}", e);
-                            None
-                        }
-                    }
-                } else {
+        let engine = get_pcg_router_voice_engine(&state.db().pool);
+        let tts_text = sanitize_text_for_tts(response_text);
+        if !tts_text.is_empty() {
+            match engine.synthesize_speech(&tts_text).await {
+                Ok(audio) => Some(audio),
+                Err(e) => {
+                    tracing::warn!("Failed to synthesize meeting response: {}", e);
                     None
                 }
-            } else {
-                None
             }
         } else {
             None
@@ -775,54 +757,43 @@ pub async fn regenerate_meeting_notes(
         .collect::<Vec<_>>()
         .join("\n");
 
-    // Generate notes via Anthropic
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .unwrap_or_default();
+    // Generate notes via PCG Router
+    use services::services::workflow_llm::WorkflowLLMService;
 
-    let notes = if api_key.is_empty() {
-        serde_json::json!({
-            "summary": "Notes regeneration unavailable — no API key configured.",
-            "action_items": [],
-            "key_decisions": []
-        })
-    } else {
-        let client = reqwest::Client::new();
-        let prompt = format!(
-            "You are a meeting notes assistant. Summarize the following meeting transcript into structured notes.\n\nTranscript:\n{}\n\nReturn ONLY a JSON object with keys: summary (string), action_items (array of strings), key_decisions (array of strings), topics_discussed (array of strings).",
-            &transcript_text[..transcript_text.len().min(8000)]
-        );
-        let body = serde_json::json!({
-            "model": "claude-sonnet-4-6",
-            "max_tokens": 1024,
-            "messages": [{"role": "user", "content": prompt}]
-        });
-        match client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => {
-                let val: serde_json::Value = resp.json().await.unwrap_or_default();
-                let text = val
-                    .get("content")
-                    .and_then(|c| c.as_array())
-                    .and_then(|arr| arr.first())
-                    .and_then(|b| b.get("text"))
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("{}");
-                // Try to parse as JSON, fall back to wrapping in summary
-                serde_json::from_str(text).unwrap_or_else(|_| serde_json::json!({"summary": text, "action_items": [], "key_decisions": []}))
-            }
-            _ => serde_json::json!({
+    let prompt = format!(
+        "You are a meeting notes assistant. Summarize the following meeting transcript into structured notes.\n\nTranscript:\n{}\n\nReturn ONLY a JSON object with keys: summary (string), action_items (array of strings), key_decisions (array of strings), topics_discussed (array of strings).",
+        &transcript_text[..transcript_text.len().min(8000)]
+    );
+
+    let messages = vec![WorkflowLLMService::user_message(&prompt)];
+
+    let notes = match WorkflowLLMService::completion(
+        &pool,
+        messages,
+        Some("claude-sonnet-4-6"),
+        Some(1024),
+        None,
+    )
+    .await
+    {
+        Ok((text, metadata)) => {
+            tracing::info!(
+                "[MEETING_NOTES] Routed to {} ({})",
+                metadata.model_used,
+                metadata.provider
+            );
+            // Try to parse as JSON, fall back to wrapping in summary
+            serde_json::from_str(&text).unwrap_or_else(
+                |_| serde_json::json!({"summary": text, "action_items": [], "key_decisions": []}),
+            )
+        }
+        Err(e) => {
+            tracing::warn!("[MEETING_NOTES] LLM error: {}", e);
+            serde_json::json!({
                 "summary": "Notes generation failed — please try again.",
                 "action_items": [],
                 "key_decisions": []
-            }),
+            })
         }
     };
 

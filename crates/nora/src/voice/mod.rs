@@ -45,9 +45,12 @@ pub mod config;
 pub mod diarization;
 pub mod engine;
 // pub mod gateway;  // Not yet implemented
+pub mod pcg_router_engine;
 // pub mod router;  // Not yet implemented
 pub mod stt;
 pub mod tts;
+
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 // pub use channels::{
@@ -57,6 +60,72 @@ use chrono::{DateTime, Utc};
 pub use config::{AudioConfig, STTConfig, STTProvider, TTSConfig, TTSProvider, VoiceConfig};
 pub use diarization::{AlignedWord, DiarizationConfig, DiarizationEngine, DiarizedSegment};
 pub use engine::VoiceEngine;
+pub use pcg_router_engine::PCGRouterVoiceEngine;
+use sqlx::SqlitePool;
+
+/// Unified voice engine that can use either the legacy config-based engine
+/// or the PCG Router database-driven engine.
+///
+/// Prefer using `UnifiedVoiceEngine::from_pool()` when a database pool is available,
+/// as it provides automatic provider fallback, cost tracking, and centralized
+/// API key management.
+pub enum UnifiedVoiceEngine {
+    /// Legacy config-based voice engine (deprecated for new code)
+    Legacy(VoiceEngine),
+    /// PCG Router database-driven voice engine (preferred)
+    Router(PCGRouterVoiceEngine),
+}
+
+impl UnifiedVoiceEngine {
+    /// Create a unified voice engine using the PCG Router (preferred).
+    ///
+    /// This is the recommended constructor when a database pool is available.
+    pub fn from_pool(pool: Arc<SqlitePool>) -> Self {
+        Self::Router(PCGRouterVoiceEngine::new(pool))
+    }
+
+    /// Create a unified voice engine from a legacy VoiceConfig.
+    ///
+    /// Use this only when a database pool is not available.
+    pub async fn from_config(config: VoiceConfig) -> VoiceResult<Self> {
+        Ok(Self::Legacy(VoiceEngine::new(config).await?))
+    }
+
+    /// Synthesize speech from text.
+    pub async fn synthesize_speech(&self, text: &str) -> VoiceResult<String> {
+        match self {
+            Self::Legacy(engine) => engine.synthesize_speech(text).await,
+            Self::Router(engine) => engine.synthesize_speech(text).await,
+        }
+    }
+
+    /// Synthesize speech with format info.
+    pub async fn synthesize_speech_with_format(
+        &self,
+        text: &str,
+    ) -> VoiceResult<(String, AudioFormat)> {
+        match self {
+            Self::Legacy(engine) => engine.synthesize_speech_with_format(text).await,
+            Self::Router(engine) => engine.synthesize_speech_with_format(text).await,
+        }
+    }
+
+    /// Transcribe speech to text.
+    pub async fn transcribe_speech(&self, audio_data: &str) -> VoiceResult<String> {
+        match self {
+            Self::Legacy(engine) => engine.transcribe_speech(audio_data).await,
+            Self::Router(engine) => engine.transcribe_speech(audio_data).await,
+        }
+    }
+
+    /// Check if the engine is ready.
+    pub async fn is_ready(&self) -> bool {
+        match self {
+            Self::Legacy(engine) => engine.is_ready().await,
+            Self::Router(engine) => engine.is_ready(),
+        }
+    }
+}
 // pub use gateway::{
 //     CommandContext, CommandHandler, CommandResponse, ConversationTurn, GatewaySession,
 //     Speaker, VoiceGateway, VoiceGatewayConfig, VoiceGatewayEvent,

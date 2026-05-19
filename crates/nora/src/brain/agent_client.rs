@@ -22,10 +22,13 @@
 //!
 //! All models run locally via Ollama on port 11434 (default).
 
+use std::sync::Arc;
+
 use db::models::agent::Agent;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 
-use super::{LLMClient, LLMConfig, LLMProvider};
+use super::{providers::PcgRouterAdapter, LLMClient, LLMConfig, LLMProvider, LLMProviderTrait};
 
 /// Parsed agent model configuration from database JSON
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -258,6 +261,97 @@ pub fn get_recommended_provider(agent_name: &str) -> LLMProvider {
         // Default to Anthropic for unknown agents
         _ => LLMProvider::Anthropic,
     }
+}
+
+/// Create an LLM provider using PCG Router (preferred when database is available).
+///
+/// This routes all LLM calls through `WorkflowLLMService`, gaining:
+/// - Database-driven provider selection
+/// - Automatic fallback across providers
+/// - Unified cost tracking
+/// - Support for all PCG Router providers
+///
+/// Use this instead of `create_client_for_agent` when you have a database pool.
+pub fn create_provider_for_agent_with_pool(
+    agent: &Agent,
+    pool: Arc<SqlitePool>,
+) -> Box<dyn LLMProviderTrait> {
+    let model = agent
+        .default_model
+        .as_deref()
+        .unwrap_or("claude-sonnet-4-20250514");
+
+    tracing::info!(
+        "Creating PCG Router provider for agent '{}': model_hint={}",
+        agent.short_name,
+        model
+    );
+
+    Box::new(PcgRouterAdapter::with_model(pool, model))
+}
+
+/// Create an LLMClient configured for a specific agent, routed through PCG Router.
+///
+/// This is the preferred way to create an LLM client when a database pool is available.
+/// All calls will be routed through `WorkflowLLMService`, providing:
+/// - Database-driven provider selection
+/// - Automatic fallback across providers
+/// - Unified cost tracking in `service_usage_log`
+/// - Support for all PCG Router providers (Anthropic, OpenAI, Gemini, etc.)
+///
+/// Use this instead of `create_client_for_agent` when you have a database pool.
+pub fn create_client_for_agent_with_pool(agent: &Agent, pool: Arc<SqlitePool>) -> LLMClient {
+    // Get model name (default to Claude sonnet if not specified)
+    let model = agent
+        .default_model
+        .as_deref()
+        .unwrap_or("claude-sonnet-4-20250514");
+
+    // Parse model config from JSON
+    let config: AgentModelConfig = agent
+        .model_config
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
+    // Determine provider (from config override or inferred from model)
+    let provider = config
+        .provider
+        .as_ref()
+        .map(|p| match p.to_lowercase().as_str() {
+            "anthropic" | "claude" => LLMProvider::Anthropic,
+            "openai" | "gpt" => LLMProvider::OpenAI,
+            "ollama" | "local" => LLMProvider::Ollama,
+            _ => infer_provider_from_model(model),
+        })
+        .unwrap_or_else(|| infer_provider_from_model(model));
+
+    // Normalize model name for the provider
+    let normalized_model = normalize_model_name(model, &provider);
+
+    // Build system prompt with agent prefix
+    let system_prompt = if config.system_prompt_prefix.is_empty() {
+        format!("You are {}, {}.", agent.short_name, agent.designation)
+    } else {
+        config.system_prompt_prefix.clone()
+    };
+
+    tracing::info!(
+        "[PCG_ROUTER] Creating LLM client for agent '{}': model={}, routed through PCG Router",
+        agent.short_name,
+        normalized_model
+    );
+
+    let llm_config = LLMConfig {
+        provider,
+        model: normalized_model,
+        temperature: config.temperature,
+        max_tokens: config.max_tokens,
+        system_prompt,
+        endpoint: None, // PCG Router handles endpoint selection
+    };
+
+    LLMClient::with_pool(llm_config, pool)
 }
 
 #[cfg(test)]

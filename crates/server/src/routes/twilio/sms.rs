@@ -130,6 +130,7 @@ pub async fn handle_incoming_sms(
 
     // Spawn debounced processor — each message spawns one; only the "last" one processes
     let from_clone = request.from.clone();
+    let pool_clone = deployment.db().pool.clone();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(SMS_THREAD_WINDOW_SECS)).await;
 
@@ -215,6 +216,7 @@ pub async fn handle_incoming_sms(
             );
 
             let reply = match process_sms_with_nora(
+                &pool_clone,
                 &nora_content,
                 &from_clone,
                 thread.person_context,

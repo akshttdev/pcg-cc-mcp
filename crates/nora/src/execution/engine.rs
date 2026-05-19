@@ -105,8 +105,8 @@ pub struct ExecutionEngine {
     task_creator: RwLock<Option<Arc<dyn TaskCreator + Send + Sync>>>,
     /// Optional coordination manager for SSE event bridging
     coordination: RwLock<Option<Arc<crate::coordination::CoordinationManager>>>,
-    /// Research executor for research agents (Scout, etc.)
-    research_executor: super::research::ResearchExecutor,
+    /// Research executor for research agents (Scout, etc.) — updated when db pool is set
+    research_executor: RwLock<super::research::ResearchExecutor>,
     /// Research context cache for multi-stage workflows
     research_contexts: RwLock<HashMap<Uuid, super::research::ResearchContext>>,
     /// Database pool for persisting workflow logs (AgentFlow, AgentFlowEvent)
@@ -139,7 +139,7 @@ impl ExecutionEngine {
             executions: RwLock::new(HashMap::new()),
             task_creator: RwLock::new(None),
             coordination: RwLock::new(None),
-            research_executor: super::research::ResearchExecutor::new(),
+            research_executor: RwLock::new(super::research::ResearchExecutor::new()),
             research_contexts: RwLock::new(HashMap::new()),
             db: RwLock::new(None),
             cinematics: RwLock::new(None),
@@ -164,9 +164,15 @@ impl ExecutionEngine {
 
     /// Set the database pool for persisting workflow logs
     pub async fn set_database(&self, pool: SqlitePool) {
+        // Update the research executor to use the pool for PCG Router routing
+        {
+            let mut research = self.research_executor.write().await;
+            *research = super::research::ResearchExecutor::with_pool(Arc::new(pool.clone()));
+        }
+
         let mut db = self.db.write().await;
         *db = Some(pool);
-        tracing::info!("[EXECUTION_ENGINE] Database pool configured for workflow persistence");
+        tracing::info!("[EXECUTION_ENGINE] Database pool configured for workflow persistence and research LLM routing");
     }
 
     /// Get a clone of the database pool (if configured)
@@ -1002,13 +1008,14 @@ impl ExecutionEngine {
 
             // If this is the first stage, enhance the request into a research brief
             if stage_index == 0 {
-                let enhanced = self
-                    .research_executor
+                let research_exec = self.research_executor.read().await;
+                let enhanced = research_exec
                     .create_research_brief(
                         &context.original_request,
                         context.project_name.as_deref(),
                     )
                     .await;
+                drop(research_exec);
 
                 if let Ok(new_context) = enhanced {
                     *context = new_context;
@@ -1020,8 +1027,8 @@ impl ExecutionEngine {
             }
 
             // Execute the stage with the research executor
-            let result = self
-                .research_executor
+            let research_exec = self.research_executor.read().await;
+            let result = research_exec
                 .execute_stage(
                     execution_id,
                     &stage.name,

@@ -39,7 +39,7 @@ use crate::{
     personality::BritishPersonality,
     profiles::default_agent_profiles,
     tools::ExecutiveTools,
-    voice::VoiceEngine,
+    voice::UnifiedVoiceEngine,
     NoraConfig, NoraError, Result,
 };
 
@@ -47,7 +47,7 @@ use crate::{
 pub struct NoraAgent {
     pub id: Uuid,
     pub config: NoraConfig,
-    pub voice_engine: Arc<VoiceEngine>,
+    pub voice_engine: Arc<UnifiedVoiceEngine>,
     pub coordination_manager: Arc<CoordinationManager>,
     pub workflow_orchestrator: Arc<crate::workflow::WorkflowOrchestrator>,
     pub graph_orchestrator: Arc<GraphOrchestrator>,
@@ -203,8 +203,8 @@ impl NoraAgent {
 
         tracing::info!("Initializing Nora agent with ID: {}", id);
 
-        // Initialize voice engine
-        let voice_engine = Arc::new(VoiceEngine::new(config.voice.clone()).await?);
+        // Initialize voice engine (legacy config-based)
+        let voice_engine = Arc::new(UnifiedVoiceEngine::from_config(config.voice.clone()).await?);
 
         // Initialize coordination manager and seed default agent profiles
         let coordination_manager = Arc::new(CoordinationManager::new().await?);
@@ -292,6 +292,26 @@ impl NoraAgent {
         let executor = Arc::new(TaskExecutor::new(pool.clone()));
         self.pool = Some(pool.clone());
         self.executor = Some(executor.clone());
+
+        // Upgrade voice engine to use PCG Router (database-driven provider routing)
+        let pool_arc = std::sync::Arc::new(pool.clone());
+        self.voice_engine = Arc::new(UnifiedVoiceEngine::from_pool(pool_arc.clone()));
+        tracing::info!(
+            "[NORA] Upgraded voice engine to use PCG Router for database-driven TTS/STT routing"
+        );
+
+        // Upgrade LLM client to use PCG Router (database-driven provider routing)
+        if let Some(ref llm_config) = self.config.llm {
+            let new_client = LLMClient::with_pool(llm_config.clone(), pool_arc);
+            if new_client.is_ready() {
+                tracing::info!(
+                    "[NORA] Upgraded LLM client to use PcgRouterAdapter for database-driven routing"
+                );
+                self.llm = Some(std::sync::Arc::new(new_client));
+            } else {
+                tracing::warn!("[NORA] PcgRouterAdapter LLM client not ready, keeping existing");
+            }
+        }
 
         // Set executor in executive tools so they can create projects/boards/tasks
         // Need to get mutable access to executive tools
@@ -1265,11 +1285,40 @@ impl NoraAgent {
     }
 
     async fn generate_voice_response(&self, content: &str) -> Result<String> {
+        use std::time::Instant;
+
+        use services::services::editron::UsageTracker;
+
         let clean = Self::strip_markdown(content);
-        self.voice_engine
-            .synthesize_speech(&clean)
-            .await
-            .map_err(NoraError::VoiceEngineError)
+        let char_count = clean.chars().count() as i64;
+
+        let start = Instant::now();
+        let result = self.voice_engine.synthesize_speech(&clean).await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        // Log TTS usage if we have a database pool
+        if let Some(pool) = &self.pool {
+            let provider = self.config.voice.tts.provider.as_str();
+            let (success, error_msg) = match &result {
+                Ok(_) => (true, None),
+                Err(e) => (false, Some(e.to_string())),
+            };
+
+            UsageTracker::log_tts_operation(
+                pool,
+                provider,
+                "synthesize",
+                Some(char_count),
+                None, // audio duration not easily available
+                duration_ms,
+                success,
+                error_msg.as_deref(),
+                None,
+            )
+            .await;
+        }
+
+        result.map_err(NoraError::VoiceEngineError)
     }
 
     fn strip_markdown(text: &str) -> String {

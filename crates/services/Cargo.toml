@@ -42,7 +42,7 @@ octocrab = "0.44"
 os_info = "3.12.0"
 sentry = { version = "0.41.0", features = ["anyhow", "backtrace", "panic", "debug-images"] }
 sentry-tracing = { version = "0.41.0", features = ["backtrace"] }
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
 lazy_static = "1.4"
 futures-util = "0.3"
 json-patch = "2.0"
@@ -51,6 +51,7 @@ base64 = "0.22"
 thiserror = { workspace = true }
 futures = "0.3.31"
 tokio-stream = "0.1.17"
+async-stream = "0.3"
 secrecy = "0.10.3"
 strum_macros = "0.27.2"
 strum = "0.27.2"

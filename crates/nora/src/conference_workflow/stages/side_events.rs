@@ -6,21 +6,23 @@
 //! - Partiful
 //! - Meetup
 
-use chrono::{NaiveDate, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
-use uuid::Uuid;
+use std::sync::Arc;
 
+use chrono::{NaiveDate, Utc};
 use db::models::{
     conference_workflow::ConferenceWorkflow,
     side_event::{CreateSideEvent, SideEvent, SideEventPlatform},
 };
-
-use crate::{NoraError, Result};
+use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
+use uuid::Uuid;
 
 use super::{ResearchStage, ResearchStageResult};
-use crate::conference_workflow::scrapers::{
-    EventbriteScraper, LumaScraper, PartifulScraper, ScrapedEvent,
+use crate::{
+    conference_workflow::scrapers::{
+        EventbriteScraper, LumaScraper, PartifulScraper, ScrapedEvent,
+    },
+    NoraError, Result,
 };
 
 /// Side Events discovery stage
@@ -33,11 +35,12 @@ pub struct SideEventsStage {
 
 impl SideEventsStage {
     pub fn new(pool: SqlitePool) -> Self {
+        let pool_arc = Arc::new(pool.clone());
         Self {
             pool,
-            luma_scraper: LumaScraper::new(),
-            eventbrite_scraper: EventbriteScraper::new(),
-            partiful_scraper: PartifulScraper::new(),
+            luma_scraper: LumaScraper::with_pool(Arc::clone(&pool_arc)),
+            eventbrite_scraper: EventbriteScraper::with_pool(Arc::clone(&pool_arc)),
+            partiful_scraper: PartifulScraper::with_pool(pool_arc),
         }
     }
 
@@ -56,9 +59,16 @@ impl SideEventsStage {
 
         // Search all platforms in parallel
         let (luma_result, eventbrite_result, partiful_result) = tokio::join!(
-            self.luma_scraper.search(location, start_date, end_date, &workflow.conference_name),
-            self.eventbrite_scraper.search(location, start_date, end_date, &workflow.conference_name),
-            self.partiful_scraper.search(location, start_date, end_date, &workflow.conference_name),
+            self.luma_scraper
+                .search(location, start_date, end_date, &workflow.conference_name),
+            self.eventbrite_scraper.search(
+                location,
+                start_date,
+                end_date,
+                &workflow.conference_name
+            ),
+            self.partiful_scraper
+                .search(location, start_date, end_date, &workflow.conference_name),
         );
 
         let mut all_events = Vec::new();
@@ -67,7 +77,10 @@ impl SideEventsStage {
         if let Ok(events) = luma_result {
             tracing::info!("[SIDE_EVENTS] Found {} events from Lu.ma", events.len());
             for event in events {
-                if let Ok(side_event) = self.save_scraped_event(workflow.id, SideEventPlatform::Luma, event).await {
+                if let Ok(side_event) = self
+                    .save_scraped_event(workflow.id, SideEventPlatform::Luma, event)
+                    .await
+                {
                     all_events.push(side_event);
                 }
             }
@@ -75,9 +88,15 @@ impl SideEventsStage {
 
         // Process Eventbrite results
         if let Ok(events) = eventbrite_result {
-            tracing::info!("[SIDE_EVENTS] Found {} events from Eventbrite", events.len());
+            tracing::info!(
+                "[SIDE_EVENTS] Found {} events from Eventbrite",
+                events.len()
+            );
             for event in events {
-                if let Ok(side_event) = self.save_scraped_event(workflow.id, SideEventPlatform::Eventbrite, event).await {
+                if let Ok(side_event) = self
+                    .save_scraped_event(workflow.id, SideEventPlatform::Eventbrite, event)
+                    .await
+                {
                     all_events.push(side_event);
                 }
             }
@@ -87,7 +106,10 @@ impl SideEventsStage {
         if let Ok(events) = partiful_result {
             tracing::info!("[SIDE_EVENTS] Found {} events from Partiful", events.len());
             for event in events {
-                if let Ok(side_event) = self.save_scraped_event(workflow.id, SideEventPlatform::Partiful, event).await {
+                if let Ok(side_event) = self
+                    .save_scraped_event(workflow.id, SideEventPlatform::Partiful, event)
+                    .await
+                {
                     all_events.push(side_event);
                 }
             }

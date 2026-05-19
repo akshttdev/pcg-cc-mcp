@@ -6,21 +6,20 @@
 //! - Theme/track identification
 //! - Initial speaker/sponsor lists
 
+use std::sync::Arc;
+
 use chrono::Utc;
+use db::models::conference_workflow::ConferenceWorkflow;
 use serde::{Deserialize, Serialize};
 use services::services::image::ImageService;
 use sqlx::SqlitePool;
-use std::sync::Arc;
 use uuid::Uuid;
 
-use db::models::conference_workflow::ConferenceWorkflow;
-
+use super::{ResearchStage, ResearchStageResult};
 use crate::{
     execution::{research::ResearchTools, ExecutionEngine},
     NoraError, Result,
 };
-
-use super::{ResearchStage, ResearchStageResult};
 
 /// Extracted conference intelligence
 ///
@@ -77,9 +76,9 @@ pub struct ConferenceIntelStage {
 impl ConferenceIntelStage {
     pub fn new(pool: SqlitePool, execution_engine: Arc<ExecutionEngine>) -> Self {
         Self {
-            pool,
+            pool: pool.clone(),
             execution_engine,
-            research_tools: ResearchTools::new(),
+            research_tools: ResearchTools::with_pool(Arc::new(pool)),
         }
     }
 
@@ -126,8 +125,15 @@ impl ConferenceIntelStage {
     async fn execute_research(&self, workflow: &ConferenceWorkflow) -> Result<ConferenceIntel> {
         // Step 1: Web search for conference information
         let search_queries = vec![
-            format!("{} conference {} official", workflow.conference_name, extract_year(&workflow.start_date)),
-            format!("{} conference speakers agenda schedule", workflow.conference_name),
+            format!(
+                "{} conference {} official",
+                workflow.conference_name,
+                extract_year(&workflow.start_date)
+            ),
+            format!(
+                "{} conference speakers agenda schedule",
+                workflow.conference_name
+            ),
             format!("{} conference sponsors partners", workflow.conference_name),
         ];
 
@@ -136,7 +142,10 @@ impl ConferenceIntelStage {
             tracing::debug!("[CONFERENCE_INTEL] Searching: {}", query);
             match self.research_tools.web_search(query, 5).await {
                 Ok(results) => {
-                    tracing::debug!("[CONFERENCE_INTEL] Found {} results for query", results.len());
+                    tracing::debug!(
+                        "[CONFERENCE_INTEL] Found {} results for query",
+                        results.len()
+                    );
                     all_search_results.extend(results);
                 }
                 Err(e) => {
@@ -182,7 +191,10 @@ impl ConferenceIntelStage {
         let mut downloaded_images: Vec<String> = Vec::new();
         if let (Some(ref html), Some(ref base_url)) = (&website_html_raw, &workflow.website) {
             let image_urls = self.research_tools.extract_images_from_html(html, base_url);
-            tracing::info!("[CONFERENCE_INTEL] Found {} image URLs in website", image_urls.len());
+            tracing::info!(
+                "[CONFERENCE_INTEL] Found {} image URLs in website",
+                image_urls.len()
+            );
 
             // Download up to 5 images
             if let Ok(image_service) = ImageService::new(self.pool.clone()) {
@@ -279,45 +291,57 @@ Extract all available information and return a comprehensive JSON object."#,
         );
 
         // Step 4: Call LLM for analysis
-        let response = self.research_tools.research_llm(system_prompt, &user_prompt).await
+        let response = self
+            .research_tools
+            .research_llm(system_prompt, &user_prompt)
+            .await
             .map_err(|e| NoraError::ExecutionError(format!("LLM analysis failed: {}", e)))?;
 
         tracing::debug!("[CONFERENCE_INTEL] LLM response: {} chars", response.len());
 
         // Step 5: Parse the response - extract JSON from potential markdown fences
         let json_str = extract_json_from_response(&response);
-        tracing::debug!("[CONFERENCE_INTEL] Extracted JSON: {} chars", json_str.len());
+        tracing::debug!(
+            "[CONFERENCE_INTEL] Extracted JSON: {} chars",
+            json_str.len()
+        );
 
-        let mut intel: ConferenceIntel = serde_json::from_str(json_str)
-            .unwrap_or_else(|e| {
-                tracing::warn!("[CONFERENCE_INTEL] Failed to parse LLM response: {}. JSON: {}", e, &json_str[..json_str.len().min(500)]);
-                // Return fallback with basic info from workflow
-                ConferenceIntel {
-                    name: workflow.conference_name.clone(),
-                    dates: format!("{} to {}", workflow.start_date, workflow.end_date),
-                    location: workflow.location.clone().unwrap_or_else(|| "TBD".to_string()),
-                    website: workflow.website.clone(),
-                    description: Some(format!(
-                        "{} is a conference taking place from {} to {} in {}.",
-                        workflow.conference_name,
-                        workflow.start_date,
-                        workflow.end_date,
-                        workflow.location.as_deref().unwrap_or("TBD")
-                    )),
-                    themes: vec!["Technology".to_string(), "Innovation".to_string()],
-                    tracks: vec![],
-                    speaker_names: vec![],
-                    sponsor_names: vec![],
-                    venue_name: None,
-                    venue_address: None,
-                    ticket_info: None,
-                    social_handles: vec![],
-                    expected_attendance: None,
-                    hashtags: vec![format!("#{}", slugify(&workflow.conference_name))],
-                    cover_image_url: None,
-                    additional_images: vec![],
-                }
-            });
+        let mut intel: ConferenceIntel = serde_json::from_str(json_str).unwrap_or_else(|e| {
+            tracing::warn!(
+                "[CONFERENCE_INTEL] Failed to parse LLM response: {}. JSON: {}",
+                e,
+                &json_str[..json_str.len().min(500)]
+            );
+            // Return fallback with basic info from workflow
+            ConferenceIntel {
+                name: workflow.conference_name.clone(),
+                dates: format!("{} to {}", workflow.start_date, workflow.end_date),
+                location: workflow
+                    .location
+                    .clone()
+                    .unwrap_or_else(|| "TBD".to_string()),
+                website: workflow.website.clone(),
+                description: Some(format!(
+                    "{} is a conference taking place from {} to {} in {}.",
+                    workflow.conference_name,
+                    workflow.start_date,
+                    workflow.end_date,
+                    workflow.location.as_deref().unwrap_or("TBD")
+                )),
+                themes: vec!["Technology".to_string(), "Innovation".to_string()],
+                tracks: vec![],
+                speaker_names: vec![],
+                sponsor_names: vec![],
+                venue_name: None,
+                venue_address: None,
+                ticket_info: None,
+                social_handles: vec![],
+                expected_attendance: None,
+                hashtags: vec![format!("#{}", slugify(&workflow.conference_name))],
+                cover_image_url: None,
+                additional_images: vec![],
+            }
+        });
 
         // Add downloaded images to intel
         if !downloaded_images.is_empty() {

@@ -168,12 +168,30 @@ pub(crate) fn sanitize_text_for_tts(text: &str) -> String {
     result.trim().to_string()
 }
 
-/// Get or initialize the Topsi voice engine
+/// Get the PCG Router voice engine for database-driven TTS/STT routing.
+///
+/// This is the preferred method for voice synthesis and transcription as it provides:
+/// - Automatic provider fallback based on priority
+/// - Cost tracking via service_usage_log
+/// - Centralized API key management
+pub(crate) fn get_pcg_router_voice_engine(pool: &sqlx::SqlitePool) -> PCGRouterVoiceEngine {
+    PCGRouterVoiceEngine::new(std::sync::Arc::new(pool.clone()))
+}
+
+/// Get or initialize the Topsi voice engine (legacy, config-based).
+///
+/// **NOTE**: Prefer `get_pcg_router_voice_engine(pool)` for new code, which provides
+/// database-driven provider selection and cost tracking.
+#[deprecated(
+    since = "0.0.97",
+    note = "Use get_pcg_router_voice_engine(pool) for database-driven provider routing"
+)]
+#[allow(dead_code)]
 pub(crate) async fn get_or_init_voice_engine() -> Result<Arc<RwLock<Option<VoiceEngine>>>, ApiError>
 {
     let engine = TOPSI_VOICE_ENGINE
         .get_or_init(|| async {
-            tracing::info!("Initializing Topsi voice engine...");
+            tracing::info!("Initializing Topsi voice engine (legacy config-based)...");
 
             // Check for Chatterbox availability, fall back to OpenAI if not available
             // Respect CHATTERBOX_URL env var (e.g. http://localhost:8100), else check CHATTERBOX_PORT
@@ -326,16 +344,13 @@ pub(crate) async fn resolve_user_project(pool: &sqlx::SqlitePool, user_id: &str)
 
 /// Synthesize speech from text using Topsi's voice engine
 pub async fn synthesize_speech(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
     Json(request): Json<VoiceSynthesisRequest>,
 ) -> Result<Json<SpeechResponse>, ApiError> {
     let start = std::time::Instant::now();
 
-    let engine_lock = get_or_init_voice_engine().await?;
-    let engine_guard = engine_lock.read().await;
-    let engine = engine_guard
-        .as_ref()
-        .ok_or_else(|| ApiError::InternalError("Voice engine not initialized".to_string()))?;
+    // Use PCG Router voice engine for database-driven provider routing
+    let engine = get_pcg_router_voice_engine(&state.db().pool);
 
     tracing::info!("Topsi synthesizing speech: {} chars", request.text.len());
 
@@ -362,16 +377,13 @@ pub async fn synthesize_speech(
 
 /// Transcribe speech to text using Topsi's voice engine
 pub async fn transcribe_speech(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
     Json(request): Json<VoiceTranscriptionRequest>,
 ) -> Result<Json<VoiceTranscriptionResponse>, ApiError> {
     let start = std::time::Instant::now();
 
-    let engine_lock = get_or_init_voice_engine().await?;
-    let engine_guard = engine_lock.read().await;
-    let engine = engine_guard
-        .as_ref()
-        .ok_or_else(|| ApiError::InternalError("Voice engine not initialized".to_string()))?;
+    // Use PCG Router voice engine for database-driven provider routing
+    let engine = get_pcg_router_voice_engine(&state.db().pool);
 
     tracing::info!("Topsi transcribing speech...");
 
@@ -400,11 +412,8 @@ pub async fn voice_interaction(
 ) -> Result<Json<TopsiVoiceInteraction>, ApiError> {
     let start = std::time::Instant::now();
 
-    let engine_lock = get_or_init_voice_engine().await?;
-    let engine_guard = engine_lock.read().await;
-    let engine = engine_guard
-        .as_ref()
-        .ok_or_else(|| ApiError::InternalError("Voice engine not initialized".to_string()))?;
+    // Use PCG Router voice engine for database-driven provider routing
+    let engine = get_pcg_router_voice_engine(&state.db().pool);
 
     let mut result = request.clone();
 
@@ -603,16 +612,16 @@ pub async fn voice_interaction(
 
 /// Get current voice configuration
 pub async fn get_voice_config(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
 ) -> Result<Json<TopsiVoiceConfigResponse>, ApiError> {
-    let engine_lock = get_or_init_voice_engine().await?;
-    let engine_guard = engine_lock.read().await;
-    let is_ready = engine_guard.is_some();
+    // PCG Router voice engine is always ready (providers resolved at request time)
+    let engine = get_pcg_router_voice_engine(&state.db().pool);
+    let is_ready = engine.is_ready();
 
     Ok(Json(TopsiVoiceConfigResponse {
-        tts_provider: "system".to_string(), // Using SystemTTS (Chatterbox)
-        stt_provider: "whisper".to_string(),
-        voice_profile: "british_executive_female".to_string(),
+        tts_provider: "pcg_router".to_string(), // Using PCG Router for provider selection
+        stt_provider: "pcg_router".to_string(),
+        voice_profile: "database_driven".to_string(),
         is_ready,
     }))
 }

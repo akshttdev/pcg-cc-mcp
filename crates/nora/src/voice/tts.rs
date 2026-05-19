@@ -51,6 +51,17 @@ pub trait TextToSpeech {
 }
 
 /// ElevenLabs TTS implementation (premium British voices)
+///
+/// **DEPRECATED**: Use [`WorkflowTTSService`](services::services::workflow_tts::WorkflowTTSService)
+/// or [`PCGRouterVoiceEngine`](super::PCGRouterVoiceEngine) instead, which provide:
+/// - Database-driven provider selection via `pcg_router_tts_providers` table
+/// - Automatic fallback across providers based on priority
+/// - Cost tracking via `service_usage_log` table
+/// - Centralized API key management
+#[deprecated(
+    since = "0.0.97",
+    note = "Use WorkflowTTSService or PCGRouterVoiceEngine for database-driven provider routing and cost tracking"
+)]
 #[derive(Debug)]
 pub struct ElevenLabsTTS {
     config: TTSConfig,
@@ -406,6 +417,17 @@ impl ElevenLabsTTS {
 }
 
 /// Azure Cognitive Services TTS implementation
+///
+/// **DEPRECATED**: Use [`WorkflowTTSService`](services::services::workflow_tts::WorkflowTTSService)
+/// or [`PCGRouterVoiceEngine`](super::PCGRouterVoiceEngine) instead, which provide:
+/// - Database-driven provider selection via `pcg_router_tts_providers` table
+/// - Automatic fallback across providers based on priority
+/// - Cost tracking via `service_usage_log` table
+/// - Centralized API key management
+#[deprecated(
+    since = "0.0.97",
+    note = "Use WorkflowTTSService or PCGRouterVoiceEngine for database-driven provider routing and cost tracking"
+)]
 #[derive(Debug)]
 pub struct AzureTTS {
     #[allow(dead_code)]
@@ -538,6 +560,17 @@ impl AzureTTS {
 }
 
 /// OpenAI TTS implementation
+///
+/// **DEPRECATED**: Use [`WorkflowTTSService`](services::services::workflow_tts::WorkflowTTSService)
+/// or [`PCGRouterVoiceEngine`](super::PCGRouterVoiceEngine) instead, which provide:
+/// - Database-driven provider selection via `pcg_router_tts_providers` table
+/// - Automatic fallback across providers based on priority
+/// - Cost tracking via `service_usage_log` table
+/// - Centralized API key management
+#[deprecated(
+    since = "0.0.97",
+    note = "Use WorkflowTTSService or PCGRouterVoiceEngine for database-driven provider routing and cost tracking"
+)]
 #[derive(Debug)]
 pub struct OpenAITTS {
     config: TTSConfig,

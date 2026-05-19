@@ -143,19 +143,19 @@ impl PlatformConnector for InstagramConnector {
         redirect_uri: &str,
         _code_verifier: Option<&str>,
     ) -> Result<OAuthTokens, SocialError> {
-        // Exchange code for short-lived token
-        let url = format!(
-            "{}?client_id={}&client_secret={}&redirect_uri={}&code={}",
-            META_TOKEN_URL,
-            &self.client_id,
-            &self.client_secret,
-            urlencoding::encode(redirect_uri),
-            code
-        );
+        // Exchange code for short-lived token using POST with form body
+        // (credentials in body, not URL query params for security)
+        let params = [
+            ("client_id", self.client_id.as_str()),
+            ("client_secret", self.client_secret.as_str()),
+            ("redirect_uri", redirect_uri),
+            ("code", code),
+        ];
 
         let response = self
             .client
-            .get(&url)
+            .post(META_TOKEN_URL)
+            .form(&params)
             .send()
             .await
             .map_err(|e| SocialError::NetworkError(e.to_string()))?;
@@ -173,15 +173,20 @@ impl PlatformConnector for InstagramConnector {
             .await
             .map_err(|e| SocialError::PlatformError(e.to_string()))?;
 
-        // Exchange for long-lived token
-        let long_lived_url = format!(
-            "{}/oauth/access_token?grant_type=fb_exchange_token&client_id={}&client_secret={}&fb_exchange_token={}",
-            GRAPH_API_BASE, &self.client_id, &self.client_secret, &short_lived.access_token
-        );
+        // Exchange for long-lived token using POST with form body
+        let long_lived_params = [
+            ("grant_type", "fb_exchange_token"),
+            ("client_id", self.client_id.as_str()),
+            ("client_secret", self.client_secret.as_str()),
+            ("fb_exchange_token", short_lived.access_token.as_str()),
+        ];
+
+        let long_lived_url = format!("{}/oauth/access_token", GRAPH_API_BASE);
 
         let long_lived_response = self
             .client
-            .get(&long_lived_url)
+            .post(&long_lived_url)
+            .form(&long_lived_params)
             .send()
             .await
             .map_err(|e| SocialError::NetworkError(e.to_string()))?;

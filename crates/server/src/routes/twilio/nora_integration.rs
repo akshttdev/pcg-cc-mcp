@@ -1,18 +1,18 @@
 //! NORA integration: process_with_nora() and process_sms_with_nora().
 
+use services::services::workflow_llm::WorkflowLLMService;
+use sqlx::SqlitePool;
+
 use super::*;
 
-/// Process speech input by calling Anthropic directly — lean prompt, no context bloat
+/// Process speech input via PCG Router — lean prompt, no context bloat
 /// Returns (response_text, input_tokens, output_tokens)
 pub(super) async fn process_with_nora(
+    pool: &SqlitePool,
     speech_text: &str,
     _session_id: &str,
     phone_context: Option<serde_json::Value>,
 ) -> Result<(String, i64, i64), String> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
-
     // Pick system prompt based on caller type
     let caller_type = phone_context
         .as_ref()
@@ -27,7 +27,7 @@ pub(super) async fn process_with_nora(
     };
 
     // Build conversation messages
-    let mut messages = Vec::new();
+    let mut messages = vec![WorkflowLLMService::system_message(system_prompt)];
 
     // For PCG team: inject their project/task context
     if caller_type == "pcg_team" {
@@ -35,14 +35,13 @@ pub(super) async fn process_with_nora(
             if let Some(work) = ctx.get("pcg_work") {
                 let work_str = serde_json::to_string_pretty(work).unwrap_or_default();
                 if !work_str.is_empty() && work_str != "null" {
-                    messages.push(json!({
-                        "role": "user",
-                        "content": format!("[Your current PCG workspace:\n{}]", work_str)
-                    }));
-                    messages.push(json!({
-                        "role": "assistant",
-                        "content": "I have your workspace context — projects and active tasks loaded."
-                    }));
+                    messages.push(WorkflowLLMService::user_message(&format!(
+                        "[Your current PCG workspace:\n{}]",
+                        work_str
+                    )));
+                    messages.push(WorkflowLLMService::assistant_message(
+                        "I have your workspace context — projects and active tasks loaded.",
+                    ));
                 }
             }
         }
@@ -52,14 +51,13 @@ pub(super) async fn process_with_nora(
     if let Some(ctx) = &phone_context {
         if let Some(history) = ctx.get("conversation_history").and_then(|h| h.as_str()) {
             if !history.is_empty() {
-                messages.push(json!({
-                    "role": "user",
-                    "content": format!("[Previous conversation context:\n{}]", history)
-                }));
-                messages.push(json!({
-                    "role": "assistant",
-                    "content": "Understood, I have the conversation context."
-                }));
+                messages.push(WorkflowLLMService::user_message(&format!(
+                    "[Previous conversation context:\n{}]",
+                    history
+                )));
+                messages.push(WorkflowLLMService::assistant_message(
+                    "Understood, I have the conversation context.",
+                ));
             }
         }
     }
@@ -90,36 +88,31 @@ pub(super) async fn process_with_nora(
         })
         .unwrap_or_default();
 
-    messages.push(json!({
-        "role": "user",
-        "content": format!("{}{}", caller_note, speech_text)
-    }));
+    messages.push(WorkflowLLMService::user_message(&format!(
+        "{}{}",
+        caller_note, speech_text
+    )));
 
-    let body = json!({
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 250,
-        "system": system_prompt,
-        "messages": messages
-    });
-
-    let client = reqwest::Client::new();
-    let fut = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send();
+    // Route through PCG Router with timeout
+    let fut = WorkflowLLMService::completion(
+        pool,
+        messages,
+        Some("claude-haiku-4-5-20251001"), // Fast model for phone calls
+        Some(250),
+        None,
+    );
 
     let llm_t0 = std::time::Instant::now();
-    let resp = match timeout(LLM_TIMEOUT, fut).await {
-        Ok(Ok(r)) => {
+    let result = match timeout(LLM_TIMEOUT, fut).await {
+        Ok(Ok((text, metadata))) => {
             crate::nora_metrics::record_voice_stage(
                 "twilio",
                 "llm",
                 llm_t0.elapsed().as_secs_f64(),
             );
-            r
+            let input_tokens = metadata.input_tokens.unwrap_or(0);
+            let output_tokens = metadata.output_tokens.unwrap_or(0);
+            (text, input_tokens, output_tokens)
         }
         Ok(Err(e)) => {
             crate::nora_metrics::record_voice_stage(
@@ -127,7 +120,8 @@ pub(super) async fn process_with_nora(
                 "llm_error",
                 llm_t0.elapsed().as_secs_f64(),
             );
-            return Err(format!("HTTP error: {}", e));
+            warn!("[NORA_INTEGRATION] LLM error: {}", e);
+            return Err(format!("LLM error: {}", e));
         }
         Err(_) => {
             crate::nora_metrics::record_voice_stage(
@@ -144,24 +138,13 @@ pub(super) async fn process_with_nora(
         }
     };
 
-    let data: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("JSON parse error: {}", e))?;
-
-    let input_tokens = data["usage"]["input_tokens"].as_i64().unwrap_or(0);
-    let output_tokens = data["usage"]["output_tokens"].as_i64().unwrap_or(0);
-    let text = data["content"][0]["text"]
-        .as_str()
-        .unwrap_or("I'm sorry, I didn't quite catch that. Could you say that again?")
-        .to_string();
-
-    Ok((text, input_tokens, output_tokens))
+    Ok(result)
 }
 
 /// Process an SMS through the real Nora agent (with full tool access),
-/// falling back to a direct Claude API call if Nora is unavailable.
+/// falling back to PCG Router if Nora is unavailable.
 pub(super) async fn process_sms_with_nora(
+    pool: &SqlitePool,
     message: &str,
     from_number: &str,
     context: Option<serde_json::Value>,
@@ -228,15 +211,8 @@ pub(super) async fn process_sms_with_nora(
         return Ok(text);
     }
 
-    // ── Fallback: direct Claude API call ──────────────────────────────────────
-    info!(
-        "Falling back to direct Claude API for SMS from {}",
-        from_number
-    );
-
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
+    // ── Fallback: PCG Router LLM call ─────────────────────────────────────────
+    info!("Falling back to PCG Router for SMS from {}", from_number);
 
     let system_prompt = if is_team {
         NORA_PCG_TEAM_SYSTEM
@@ -246,36 +222,20 @@ pub(super) async fn process_sms_with_nora(
     let sms_instruction = "[SMS channel — reply as plain text, no markdown, \
         keep under 300 characters. British English.]";
 
-    let body = json!({
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 512,
-        "system": format!("{}\n\n{}", system_prompt, sms_instruction),
-        "messages": [{ "role": "user", "content": full_content }]
-    });
+    let messages = vec![
+        WorkflowLLMService::system_message(&format!("{}\n\n{}", system_prompt, sms_instruction)),
+        WorkflowLLMService::user_message(&full_content),
+    ];
 
-    let client = reqwest::Client::new();
-    let fut = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send();
+    let fut =
+        WorkflowLLMService::completion(pool, messages, Some("claude-sonnet-4-6"), Some(512), None);
 
-    let resp = match timeout(Duration::from_secs(20), fut).await {
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => return Err(format!("HTTP error: {}", e)),
-        Err(_) => return Ok("I'm just catching up — please send again in a moment.".into()),
-    };
-
-    let data: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("JSON parse: {}", e))?;
-    let text = data["content"][0]["text"]
-        .as_str()
-        .unwrap_or("Sorry, I didn't quite catch that. Could you rephrase?")
-        .to_string();
-
-    Ok(text)
+    match timeout(Duration::from_secs(20), fut).await {
+        Ok(Ok((text, _metadata))) => Ok(text),
+        Ok(Err(e)) => {
+            warn!("[NORA_INTEGRATION] SMS fallback LLM error: {}", e);
+            Err(format!("LLM error: {}", e))
+        }
+        Err(_) => Ok("I'm just catching up — please send again in a moment.".into()),
+    }
 }

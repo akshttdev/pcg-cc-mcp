@@ -3,6 +3,9 @@
 //! Handles AI-powered deal automations: research triggers, proposal generation (Cash),
 //! deck generation (Lux), deep research (Astra), invoice handling, won automation,
 //! and transcript management.
+//!
+//! All LLM calls route through PCG Router (WorkflowLLMService) for unified cost
+//! tracking, provider selection, and automatic fallback.
 
 use axum::{
     extract::{Path, State},
@@ -18,6 +21,8 @@ use db::{
     },
 };
 use deployment::Deployment;
+use services::services::workflow_llm::WorkflowLLMService;
+use sqlx::SqlitePool;
 use utils::response::ApiResponse;
 
 use super::crm_deals::require_deal_org_access;
@@ -476,7 +481,7 @@ pub async fn generate_phase1_business_report(
             "Generate a Phase 1 business analysis for this prospect.\n\nDeal: {}\n\n{}",
             contact_name, raw_intel
         );
-        match call_llm(astra_system, &user_msg).await {
+        match call_llm(pool, astra_system, &user_msg).await {
             Ok(analysis) => {
                 tracing::info!(
                     "[generate_phase1_business_report] Astra generated Phase 1 analysis for deal {}",
@@ -580,94 +585,56 @@ pub async fn generate_phase1_business_report(
     }
 }
 
-// ── LLM helper: OpenAI-first with Anthropic fallback ─────────────────────────
+// ── LLM helper: Routes through PCG Router ─────────────────────────────────────
 
-/// Calls an LLM with a system prompt and user message.
-/// Tries OpenAI (gpt-4o) first, falls back to Anthropic (claude-opus-4-6).
-async fn call_llm(system_prompt: &str, user_message: &str) -> Result<String, ApiError> {
-    let http = reqwest::Client::new();
+/// Calls an LLM with a system prompt and user message via PCG Router.
+///
+/// Uses WorkflowLLMService for:
+/// - Database-driven provider selection (priority-based fallback)
+/// - Unified cost tracking
+/// - Automatic provider failover
+///
+/// Model hint defaults to claude-opus-4-6 for complex business analysis.
+async fn call_llm(
+    pool: &SqlitePool,
+    system_prompt: &str,
+    user_message: &str,
+) -> Result<String, ApiError> {
+    call_llm_with_model(pool, system_prompt, user_message, "claude-opus-4-6").await
+}
 
-    // Try OpenAI first
-    if let Ok(openai_key) = std::env::var("OPENAI_API_KEY") {
-        let body = serde_json::json!({
-            "model": "gpt-4o",
-            "max_tokens": 4096,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ]
-        });
-        match http
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", openai_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(val) = resp.json::<serde_json::Value>().await {
-                    if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
-                        tracing::info!("[LLM] OpenAI gpt-4o response received");
-                        return Ok(text.to_string());
-                    }
-                }
-            }
-            Ok(resp) => {
-                tracing::warn!(
-                    "[LLM] OpenAI returned {}, falling back to Anthropic",
-                    resp.status()
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "[LLM] OpenAI request failed: {}, falling back to Anthropic",
-                    e
-                );
-            }
-        }
-    }
+/// Calls an LLM with a specific model hint via PCG Router.
+async fn call_llm_with_model(
+    pool: &SqlitePool,
+    system_prompt: &str,
+    user_message: &str,
+    model_hint: &str,
+) -> Result<String, ApiError> {
+    let messages = vec![
+        serde_json::json!({ "role": "system", "content": system_prompt }),
+        serde_json::json!({ "role": "user", "content": user_message }),
+    ];
 
-    // Fallback to Anthropic
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .map_err(|_| {
-            ApiError::BadRequest(
-                "No LLM API key configured (tried OPENAI_API_KEY, ANTHROPIC_API_KEY)".into(),
-            )
-        })?;
+    let (content, metadata) = WorkflowLLMService::completion(
+        pool,
+        messages,
+        Some(model_hint),
+        Some(4096),
+        None, // Use default temperature
+    )
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("LLM API error: {}", e)))?;
 
-    let body = serde_json::json!({
-        "model": "claude-opus-4-6",
-        "max_tokens": 4096,
-        "system": system_prompt,
-        "messages": [{"role": "user", "content": user_message}]
-    });
+    tracing::info!(
+        model = %metadata.model_used,
+        provider = %metadata.provider,
+        input_tokens = ?metadata.input_tokens,
+        output_tokens = ?metadata.output_tokens,
+        cost_micros = ?metadata.estimated_cost_micros,
+        "[CRM_DEAL_AUTOMATIONS] LLM call completed"
+    );
 
-    let resp = http
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| ApiError::BadRequest(format!("LLM API error: {}", e)))?;
-
-    let val: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| ApiError::BadRequest(format!("LLM response parse error: {}", e)))?;
-
-    let text = val["content"]
-        .as_array()
-        .and_then(|a| a.iter().find(|c| c["type"] == "text"))
-        .and_then(|c| c["text"].as_str())
-        .unwrap_or("LLM generation failed")
-        .to_string();
-
-    tracing::info!("[LLM] Anthropic claude-opus-4-6 response received");
-    Ok(text)
+    Ok(content)
 }
 
 // ── F12: Astra Pass 2 — enhance business report with discovery context, then chain Cash ──
@@ -798,8 +765,8 @@ pub async fn trigger_deep_research_pass2(pool: &sqlx::SqlitePool, deal_id: DbUui
         context_parts.join("\n\n---\n\n")
     );
 
-    // 6. Call LLM
-    match call_llm(astra_system, &user_msg).await {
+    // 6. Call LLM via PCG Router
+    match call_llm(pool, astra_system, &user_msg).await {
         Ok(enhanced_report) => {
             // Update existing report or create one
             if let Some(ref r) = report {
@@ -960,7 +927,7 @@ async fn generate_proposal_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<
         context
     );
 
-    let proposal_text = call_llm(cash_system, &user_prompt).await?;
+    let proposal_text = call_llm(pool, cash_system, &user_prompt).await?;
 
     sqlx::query("UPDATE crm_deals SET proposal_text = ?, proposal_status = 'draft', updated_at = datetime('now','subsec') WHERE id = ?")
         .bind(&proposal_text)
@@ -1164,7 +1131,7 @@ async fn generate_deck_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<CrmD
         None => format!("Create a sales deck for this proposal:\n\n{}", proposal),
     };
 
-    let deck_script = call_llm(lux_system, &user_prompt).await?;
+    let deck_script = call_llm(pool, lux_system, &user_prompt).await?;
 
     let deck_id = DbUuid::new();
     let deck_url = format!("/api/crm/deals/{}/deck/{}", id, deck_id);

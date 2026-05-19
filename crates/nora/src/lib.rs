@@ -55,7 +55,10 @@ pub use personality::{BritishPersonality, PersonalityConfig};
 use serde::{Deserialize, Serialize};
 pub use tools::{ExecutiveTools, NoraExecutiveTool};
 use ts_rs::TS;
-pub use voice::{SpeechRequest, SpeechResponse, VoiceConfig, VoiceEngine};
+pub use voice::{
+    PCGRouterVoiceEngine, SpeechRequest, SpeechResponse, UnifiedVoiceEngine, VoiceConfig,
+    VoiceEngine,
+};
 pub use workflow::{
     WorkflowContext, WorkflowEvent, WorkflowInstance, WorkflowOrchestrator, WorkflowResult,
     WorkflowState,

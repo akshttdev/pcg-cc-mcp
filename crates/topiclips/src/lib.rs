@@ -24,35 +24,35 @@ pub mod story_extractor;
 pub mod symbol_mapper;
 
 use anyhow::Result;
+pub use artistic_interpreter::ArtisticInterpreter;
 use async_trait::async_trait;
 use chrono::Utc;
 use cinematics::{CinematicsConfig, CinematicsService};
 use db::models::topiclip::{
-    CreateTopiClipCapturedEvent, CreateTopiClipSession, TopiClipCapturedEvent, TopiClipDailySchedule, TopiClipGalleryResponse, TopiClipSession,
-    TopiClipSessionStatus, TopiClipTimelineEntry, TopiClipTriggerType,
-    UpdateTopiClipSessionStatus,
+    CreateTopiClipCapturedEvent, CreateTopiClipSession, TopiClipCapturedEvent,
+    TopiClipDailySchedule, TopiClipGalleryResponse, TopiClipSession, TopiClipSessionStatus,
+    TopiClipTimelineEntry, TopiClipTriggerType, UpdateTopiClipSessionStatus,
 };
+pub use event_detector::EventDetector;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::SqlitePool;
+pub use story_extractor::{NarrativeStory, StoryExtractor};
+pub use symbol_mapper::SymbolMapper;
 use topsi::TopologyChange;
 use tracing::info;
 use uuid::Uuid;
 
-pub use artistic_interpreter::ArtisticInterpreter;
-pub use event_detector::EventDetector;
-pub use story_extractor::{NarrativeStory, StoryExtractor};
-pub use symbol_mapper::SymbolMapper;
-
 /// Configuration for TopiClips service
+///
+/// LLM calls are routed through PCG Router (WorkflowLLMService) which manages
+/// provider selection and API credentials centrally. The llm_model field is used
+/// as a hint for model selection, but the actual model used depends on PCG Router
+/// configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopiClipsConfig {
-    /// LLM model to use for artistic interpretation
+    /// LLM model hint for artistic interpretation (PCG Router selects actual model)
     pub llm_model: String,
-    /// LLM API endpoint
-    pub llm_endpoint: String,
-    /// LLM API key (from environment)
-    pub llm_api_key: Option<String>,
     /// Temperature for LLM generation (higher = more creative)
     pub interpretation_temperature: f64,
     /// Default significance threshold for event-driven triggers
@@ -66,9 +66,6 @@ impl Default for TopiClipsConfig {
         Self {
             llm_model: std::env::var("TOPICLIPS_LLM_MODEL")
                 .unwrap_or_else(|_| "claude-sonnet-4-20250514".into()),
-            llm_endpoint: std::env::var("TOPICLIPS_LLM_ENDPOINT")
-                .unwrap_or_else(|_| "https://api.anthropic.com/v1/messages".into()),
-            llm_api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
             interpretation_temperature: std::env::var("TOPICLIPS_TEMPERATURE")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -148,12 +145,9 @@ impl TopiClipsService {
         let cinematics = CinematicsService::new(pool.clone(), config.cinematics_config.clone());
         let story_extractor = StoryExtractor::new(pool.clone());
         let symbol_mapper = SymbolMapper::new(pool.clone());
-        let artistic_interpreter = ArtisticInterpreter::new(
-            config.llm_endpoint.clone(),
-            config.llm_api_key.clone(),
-            config.llm_model.clone(),
-            config.interpretation_temperature,
-        );
+        // Use PCG Router for LLM calls - model_hint from config, temperature from config
+        let artistic_interpreter = ArtisticInterpreter::with_model(&config.llm_model)
+            .with_temperature(config.interpretation_temperature);
         let event_detector = EventDetector::new(config.default_significance_threshold);
 
         Self {
@@ -278,10 +272,10 @@ impl TopiClipsService {
         // Get captured events with their symbols
         let events = TopiClipCapturedEvent::list_by_session(&self.pool, session.id).await?;
 
-        // Generate artistic interpretation
+        // Generate artistic interpretation (routes through PCG Router)
         let interpretation = self
             .artistic_interpreter
-            .interpret(story, &events)
+            .interpret(&self.pool, story, &events)
             .await
             .map_err(|e| TopiClipsError::InterpretationError(e.to_string()))?;
 
@@ -465,13 +459,7 @@ impl TopiClipGenerator for TopiClipsService {
 
         let (current_streak, longest_streak, total_clips) = schedule
             .as_ref()
-            .map(|s| {
-                (
-                    s.current_streak,
-                    s.longest_streak,
-                    s.total_clips_generated,
-                )
-            })
+            .map(|s| (s.current_streak, s.longest_streak, s.total_clips_generated))
             .unwrap_or((0, 0, sessions.len() as i64));
 
         Ok(TopiClipGalleryResponse {

@@ -57,8 +57,8 @@ pub async fn run_intake_pipeline(
         }
     };
 
-    // Stage 1: Extract structure from raw content via Claude
-    let extracted = match super::report::extract_intake_structure(&raw).await {
+    // Stage 1: Extract structure from raw content via PCG Router
+    let extracted = match super::report::extract_intake_structure(&pool, &raw).await {
         Ok(e) => e,
         Err(e) => {
             mark_failed(&pool, item_id, &format!("Extraction failed: {e}")).await;

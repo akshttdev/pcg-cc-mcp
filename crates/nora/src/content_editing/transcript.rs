@@ -4,12 +4,20 @@
 //! 2. Transcribe via local Whisper (file-based)
 //! 3. Clean and structure via LLM (speaker tagging, segment classification)
 //! 4. Verify soundbites against actual transcript text
+//!
+//! LLM calls are routed through PCG Router via WorkflowLLMService for centralized
+//! API key management and cost tracking.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
+use services::services::workflow_llm::WorkflowLLMService;
+use sqlx::SqlitePool;
 use tokio::process::Command;
 
 use super::types::*;
@@ -19,13 +27,32 @@ use crate::{NoraError, Result};
 pub struct TranscriptProcessor {
     whisper_endpoint: Option<String>,
     http_client: Client,
+    /// Database pool for routing LLM calls through PCG Router.
+    pool: Option<Arc<SqlitePool>>,
 }
 
 impl TranscriptProcessor {
+    /// Create a TranscriptProcessor with PCG Router support.
+    ///
+    /// LLM calls will be routed through WorkflowLLMService using the provided
+    /// database pool for API key lookup and cost tracking.
+    pub fn with_pool(whisper_endpoint: Option<String>, pool: Arc<SqlitePool>) -> Self {
+        Self {
+            whisper_endpoint,
+            http_client: Client::new(),
+            pool: Some(pool),
+        }
+    }
+
+    /// Create a TranscriptProcessor without database pool (legacy mode).
+    ///
+    /// LLM cleaning will be skipped since no pool is available for routing.
+    /// Use `with_pool()` for production code.
     pub fn new(whisper_endpoint: Option<String>) -> Self {
         Self {
             whisper_endpoint,
             http_client: Client::new(),
+            pool: None,
         }
     }
 
@@ -356,42 +383,38 @@ Rules:
         })
     }
 
-    /// Call the LLM for transcript cleaning.
+    /// Call the LLM for transcript cleaning via PCG Router.
     async fn call_cleaning_llm(&self, system_prompt: &str, user_prompt: &str) -> Option<Value> {
-        let api_key = match std::env::var("OPENAI_API_KEY") {
-            Ok(key) => key,
-            Err(_) => {
-                tracing::warn!("[TRANSCRIPT] No OpenAI API key, skipping LLM cleaning");
+        let pool = match &self.pool {
+            Some(p) => p,
+            None => {
+                tracing::warn!("[TRANSCRIPT] No database pool configured, skipping LLM cleaning");
                 return None;
             }
         };
 
-        let response = self
-            .http_client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&serde_json::json!({
-                "model": "gpt-4o",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 0.3,
-                "max_tokens": 8000
-            }))
-            .send()
-            .await;
+        let messages = vec![
+            WorkflowLLMService::system_message(system_prompt),
+            WorkflowLLMService::user_message(user_prompt),
+        ];
 
-        match response {
-            Ok(resp) if resp.status().is_success() => {
-                let json: Value = resp.json().await.ok()?;
-                let content = json["choices"][0]["message"]["content"].as_str()?;
-                serde_json::from_str(content).ok()
-            }
-            Ok(resp) => {
-                tracing::warn!("[TRANSCRIPT] LLM cleaning failed ({})", resp.status());
-                None
+        match WorkflowLLMService::completion(
+            pool,
+            messages,
+            None, // Use default model from PCG Router
+            Some(8000),
+            Some(0.3),
+        )
+        .await
+        {
+            Ok((content, metadata)) => {
+                tracing::info!(
+                    "[TRANSCRIPT] LLM cleaning via PCG Router: model={}, provider={}, cost={}µ",
+                    metadata.model_used,
+                    metadata.provider,
+                    metadata.estimated_cost_micros.unwrap_or(0)
+                );
+                serde_json::from_str(&content).ok()
             }
             Err(e) => {
                 tracing::warn!("[TRANSCRIPT] LLM cleaning request failed: {}", e);

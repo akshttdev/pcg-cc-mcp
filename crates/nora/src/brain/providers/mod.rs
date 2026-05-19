@@ -5,11 +5,13 @@
 
 mod anthropic;
 mod openai;
+pub mod pcg_router_adapter;
 mod provider_trait;
 
 pub use anthropic::AnthropicProvider;
 pub use openai::OpenAIProvider;
+pub use pcg_router_adapter::PcgRouterAdapter;
 pub use provider_trait::{
-    ChatConfig, ChatMessage, ChatRequest, LLMProviderTrait, ProviderError, ProviderResponse,
-    ProviderType, StreamChunk, TokenUsage, ToolCallRequest, ToolDefinition,
+    ChatConfig, ChatMessage, ChatRequest, ContentBlock, LLMProviderTrait, ProviderError,
+    ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest, ToolDefinition,
 };

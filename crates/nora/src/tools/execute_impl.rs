@@ -3766,6 +3766,10 @@ impl ExecutiveTools {
         max_results: u32,
         _search_type: &SearchType,
     ) -> crate::Result<serde_json::Value> {
+        use std::time::Instant;
+
+        use services::services::editron::UsageTracker;
+
         let api_key = match std::env::var("EXA_API_KEY") {
             Ok(k) if !k.is_empty() => k,
             _ => {
@@ -3776,6 +3780,7 @@ impl ExecutiveTools {
             }
         };
 
+        let start = Instant::now();
         let client = reqwest::Client::new();
         let resp = client
             .post("https://api.exa.ai/search")
@@ -3793,12 +3798,33 @@ impl ExecutiveTools {
                 crate::NoraError::ToolExecutionError(format!("Exa search request failed: {}", e))
             })?;
 
+        let duration_ms = start.elapsed().as_millis() as i64;
+
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
+            let error_msg = format!("Exa search returned {}: {}", status, body);
+
+            // Log failed search
+            if let Some(executor) = &self.task_executor {
+                let pool = executor.pool();
+                UsageTracker::log_search_operation(
+                    pool,
+                    "exa",
+                    "search",
+                    Some(max_results as i64),
+                    None,
+                    duration_ms,
+                    false,
+                    Some(&error_msg),
+                    Some(serde_json::json!({"query": query})),
+                )
+                .await;
+            }
+
             return Ok(serde_json::json!({
                 "success": false,
-                "error": format!("Exa search returned {}: {}", status, body)
+                "error": error_msg
             }));
         }
 
@@ -3822,6 +3848,23 @@ impl ExecutiveTools {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+
+        // Log successful search
+        if let Some(executor) = &self.task_executor {
+            let pool = executor.pool();
+            UsageTracker::log_search_operation(
+                pool,
+                "exa",
+                "search",
+                Some(max_results as i64),
+                Some(results.len() as i64),
+                duration_ms,
+                true,
+                None,
+                Some(serde_json::json!({"query": query})),
+            )
+            .await;
+        }
 
         Ok(serde_json::json!({
             "success": true,

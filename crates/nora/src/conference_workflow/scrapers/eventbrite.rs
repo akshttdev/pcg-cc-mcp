@@ -2,12 +2,15 @@
 //!
 //! Discovers events from Eventbrite platform using web search + LLM analysis
 
+use std::sync::Arc;
+
 use chrono::NaiveDate;
 use reqwest::Client;
 use serde::Deserialize;
+use sqlx::SqlitePool;
 
-use crate::execution::research::ResearchTools;
 use super::{calculate_relevance, ScrapedEvent, ScraperError};
+use crate::execution::research::ResearchTools;
 
 /// Eventbrite event scraper
 pub struct EventbriteScraper {
@@ -16,6 +19,15 @@ pub struct EventbriteScraper {
 }
 
 impl EventbriteScraper {
+    /// Create an EventbriteScraper with PCG Router support for LLM analysis.
+    pub fn with_pool(pool: Arc<SqlitePool>) -> Self {
+        Self {
+            client: Client::new(),
+            research_tools: ResearchTools::with_pool(pool),
+        }
+    }
+
+    /// Create an EventbriteScraper without pool (legacy mode, LLM analysis will fail).
     pub fn new() -> Self {
         Self {
             client: Client::new(),
@@ -41,16 +53,32 @@ impl EventbriteScraper {
 
         // Step 1: Web search for Eventbrite events
         let search_queries = vec![
-            format!("site:eventbrite.com {} {} {}", conference_name, location, start_date.format("%B %Y")),
-            format!("site:eventbrite.com {} side event networking", conference_name),
-            format!("eventbrite {} {} tech crypto blockchain", location, start_date.format("%B %Y")),
+            format!(
+                "site:eventbrite.com {} {} {}",
+                conference_name,
+                location,
+                start_date.format("%B %Y")
+            ),
+            format!(
+                "site:eventbrite.com {} side event networking",
+                conference_name
+            ),
+            format!(
+                "eventbrite {} {} tech crypto blockchain",
+                location,
+                start_date.format("%B %Y")
+            ),
         ];
 
         let mut all_search_results = Vec::new();
         for query in &search_queries {
             match self.research_tools.web_search(query, 10).await {
                 Ok(results) => {
-                    tracing::debug!("[EVENTBRITE_SCRAPER] Found {} results for: {}", results.len(), query);
+                    tracing::debug!(
+                        "[EVENTBRITE_SCRAPER] Found {} results for: {}",
+                        results.len(),
+                        query
+                    );
                     all_search_results.extend(results);
                 }
                 Err(e) => {
@@ -110,14 +138,13 @@ Return ONLY a valid JSON array, no markdown formatting. If no events are found, 
 {}
 
 Extract all events and return as JSON array."#,
-            conference_name,
-            location,
-            start_date,
-            end_date,
-            search_context
+            conference_name, location, start_date, end_date, search_context
         );
 
-        let response = self.research_tools.research_llm(system_prompt, &user_prompt).await
+        let response = self
+            .research_tools
+            .research_llm(system_prompt, &user_prompt)
+            .await
             .map_err(|e| ScraperError::ApiError(format!("LLM analysis failed: {}", e)))?;
 
         // Step 3: Parse LLM response

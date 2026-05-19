@@ -13,6 +13,16 @@ use super::{
 };
 
 /// Main voice processing engine for Nora
+///
+/// **NOTE**: For new code, prefer [`PCGRouterVoiceEngine`](super::PCGRouterVoiceEngine) which provides:
+/// - Database-driven provider selection via `pcg_router_tts_providers` and `pcg_router_stt_providers` tables
+/// - Automatic fallback across providers based on priority
+/// - Cost tracking via `service_usage_log` table
+/// - No upfront provider initialization required
+///
+/// This engine is retained for backward compatibility with code that relies on
+/// the `VoiceConfig`-based provider selection. New integrations should use
+/// `PCGRouterVoiceEngine::new(pool)` instead.
 pub struct VoiceEngine {
     config: VoiceConfig,
     tts: Arc<dyn TextToSpeech + Send + Sync>,

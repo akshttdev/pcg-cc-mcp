@@ -269,8 +269,8 @@ async fn run_company_research(
     let raw = if let Some(resp) = nora_result {
         resp.content
     } else {
-        // Direct Anthropic fallback
-        run_company_research_direct(name, website).await?
+        // PCG Router fallback
+        run_company_research_direct(pool, name, website).await?
     };
 
     // Extract summary + confidence
@@ -299,14 +299,11 @@ async fn run_company_research(
 }
 
 async fn run_company_research_direct(
+    pool: &sqlx::SqlitePool,
     name: &str,
     website: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    use serde_json::json;
-
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .map_err(|_| "ANTHROPIC_API_KEY not set")?;
+    use services::services::workflow_llm::{CompletionOptions, WorkflowLLMService};
 
     let prompt = format!(
         "Research the company '{name}'{website_ctx} for a CRM profile. \
@@ -321,28 +318,47 @@ async fn run_company_research_direct(
             .unwrap_or_default(),
     );
 
-    let body = json!({
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 2048,
-        "system": "You are Scout, Brand Intelligence Analyst for Power Club Global. Research companies and return comprehensive JSON profiles.",
-        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
-        "messages": [{"role": "user", "content": prompt}]
-    });
+    let messages = vec![
+        WorkflowLLMService::system_message(
+            "You are Scout, Brand Intelligence Analyst for Power Club Global. Research companies and return comprehensive JSON profiles.",
+        ),
+        WorkflowLLMService::user_message(&prompt),
+    ];
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("anthropic-beta", "web-search-2025-03-05")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await?
-        .json::<serde_json::Value>()
-        .await?;
+    // Use completion_with_options for web search beta feature
+    let options = CompletionOptions {
+        anthropic_beta: Some(vec!["web-search-2025-03-05".to_string()]),
+        tool_config: Some(serde_json::json!({
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 5
+        })),
+    };
 
-    Ok(extract_text_from_response(&resp))
+    let (response, metadata) = WorkflowLLMService::completion_with_options(
+        pool,
+        messages,
+        None,
+        options,
+        Some("claude-sonnet-4-6"),
+        Some(2048),
+        None,
+    )
+    .await?;
+
+    tracing::info!(
+        "[COMPANY_RESEARCH] Routed to {} ({})",
+        metadata.model_used,
+        metadata.provider
+    );
+
+    // Extract text from response
+    match response {
+        services::services::workflow_llm::LLMResponse::Text { content, .. } => Ok(content),
+        services::services::workflow_llm::LLMResponse::ToolCalls { .. } => {
+            Err("Unexpected tool calls response".into())
+        }
+    }
 }
 
 fn extract_summary(text: &str) -> String {
@@ -376,19 +392,6 @@ fn extract_confidence(text: &str) -> f64 {
         }
     }
     0.6
-}
-
-fn extract_text_from_response(resp: &serde_json::Value) -> String {
-    if let Some(content) = resp.get("content").and_then(|c| c.as_array()) {
-        for block in content {
-            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                    return text.to_string();
-                }
-            }
-        }
-    }
-    resp.to_string()
 }
 
 // ── Company Brand Profile ────────────────────────────────────────────────────

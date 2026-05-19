@@ -3,6 +3,7 @@ use std::{pin::Pin, sync::Arc};
 use futures::stream::Stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use ts_rs::TS;
 
 use crate::{
@@ -13,12 +14,16 @@ use crate::{
 // Multi-provider abstraction layer
 pub mod providers;
 pub use providers::{
-    AnthropicProvider, LLMProviderTrait, OpenAIProvider, ProviderError, ProviderType, TokenUsage,
+    AnthropicProvider, LLMProviderTrait, OpenAIProvider, PcgRouterAdapter, ProviderError,
+    ProviderType, TokenUsage,
 };
 
 // Agent-specific LLM client configuration
 pub mod agent_client;
-pub use agent_client::{create_client_for_agent, infer_provider_from_model, AgentModelConfig};
+pub use agent_client::{
+    create_client_for_agent, create_client_for_agent_with_pool, infer_provider_from_model,
+    AgentModelConfig,
+};
 
 /// A message in the conversation history
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -239,7 +244,6 @@ Provide concise executive summaries and surface actionable next steps."#.to_stri
 }
 
 /// Thin wrapper around the configured LLM provider
-#[derive(Debug, Clone)]
 pub struct LLMClient {
     config: LLMConfig,
     client: Client,
@@ -248,6 +252,38 @@ pub struct LLMClient {
     /// Fallback to local Ollama when primary provider fails
     fallback_endpoint: Option<String>,
     fallback_model: Option<String>,
+    /// Custom provider that bypasses built-in provider logic (e.g., PcgRouterAdapter)
+    /// When set, all LLM calls route through this provider instead of direct API calls.
+    custom_provider: Option<Arc<dyn LLMProviderTrait + Send + Sync>>,
+}
+
+impl std::fmt::Debug for LLMClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LLMClient")
+            .field("config", &self.config)
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("fallback_endpoint", &self.fallback_endpoint)
+            .field("fallback_model", &self.fallback_model)
+            .field(
+                "custom_provider",
+                &self.custom_provider.as_ref().map(|p| p.name()),
+            )
+            .finish()
+    }
+}
+
+impl Clone for LLMClient {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            client: Client::new(),
+            api_key: self.api_key.clone(),
+            cache: Arc::clone(&self.cache),
+            fallback_endpoint: self.fallback_endpoint.clone(),
+            fallback_model: self.fallback_model.clone(),
+            custom_provider: self.custom_provider.clone(),
+        }
+    }
 }
 
 impl LLMClient {
@@ -323,10 +359,44 @@ impl LLMClient {
             cache: Arc::new(LlmCache::default()),
             fallback_endpoint,
             fallback_model,
+            custom_provider: None,
+        }
+    }
+
+    /// Create an LLMClient that routes through PCG Router for database-driven
+    /// provider selection, usage tracking, and automatic fallback.
+    ///
+    /// This is the preferred constructor when a database pool is available.
+    /// All LLM calls will be routed through `WorkflowLLMService`, providing:
+    /// - Database-driven model selection
+    /// - Automatic provider fallback
+    /// - Unified cost tracking in the `token_usage` table
+    /// - Support for all PCG Router providers
+    pub fn with_pool(config: LLMConfig, pool: Arc<SqlitePool>) -> Self {
+        let model = config.model.clone();
+        let adapter = PcgRouterAdapter::with_model(pool, &model);
+
+        tracing::info!(
+            "[LLM_CLIENT] Created with PCG Router backend, model_hint={}",
+            model
+        );
+
+        Self {
+            config,
+            client: Client::new(),
+            api_key: None, // Not needed - PCG Router handles auth
+            cache: Arc::new(LlmCache::default()),
+            fallback_endpoint: None,
+            fallback_model: None,
+            custom_provider: Some(Arc::new(adapter)),
         }
     }
 
     pub fn is_ready(&self) -> bool {
+        // Custom provider handles its own readiness
+        if self.custom_provider.is_some() {
+            return true;
+        }
         // Ollama is always ready (local server, no API key needed)
         matches!(self.config.provider, LLMProvider::Ollama)
             || self.api_key.is_some()
@@ -335,6 +405,10 @@ impl LLMClient {
 
     /// Check if LLM is configured and operational
     pub fn is_configured(&self) -> bool {
+        // Custom provider is always configured
+        if self.custom_provider.is_some() {
+            return true;
+        }
         // Ollama is always configured (just needs the local server running)
         matches!(self.config.provider, LLMProvider::Ollama)
             || self.config.endpoint.is_some()
@@ -399,14 +473,55 @@ impl LLMClient {
         // Cache miss - generate from LLM
         tracing::info!("LLM cache miss - generating from provider");
         let start = std::time::Instant::now();
-        let content = match self.config.provider {
-            LLMProvider::OpenAI | LLMProvider::Ollama => {
-                self.generate_openai(system_prompt, user_query, context)
-                    .await?
+
+        // Use custom provider (PCG Router) if available
+        let content = if let Some(ref provider) = self.custom_provider {
+            let system = if system_prompt.is_empty() {
+                self.config.system_prompt.as_str()
+            } else {
+                system_prompt
+            };
+            let user_content = format!(
+                "Context:\n{context}\n\nRequest:\n{user_query}",
+                context = context,
+                user_query = user_query
+            );
+            let request = providers::ChatRequest {
+                messages: vec![
+                    providers::ChatMessage::system(system),
+                    providers::ChatMessage::user(user_content),
+                ],
+                tools: None,
+                config: providers::ChatConfig {
+                    model: self.config.model.clone(),
+                    temperature: self.config.temperature,
+                    max_tokens: self.config.max_tokens,
+                    tool_choice: None,
+                },
+            };
+            let response = provider
+                .chat(request)
+                .await
+                .map_err(|e| NoraError::LLMError(format!("PCG Router error: {}", e)))?;
+            match response {
+                providers::ProviderResponse::Text { content, .. } => content,
+                providers::ProviderResponse::ToolCalls { .. } => {
+                    return Err(NoraError::LLMError(
+                        "Unexpected tool calls in simple generate".to_string(),
+                    ));
+                }
             }
-            LLMProvider::Anthropic => {
-                self.generate_anthropic(system_prompt, user_query, context)
-                    .await?
+        } else {
+            // Fall back to built-in provider logic
+            match self.config.provider {
+                LLMProvider::OpenAI | LLMProvider::Ollama => {
+                    self.generate_openai(system_prompt, user_query, context)
+                        .await?
+                }
+                LLMProvider::Anthropic => {
+                    self.generate_anthropic(system_prompt, user_query, context)
+                        .await?
+                }
             }
         };
         let duration = start.elapsed();
@@ -416,7 +531,11 @@ impl LLMClient {
             content: content.clone(),
             cached_at: chrono::Utc::now(),
             metadata: ResponseMetadata {
-                provider: format!("{:?}", self.config.provider),
+                provider: self
+                    .custom_provider
+                    .as_ref()
+                    .map(|p| p.name().to_string())
+                    .unwrap_or_else(|| format!("{:?}", self.config.provider)),
                 model: self.config.model.clone(),
                 tokens: None, // TODO: Extract from response
             },
@@ -439,6 +558,48 @@ impl LLMClient {
         // We could cache the full response after streaming completes, but that's TODO
         tracing::info!("LLM streaming request (cache bypassed)");
 
+        // Use custom provider (PCG Router) if available
+        if let Some(ref provider) = self.custom_provider {
+            use futures::StreamExt;
+            let system = if system_prompt.is_empty() {
+                self.config.system_prompt.as_str()
+            } else {
+                system_prompt
+            };
+            let user_content = format!(
+                "Context:\n{context}\n\nRequest:\n{user_query}",
+                context = context,
+                user_query = user_query
+            );
+            let request = providers::ChatRequest {
+                messages: vec![
+                    providers::ChatMessage::system(system),
+                    providers::ChatMessage::user(user_content),
+                ],
+                tools: None,
+                config: providers::ChatConfig {
+                    model: self.config.model.clone(),
+                    temperature: self.config.temperature,
+                    max_tokens: self.config.max_tokens,
+                    tool_choice: None,
+                },
+            };
+            let stream = provider
+                .chat_stream(request)
+                .await
+                .map_err(|e| NoraError::LLMError(format!("PCG Router streaming error: {}", e)))?;
+
+            // Convert provider stream to the expected format
+            let mapped_stream = stream.map(|result| {
+                result
+                    .map(|chunk| chunk.content)
+                    .map_err(|e| NoraError::LLMError(format!("Stream chunk error: {}", e)))
+            });
+
+            return Ok(Box::pin(mapped_stream));
+        }
+
+        // Fall back to built-in provider logic
         match self.config.provider {
             LLMProvider::OpenAI | LLMProvider::Ollama => {
                 self.generate_openai_stream(system_prompt, user_query, context)
@@ -475,6 +636,21 @@ impl LLMClient {
         tools: &[serde_json::Value],
         conversation_history: &[ConversationMessage],
     ) -> Result<LLMResponse> {
+        // Use custom provider (PCG Router) if available
+        if let Some(ref provider) = self.custom_provider {
+            return self
+                .generate_via_custom_provider(
+                    provider,
+                    system_prompt,
+                    user_query,
+                    context,
+                    tools,
+                    conversation_history,
+                )
+                .await;
+        }
+
+        // Fall back to built-in provider logic
         match self.config.provider {
             LLMProvider::OpenAI | LLMProvider::Ollama => {
                 self.generate_openai_with_tools_and_history(
@@ -495,6 +671,107 @@ impl LLMClient {
                     conversation_history,
                 )
                 .await
+            }
+        }
+    }
+
+    /// Route a request through a custom provider (e.g., PCG Router)
+    async fn generate_via_custom_provider(
+        &self,
+        provider: &Arc<dyn LLMProviderTrait + Send + Sync>,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+        tools: &[serde_json::Value],
+        conversation_history: &[ConversationMessage],
+    ) -> Result<LLMResponse> {
+        let system = if system_prompt.is_empty() {
+            self.config.system_prompt.as_str()
+        } else {
+            system_prompt
+        };
+
+        // Build messages
+        let mut messages = vec![providers::ChatMessage::system(system)];
+
+        // Add conversation history (limit to last 10 messages)
+        let history_limit = 10;
+        let history_start = conversation_history.len().saturating_sub(history_limit);
+        for msg in &conversation_history[history_start..] {
+            match msg.role {
+                MessageRole::User => messages.push(providers::ChatMessage::user(&msg.content)),
+                MessageRole::Assistant => {
+                    messages.push(providers::ChatMessage::assistant(&msg.content))
+                }
+                MessageRole::System => {} // Skip system messages in history
+            }
+        }
+
+        // Add current request with context
+        let user_content = format!(
+            "Context:\n{context}\n\nRequest:\n{user_query}",
+            context = context,
+            user_query = user_query
+        );
+        messages.push(providers::ChatMessage::user(user_content));
+
+        // Convert tools to provider format
+        let provider_tools: Option<Vec<providers::ToolDefinition>> = if tools.is_empty() {
+            None
+        } else {
+            Some(
+                tools
+                    .iter()
+                    .filter_map(|t| {
+                        let func = t.get("function")?;
+                        Some(providers::ToolDefinition {
+                            name: func["name"].as_str()?.to_string(),
+                            description: func["description"].as_str().unwrap_or("").to_string(),
+                            parameters: func["parameters"].clone(),
+                        })
+                    })
+                    .collect(),
+            )
+        };
+
+        let request = providers::ChatRequest {
+            messages,
+            tools: provider_tools,
+            config: providers::ChatConfig {
+                model: self.config.model.clone(),
+                temperature: self.config.temperature,
+                max_tokens: self.config.max_tokens,
+                tool_choice: if tools.is_empty() {
+                    None
+                } else {
+                    Some("auto".to_string())
+                },
+            },
+        };
+
+        let response = provider
+            .chat(request)
+            .await
+            .map_err(|e| NoraError::LLMError(format!("PCG Router error: {}", e)))?;
+
+        // Convert provider response to LLMResponse
+        match response {
+            providers::ProviderResponse::Text { content, usage } => {
+                Ok(LLMResponse::Text { content, usage })
+            }
+            providers::ProviderResponse::ToolCalls { calls, usage } => {
+                let tool_calls: Vec<ToolCall> = calls
+                    .into_iter()
+                    .map(|c| ToolCall {
+                        id: c.id,
+                        name: c.name,
+                        arguments: c.arguments,
+                    })
+                    .collect();
+                Ok(LLMResponse::ToolCalls {
+                    calls: tool_calls,
+                    usage,
+                })
             }
         }
     }
@@ -545,6 +822,23 @@ impl LLMClient {
         conversation_history: &[ConversationMessage],
         tools: &[serde_json::Value],
     ) -> Result<LLMResponse> {
+        // Use custom provider (PCG Router) if available
+        if let Some(ref provider) = self.custom_provider {
+            return self
+                .continue_via_custom_provider(
+                    provider,
+                    system_prompt,
+                    user_query,
+                    context,
+                    tool_calls,
+                    tool_results,
+                    conversation_history,
+                    tools,
+                )
+                .await;
+        }
+
+        // Fall back to built-in provider logic
         match self.config.provider {
             LLMProvider::OpenAI | LLMProvider::Ollama => {
                 self.continue_openai_with_tool_results_and_history(
@@ -569,6 +863,131 @@ impl LLMClient {
                     tools,
                 )
                 .await
+            }
+        }
+    }
+
+    /// Continue conversation via custom provider after tool execution
+    #[allow(clippy::too_many_arguments)]
+    async fn continue_via_custom_provider(
+        &self,
+        provider: &Arc<dyn LLMProviderTrait + Send + Sync>,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+        tool_calls: &[ToolCall],
+        tool_results: &[ToolResult],
+        conversation_history: &[ConversationMessage],
+        tools: &[serde_json::Value],
+    ) -> Result<LLMResponse> {
+        let system = if system_prompt.is_empty() {
+            self.config.system_prompt.as_str()
+        } else {
+            system_prompt
+        };
+
+        // Build messages
+        let mut messages = vec![providers::ChatMessage::system(system)];
+
+        // Add conversation history
+        let history_limit = 10;
+        let history_start = conversation_history.len().saturating_sub(history_limit);
+        for msg in &conversation_history[history_start..] {
+            match msg.role {
+                MessageRole::User => messages.push(providers::ChatMessage::user(&msg.content)),
+                MessageRole::Assistant => {
+                    messages.push(providers::ChatMessage::assistant(&msg.content))
+                }
+                MessageRole::System => {}
+            }
+        }
+
+        // Add the original user request
+        let user_content = format!(
+            "Context:\n{context}\n\nRequest:\n{user_query}",
+            context = context,
+            user_query = user_query
+        );
+        messages.push(providers::ChatMessage::user(user_content));
+
+        // Add assistant message with tool calls
+        let provider_tool_calls: Vec<providers::ToolCallRequest> = tool_calls
+            .iter()
+            .map(|tc| providers::ToolCallRequest {
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                arguments: tc.arguments.clone(),
+            })
+            .collect();
+        messages.push(providers::ChatMessage::assistant_with_tools(
+            provider_tool_calls,
+        ));
+
+        // Add tool results
+        for result in tool_results {
+            messages.push(providers::ChatMessage::tool_result(
+                &result.tool_call_id,
+                &result.result,
+            ));
+        }
+
+        // Convert tools to provider format
+        let provider_tools: Option<Vec<providers::ToolDefinition>> = if tools.is_empty() {
+            None
+        } else {
+            Some(
+                tools
+                    .iter()
+                    .filter_map(|t| {
+                        let func = t.get("function")?;
+                        Some(providers::ToolDefinition {
+                            name: func["name"].as_str()?.to_string(),
+                            description: func["description"].as_str().unwrap_or("").to_string(),
+                            parameters: func["parameters"].clone(),
+                        })
+                    })
+                    .collect(),
+            )
+        };
+
+        let request = providers::ChatRequest {
+            messages,
+            tools: provider_tools,
+            config: providers::ChatConfig {
+                model: self.config.model.clone(),
+                temperature: self.config.temperature,
+                max_tokens: self.config.max_tokens,
+                tool_choice: if tools.is_empty() {
+                    None
+                } else {
+                    Some("auto".to_string())
+                },
+            },
+        };
+
+        let response = provider
+            .chat(request)
+            .await
+            .map_err(|e| NoraError::LLMError(format!("PCG Router continuation error: {}", e)))?;
+
+        // Convert provider response to LLMResponse
+        match response {
+            providers::ProviderResponse::Text { content, usage } => {
+                Ok(LLMResponse::Text { content, usage })
+            }
+            providers::ProviderResponse::ToolCalls { calls, usage } => {
+                let tool_calls: Vec<ToolCall> = calls
+                    .into_iter()
+                    .map(|c| ToolCall {
+                        id: c.id,
+                        name: c.name,
+                        arguments: c.arguments,
+                    })
+                    .collect();
+                Ok(LLMResponse::ToolCalls {
+                    calls: tool_calls,
+                    usage,
+                })
             }
         }
     }

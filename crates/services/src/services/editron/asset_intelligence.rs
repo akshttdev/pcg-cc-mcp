@@ -4,7 +4,7 @@
 //! a Tokio task that:
 //!   1. Runs SceneDetectionEngine to extract shot metadata
 //!   2. Extracts a keyframe via ffmpeg
-//!   3. Calls Anthropic Vision API for description/tags
+//!   3. Calls Vision API via PCG Router for description/tags
 //!   4. Updates media_assets with AI metadata
 //!   5. Registers in project knowledge graph
 
@@ -14,9 +14,12 @@ use db::models::{
     media_asset::MediaAsset,
     project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
 };
+use serde_json::json;
 use sqlx::SqlitePool;
 use tracing::{error, info};
 use uuid::Uuid;
+
+use crate::services::workflow_llm::WorkflowLLMService;
 
 /// Kick off async AI analysis — returns immediately.
 pub fn analyze_async(
@@ -84,9 +87,9 @@ async fn run_analysis(
         None
     };
 
-    // ── Step 3: Anthropic Vision API ─────────────────────────────────────────
+    // ── Step 3: Vision API via PCG Router ─────────────────────────────────────
     let (description, shot_type, energy_level, scene_tags, confidence) =
-        call_vision_api(filename, image_data).await?;
+        call_vision_api(pool, filename, image_data).await?;
 
     // ── Step 4: Persist results ───────────────────────────────────────────────
     let tags_json = serde_json::to_string(&scene_tags).unwrap_or_else(|_| "[]".into());
@@ -126,25 +129,12 @@ async fn run_analysis(
     Ok(())
 }
 
-/// Call Anthropic Vision API and return (description, shot_type, energy_level, tags, confidence).
+/// Call Vision API via PCG Router and return (description, shot_type, energy_level, tags, confidence).
 async fn call_vision_api(
+    pool: &SqlitePool,
     filename: &str,
     image_b64: Option<String>,
 ) -> Result<(String, String, f64, Vec<String>, f64), Box<dyn std::error::Error + Send + Sync>> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .unwrap_or_default();
-
-    if api_key.is_empty() {
-        return Ok((
-            format!("Media file: {}", filename),
-            "unknown".into(),
-            0.5,
-            vec![],
-            0.1,
-        ));
-    }
-
     let prompt = "Describe this shot for a creative media library. \
         Return JSON with these keys only: \
         {\"description\": \"Wide shot, rooftop event, golden hour lighting\", \
@@ -153,8 +143,9 @@ async fn call_vision_api(
         \"tags\": [\"tag1\",\"tag2\"], \
         \"confidence\": 0.85}";
 
-    let content: serde_json::Value = if let Some(b64) = image_b64 {
-        serde_json::json!([
+    // Build message content — vision models expect image blocks for Anthropic
+    let user_content = if let Some(b64) = image_b64 {
+        json!([
             {
                 "type": "image",
                 "source": {
@@ -166,37 +157,44 @@ async fn call_vision_api(
             {"type": "text", "text": prompt}
         ])
     } else {
-        serde_json::json!([{"type": "text", "text": format!("Filename: {}. {}", filename, prompt)}])
+        json!(format!("Filename: {}. {}", filename, prompt))
     };
 
-    let body = serde_json::json!({
-        "model": "claude-opus-4-6",
-        "max_tokens": 512,
-        "messages": [{"role": "user", "content": content}]
-    });
+    let messages = vec![json!({ "role": "user", "content": user_content })];
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Vision API error: {}", e))?;
+    // Use vision-capable model via PCG Router
+    let result = WorkflowLLMService::completion(
+        pool,
+        messages,
+        Some("claude-opus-4-6"), // Vision-capable model
+        Some(512),
+        None,
+    )
+    .await;
 
-    let response: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("Vision response parse: {}", e))?;
-
-    let text = response["content"]
-        .as_array()
-        .and_then(|arr| arr.first())
-        .and_then(|c| c["text"].as_str())
-        .unwrap_or("")
-        .to_string();
+    let text = match result {
+        Ok((text, metadata)) => {
+            info!(
+                "[ASSET_INTELLIGENCE] Vision API routed to {} ({})",
+                metadata.model_used, metadata.provider
+            );
+            text
+        }
+        Err(e) => {
+            // Fallback to filename-based description if no models available
+            info!(
+                "[ASSET_INTELLIGENCE] Vision API unavailable, using filename: {}",
+                e
+            );
+            return Ok((
+                format!("Media file: {}", filename),
+                "unknown".into(),
+                0.5,
+                vec![],
+                0.1,
+            ));
+        }
+    };
 
     // Parse JSON from response text
     let parsed = extract_json(&text);

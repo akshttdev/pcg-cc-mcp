@@ -1,5 +1,8 @@
 //! Stage 1 (Claude extraction), Stage 5a (company research passes),
 //! and Stage 6 (comprehensive report generation).
+//!
+//! All LLM calls route through PCG Router (WorkflowLLMService) for unified
+//! cost tracking, provider selection, and automatic fallback.
 
 use db::{
     db_uuid::DbUuid,
@@ -9,8 +12,11 @@ use db::{
         crm_contact::CrmContact,
     },
 };
-use reqwest::Client;
 use serde_json::Value;
+use services::services::workflow_llm::{
+    CompletionOptions, LLMResponse, ToolDefinition, WorkflowLLMService,
+};
+use sqlx::SqlitePool;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -33,13 +39,8 @@ pub(crate) enum EmailClass {
 }
 
 /// Classify an inbound email from a trusted sender (e.g. sirak@sirakstudios.com)
-/// using a lightweight Claude call. Returns in ~1-2s.
-pub(crate) async fn classify_email(subject: &str, body: &str) -> EmailClass {
-    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
-        Ok(k) => k,
-        Err(_) => return EmailClass::Other,
-    };
-
+/// using a lightweight Claude call via PCG Router. Returns in ~1-2s.
+pub(crate) async fn classify_email(pool: &SqlitePool, subject: &str, body: &str) -> EmailClass {
     let prompt = format!(
         r#"Classify this email from a client into exactly one category.
 
@@ -56,32 +57,31 @@ Classification:"#,
         &body[..body.len().min(2000)]
     );
 
-    let client = reqwest::Client::new();
-    let res = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&serde_json::json!({
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 10,
-            "messages": [{"role": "user", "content": prompt}]
-        }))
-        .send()
-        .await;
+    let messages = vec![serde_json::json!({ "role": "user", "content": prompt })];
 
-    let label = match res {
-        Ok(r) => r
-            .json::<serde_json::Value>()
-            .await
-            .ok()
-            .and_then(|b| {
-                b["content"][0]["text"]
-                    .as_str()
-                    .map(|s| s.trim().to_uppercase())
-            })
-            .unwrap_or_default(),
-        Err(_) => return EmailClass::Other,
+    // Use Haiku for fast, cheap classification
+    let result = WorkflowLLMService::completion(
+        pool,
+        messages,
+        Some("claude-haiku-4-5-20251001"),
+        Some(10),
+        None,
+    )
+    .await;
+
+    let label = match result {
+        Ok((text, metadata)) => {
+            tracing::info!(
+                model = %metadata.model_used,
+                provider = %metadata.provider,
+                "[INTAKE_CLASSIFY] Email classification completed"
+            );
+            text.trim().to_uppercase()
+        }
+        Err(e) => {
+            tracing::warn!("[INTAKE_CLASSIFY] Classification failed: {}", e);
+            return EmailClass::Other;
+        }
     };
 
     if label.contains("DISCOVERY") {
@@ -93,10 +93,10 @@ Classification:"#,
     }
 }
 
-pub(super) async fn extract_intake_structure(raw: &str) -> anyhow::Result<ExtractedIntake> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
-
+pub(super) async fn extract_intake_structure(
+    pool: &SqlitePool,
+    raw: &str,
+) -> anyhow::Result<ExtractedIntake> {
     let system = "You are an expert business analyst specialising in extracting structured data \
         from call transcripts, meeting notes, and email summaries. Always respond with valid JSON only — \
         no markdown fences, no explanation.";
@@ -159,25 +159,27 @@ CONTENT:
         &raw[..raw.len().min(15000)]
     );
 
-    let client = Client::new();
-    let res = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&serde_json::json!({
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 4096,
-            "system": system,
-            "messages": [{"role": "user", "content": prompt}]
-        }))
-        .send()
-        .await?;
+    let messages = vec![
+        serde_json::json!({ "role": "system", "content": system }),
+        serde_json::json!({ "role": "user", "content": prompt }),
+    ];
 
-    let body: Value = res.json().await?;
-    let text = body["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("No text in Claude response: {:?}", body))?;
+    let (text, metadata) = WorkflowLLMService::completion(
+        pool,
+        messages,
+        Some("claude-sonnet-4-20250514"),
+        Some(4096),
+        None,
+    )
+    .await?;
+
+    tracing::info!(
+        model = %metadata.model_used,
+        provider = %metadata.provider,
+        input_tokens = ?metadata.input_tokens,
+        output_tokens = ?metadata.output_tokens,
+        "[INTAKE_EXTRACT] Structure extraction completed"
+    );
 
     // Strip markdown fences if present
     let json_str = text
@@ -195,9 +197,9 @@ CONTENT:
 
 // ── Stage 5a: Company research passes ────────────────────────────────────────
 
-/// Run one research pass on a company using Claude with web search.
+/// Run one research pass on a company using Claude with web search via PCG Router.
 pub(super) async fn run_company_research_pass(
-    pool: &sqlx::SqlitePool,
+    pool: &SqlitePool,
     company_name: &str,
     intake_item_id: Uuid,
     pass_number: u32,
@@ -226,9 +228,6 @@ pub(super) async fn run_company_research_pass(
     .bind(focus)
     .execute(pool)
     .await?;
-
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
 
     let focus_prompt = match focus {
         "identity_and_overview" => format!(
@@ -259,37 +258,50 @@ pub(super) async fn run_company_research_pass(
         )
     })];
 
-    let client = Client::new();
-    let res = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("anthropic-beta", "web-search-2025-03-05")
-        .header("content-type", "application/json")
-        .json(&serde_json::json!({
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 4096,
-            "tools": [{
-                "type": "web_search_20250305",
-                "name": "web_search",
-                "max_uses": 4
-            }],
-            "messages": messages
-        }))
-        .send()
-        .await?;
+    // Web search tool with max_uses limit
+    let web_search_tool = ToolDefinition {
+        name: "web_search".to_string(),
+        description: "Search the web for information".to_string(),
+        parameters: serde_json::json!({
+            "type": "web_search_20250305",
+            "max_uses": 4
+        }),
+    };
 
-    let body: serde_json::Value = res.json().await?;
+    // Use CompletionOptions for Anthropic beta features (web search)
+    let options = CompletionOptions {
+        anthropic_beta: Some(vec!["web-search-2025-03-05".to_string()]),
+        tool_config: Some(serde_json::json!({ "max_uses": 4 })),
+    };
 
-    // Extract text content from response (may include tool use blocks)
-    let text = body["content"]
-        .as_array()
-        .and_then(|arr| {
-            arr.iter()
-                .find(|b| b["type"].as_str() == Some("text"))
-                .and_then(|b| b["text"].as_str())
-        })
-        .unwrap_or("{}");
+    let (response, metadata) = WorkflowLLMService::completion_with_options(
+        pool,
+        messages,
+        Some(&[web_search_tool]),
+        options,
+        Some("claude-sonnet-4-20250514"),
+        Some(4096),
+        None,
+    )
+    .await?;
+
+    // Extract text content from LLMResponse
+    let text = match response {
+        LLMResponse::Text { content, .. } => content,
+        LLMResponse::ToolCalls { .. } => {
+            anyhow::bail!("Unexpected tool calls in company research response");
+        }
+    };
+
+    tracing::info!(
+        model = %metadata.model_used,
+        provider = %metadata.provider,
+        input_tokens = ?metadata.input_tokens,
+        output_tokens = ?metadata.output_tokens,
+        "[INTAKE_RESEARCH] Company research pass {} completed for '{}'",
+        pass_number,
+        company_name
+    );
 
     let json_str = text
         .trim()
@@ -299,7 +311,7 @@ pub(super) async fn run_company_research_pass(
         .trim();
 
     let parsed: serde_json::Value = serde_json::from_str(json_str).unwrap_or_else(|_| {
-        serde_json::json!({"summary": text, "key_findings": {}, "sources": [], "confidence_score": 0.3})
+        serde_json::json!({"summary": &text, "key_findings": {}, "sources": [], "confidence_score": 0.3})
     });
 
     let summary = parsed["summary"].as_str().unwrap_or("").to_string();
@@ -476,6 +488,7 @@ pub async fn run_report_generation(
         .join("\n");
 
     let generated = generate_report_with_claude(
+        &pool,
         contact_name,
         company,
         intel_summary,
@@ -677,6 +690,7 @@ async fn ingest_sources_into_kg(
 }
 
 async fn generate_report_with_claude(
+    pool: &SqlitePool,
     contact_name: &str,
     company: &str,
     intel_summary: &str,
@@ -686,9 +700,6 @@ async fn generate_report_with_claude(
     ind_list: &str,
     report_type: &str,
 ) -> anyhow::Result<GeneratedReport> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
-
     let system = "You are a senior business development analyst at Powerclub Global, \
         a creative agency specialising in media production, brand strategy, talent management, \
         and digital content. Your job is to analyse prospect/client intelligence and generate \
@@ -783,25 +794,24 @@ Return a JSON object with these EXACT fields (all required):
 "#
     );
 
-    let client = Client::new();
-    let res = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&serde_json::json!({
-            "model": "claude-opus-4-6",
-            "max_tokens": 8192,
-            "system": system,
-            "messages": [{"role": "user", "content": prompt}]
-        }))
-        .send()
-        .await?;
+    let messages = vec![
+        serde_json::json!({ "role": "system", "content": system }),
+        serde_json::json!({ "role": "user", "content": prompt }),
+    ];
 
-    let body: Value = res.json().await?;
-    let text = body["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("No text in Claude response: {:?}", body))?;
+    // Use claude-opus for comprehensive report generation (high complexity task)
+    let (text, metadata) =
+        WorkflowLLMService::completion(pool, messages, Some("claude-opus-4-6"), Some(8192), None)
+            .await?;
+
+    tracing::info!(
+        model = %metadata.model_used,
+        provider = %metadata.provider,
+        input_tokens = ?metadata.input_tokens,
+        output_tokens = ?metadata.output_tokens,
+        cost_micros = ?metadata.estimated_cost_micros,
+        "[INTAKE_REPORT] Report generation completed"
+    );
 
     let json_str = text
         .trim()
@@ -941,6 +951,7 @@ pub async fn run_phase2_from_company_intel(
     );
 
     let generated = generate_report_with_claude(
+        &pool,
         &person_name,
         &company.name,
         intel_summary,

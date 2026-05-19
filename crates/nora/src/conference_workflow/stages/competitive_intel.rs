@@ -6,20 +6,19 @@
 //! - Market positioning
 //! - Content gaps and opportunities
 
+use std::sync::Arc;
+
 use chrono::Utc;
+use db::models::conference_workflow::ConferenceWorkflow;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::sync::Arc;
 use uuid::Uuid;
 
-use db::models::conference_workflow::ConferenceWorkflow;
-
+use super::{ResearchStage, ResearchStageResult};
 use crate::{
     execution::{research::ResearchTools, ExecutionEngine},
     NoraError, Result,
 };
-
-use super::{ResearchStage, ResearchStageResult};
 
 /// Competitive intelligence findings
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,9 +59,9 @@ pub struct CompetitiveIntelStage {
 impl CompetitiveIntelStage {
     pub fn new(pool: SqlitePool, execution_engine: Arc<ExecutionEngine>) -> Self {
         Self {
-            pool,
+            pool: pool.clone(),
             execution_engine,
-            research_tools: ResearchTools::new(),
+            research_tools: ResearchTools::with_pool(Arc::new(pool)),
         }
     }
 
@@ -121,7 +120,11 @@ impl CompetitiveIntelStage {
         for query in &search_queries {
             match self.research_tools.web_search(query, 5).await {
                 Ok(results) => {
-                    tracing::debug!("[COMPETITIVE_INTEL] Found {} results for: {}", results.len(), query);
+                    tracing::debug!(
+                        "[COMPETITIVE_INTEL] Found {} results for: {}",
+                        results.len(),
+                        query
+                    );
                     all_search_results.extend(results);
                 }
                 Err(e) => {
@@ -196,14 +199,21 @@ Identify similar conferences, competitor coverage, content gaps, and unique oppo
         );
 
         // Step 3: Call LLM for analysis
-        let response = self.research_tools.research_llm(system_prompt, &user_prompt).await
+        let response = self
+            .research_tools
+            .research_llm(system_prompt, &user_prompt)
+            .await
             .map_err(|e| NoraError::ExecutionError(format!("LLM research failed: {}", e)))?;
 
         // Step 4: Parse the response - extract JSON from potential markdown fences
         let json_str = extract_json_from_response(&response);
-        let competitive_intel: CompetitiveIntel = serde_json::from_str(json_str)
-            .unwrap_or_else(|e| {
-                tracing::warn!("[COMPETITIVE_INTEL] Failed to parse LLM response: {}. JSON: {}...", e, &json_str[..json_str.len().min(200)]);
+        let competitive_intel: CompetitiveIntel =
+            serde_json::from_str(json_str).unwrap_or_else(|e| {
+                tracing::warn!(
+                    "[COMPETITIVE_INTEL] Failed to parse LLM response: {}. JSON: {}...",
+                    e,
+                    &json_str[..json_str.len().min(200)]
+                );
                 CompetitiveIntel {
                     similar_conferences: vec![],
                     competitor_coverage: vec![],

@@ -1254,6 +1254,10 @@ pub(crate) async fn produce_job(
     width: u32,
     height: u32,
 ) -> anyhow::Result<()> {
+    use std::time::Instant;
+
+    use services::services::editron::UsageTracker;
+
     let el_key = std::env::var("ELEVENLABS_API_KEY")?;
     let hg_key = std::env::var("HEYGEN_API_KEY")?;
 
@@ -1261,7 +1265,51 @@ pub(crate) async fn produce_job(
     tracing::info!("video job {}: generating TTS with timestamps", job_id);
     VideoJob::update_status(pool, job_id, "tts_generating", None).await?;
 
-    let tts = tts::generate_tts(&el_key, &avatar.elevenlabs_voice_id, script).await?;
+    let tts_start = Instant::now();
+    let tts_result = tts::generate_tts(&el_key, &avatar.elevenlabs_voice_id, script).await;
+    let tts_duration_ms = tts_start.elapsed().as_millis() as i64;
+
+    let tts = match tts_result {
+        Ok(t) => {
+            // Log successful TTS operation
+            UsageTracker::log_tts_operation(
+                pool,
+                "elevenlabs",
+                "synthesize",
+                Some(script.chars().count() as i64),
+                None, // audio duration not easily available
+                tts_duration_ms,
+                true,
+                None,
+                Some(serde_json::json!({
+                    "voice_id": avatar.elevenlabs_voice_id,
+                    "job_id": job_id.to_string()
+                })),
+            )
+            .await;
+            t
+        }
+        Err(e) => {
+            // Log failed TTS operation
+            let error_msg = e.to_string();
+            UsageTracker::log_tts_operation(
+                pool,
+                "elevenlabs",
+                "synthesize",
+                Some(script.chars().count() as i64),
+                None,
+                tts_duration_ms,
+                false,
+                Some(&error_msg),
+                Some(serde_json::json!({
+                    "voice_id": avatar.elevenlabs_voice_id,
+                    "job_id": job_id.to_string()
+                })),
+            )
+            .await;
+            return Err(e);
+        }
+    };
 
     tracing::info!(
         "video job {}: {} words aligned over {} bytes",
@@ -1310,14 +1358,57 @@ pub(crate) async fn produce_job(
     }
 
     let wav_bytes = fs::read(&wav_path).await?;
+    let wav_size = wav_bytes.len();
     tracing::info!(
         "video job {}: WAV {} bytes, uploading to HeyGen CDN",
         job_id,
-        wav_bytes.len()
+        wav_size
     );
 
-    // Upload WAV to HeyGen CDN
-    let audio_url = heygen::upload_audio_wav(&hg_key, wav_bytes).await?;
+    // Upload WAV to HeyGen CDN with tracking
+    let upload_start = Instant::now();
+    let upload_result = heygen::upload_audio_wav(&hg_key, wav_bytes).await;
+    let upload_duration_ms = upload_start.elapsed().as_millis() as i64;
+
+    let audio_url = match upload_result {
+        Ok(url) => {
+            UsageTracker::log_video_gen_operation(
+                pool,
+                "heygen",
+                "upload_asset",
+                Some((wav_size / 1024) as i64), // input: KB uploaded
+                None,
+                upload_duration_ms,
+                true,
+                None,
+                Some(serde_json::json!({
+                    "asset_type": "audio_wav",
+                    "job_id": job_id.to_string()
+                })),
+            )
+            .await;
+            url
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            UsageTracker::log_video_gen_operation(
+                pool,
+                "heygen",
+                "upload_asset",
+                Some((wav_size / 1024) as i64),
+                None,
+                upload_duration_ms,
+                false,
+                Some(&error_msg),
+                Some(serde_json::json!({
+                    "asset_type": "audio_wav",
+                    "job_id": job_id.to_string()
+                })),
+            )
+            .await;
+            return Err(e);
+        }
+    };
 
     // Compute smart cut points from word alignment + segment metadata
     let cut_points = find_cut_points(&tts.word_alignment, segments_json);
@@ -1344,7 +1435,10 @@ pub(crate) async fn produce_job(
 
     tracing::info!("video job {}: submitting to HeyGen", job_id);
     let avatar_type = avatar.heygen_avatar_type.as_str();
-    let heygen_video_id = video_gen::heygen::generate_with_audio(
+
+    // Track video generation (initial submission)
+    let gen_start = Instant::now();
+    let generate_result = video_gen::heygen::generate_with_audio(
         &hg_key,
         heygen_avatar_id,
         &audio_url,
@@ -1352,7 +1446,31 @@ pub(crate) async fn produce_job(
         width,
         height,
     )
-    .await?;
+    .await;
+    let gen_submit_duration_ms = gen_start.elapsed().as_millis() as i64;
+
+    let heygen_video_id = match generate_result {
+        Ok(vid_id) => vid_id,
+        Err(e) => {
+            let error_msg = e.to_string();
+            UsageTracker::log_video_gen_operation(
+                pool,
+                "heygen",
+                "generate_video",
+                None,
+                None,
+                gen_submit_duration_ms,
+                false,
+                Some(&error_msg),
+                Some(serde_json::json!({
+                    "avatar_id": heygen_avatar_id,
+                    "job_id": job_id.to_string()
+                })),
+            )
+            .await;
+            return Err(e);
+        }
+    };
 
     VideoJob::update_heygen_started(pool, job_id, &heygen_video_id).await?;
     tracing::info!(
@@ -1375,6 +1493,28 @@ pub(crate) async fn produce_job(
                 let video_url = status
                     .video_url
                     .ok_or_else(|| anyhow::anyhow!("HeyGen completed but no video_url"))?;
+
+                // Calculate total generation time (from submission to completion)
+                let total_gen_duration_ms = gen_start.elapsed().as_millis() as i64;
+
+                // Log successful video generation
+                UsageTracker::log_video_gen_operation(
+                    pool,
+                    "heygen",
+                    "generate_video",
+                    None, // input duration not easily available
+                    status.duration.map(|d| d as i64),
+                    total_gen_duration_ms,
+                    true,
+                    None,
+                    Some(serde_json::json!({
+                        "avatar_id": heygen_avatar_id,
+                        "video_id": heygen_video_id,
+                        "job_id": job_id.to_string(),
+                        "poll_attempts": attempts
+                    })),
+                )
+                .await;
 
                 // Download video to local disk (backup)
                 let vid_bytes = reqwest::get(&video_url).await?.bytes().await?;
@@ -1416,11 +1556,56 @@ pub(crate) async fn produce_job(
                 return Ok(());
             }
             "failed" => {
-                let err = status.error.unwrap_or_else(|| "HeyGen failed".into());
+                let total_gen_duration_ms = gen_start.elapsed().as_millis() as i64;
+                let err = status
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "HeyGen failed".into());
+
+                // Log failed video generation
+                UsageTracker::log_video_gen_operation(
+                    pool,
+                    "heygen",
+                    "generate_video",
+                    None,
+                    None,
+                    total_gen_duration_ms,
+                    false,
+                    Some(&err),
+                    Some(serde_json::json!({
+                        "avatar_id": heygen_avatar_id,
+                        "video_id": heygen_video_id,
+                        "job_id": job_id.to_string(),
+                        "poll_attempts": attempts
+                    })),
+                )
+                .await;
+
                 anyhow::bail!("HeyGen render failed: {}", err);
             }
             _ => {
                 if attempts >= 45 {
+                    let total_gen_duration_ms = gen_start.elapsed().as_millis() as i64;
+
+                    // Log timeout
+                    UsageTracker::log_video_gen_operation(
+                        pool,
+                        "heygen",
+                        "generate_video",
+                        None,
+                        None,
+                        total_gen_duration_ms,
+                        false,
+                        Some("HeyGen timed out after 15 minutes"),
+                        Some(serde_json::json!({
+                            "avatar_id": heygen_avatar_id,
+                            "video_id": heygen_video_id,
+                            "job_id": job_id.to_string(),
+                            "poll_attempts": attempts
+                        })),
+                    )
+                    .await;
+
                     anyhow::bail!("HeyGen timed out after 15 minutes");
                 }
                 // still processing

@@ -7,6 +7,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -87,7 +88,9 @@ pub struct ContentEditingEngine {
 }
 
 impl ContentEditingEngine {
-    /// Create a new engine with default configuration.
+    /// Create a new engine with default configuration (legacy, no LLM cleaning).
+    ///
+    /// LLM-based transcript cleaning will be skipped. Use `with_pool()` for production.
     pub fn new(execution_engine: Arc<ExecutionEngine>) -> Self {
         let config = ContentEditingConfig::default();
         Self {
@@ -101,7 +104,24 @@ impl ContentEditingEngine {
         }
     }
 
-    /// Create with custom configuration.
+    /// Create a new engine with PCG Router support for LLM cleaning.
+    pub fn with_pool(execution_engine: Arc<ExecutionEngine>, pool: Arc<SqlitePool>) -> Self {
+        let config = ContentEditingConfig::default();
+        Self {
+            execution_engine,
+            transcript_processor: TranscriptProcessor::with_pool(
+                config.whisper_endpoint.clone(),
+                pool,
+            ),
+            media_cataloger: MediaCataloger::new()
+                .with_analysis_flags(config.enable_scene_analysis, config.enable_beat_analysis),
+            directive_generator: DirectiveGenerator::new(config.soundbite_match_threshold),
+            assembly_processor: AssemblyProcessor::new(config.output_bitrate_mbps),
+            config,
+        }
+    }
+
+    /// Create with custom configuration (legacy, no LLM cleaning).
     pub fn with_config(
         execution_engine: Arc<ExecutionEngine>,
         config: ContentEditingConfig,
@@ -109,6 +129,26 @@ impl ContentEditingEngine {
         Self {
             execution_engine,
             transcript_processor: TranscriptProcessor::new(config.whisper_endpoint.clone()),
+            media_cataloger: MediaCataloger::new()
+                .with_analysis_flags(config.enable_scene_analysis, config.enable_beat_analysis),
+            directive_generator: DirectiveGenerator::new(config.soundbite_match_threshold),
+            assembly_processor: AssemblyProcessor::new(config.output_bitrate_mbps),
+            config,
+        }
+    }
+
+    /// Create with custom configuration and PCG Router support.
+    pub fn with_config_and_pool(
+        execution_engine: Arc<ExecutionEngine>,
+        config: ContentEditingConfig,
+        pool: Arc<SqlitePool>,
+    ) -> Self {
+        Self {
+            execution_engine,
+            transcript_processor: TranscriptProcessor::with_pool(
+                config.whisper_endpoint.clone(),
+                pool,
+            ),
             media_cataloger: MediaCataloger::new()
                 .with_analysis_flags(config.enable_scene_analysis, config.enable_beat_analysis),
             directive_generator: DirectiveGenerator::new(config.soundbite_match_threshold),

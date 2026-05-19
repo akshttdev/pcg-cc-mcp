@@ -30,6 +30,9 @@ reqwest = { version = "0.11", features = ["json"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
 db = { path = "../db" }
 
+# Services for LLM routing
+services = { path = "../services" }
+
 # Cinematics integration
 cinematics = { path = "../cinematics" }
 
