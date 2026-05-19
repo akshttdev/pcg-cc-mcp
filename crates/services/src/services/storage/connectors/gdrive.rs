@@ -340,6 +340,41 @@ nextPageToken,newStartPageToken",
             next_cursor: new_cursor,
         })
     }
+
+    /// Download a file's bytes by Drive file id. Native (binary) files use
+    /// `alt=media`. Google-native docs (Docs/Sheets/Slides) would need
+    /// `/export?mimeType=...` — out of scope for v1, the extractor skips them
+    /// by mime type.
+    async fn download_file(
+        &self,
+        access_token: &str,
+        remote_id: &str,
+    ) -> Result<Vec<u8>, StorageError> {
+        let url = format!(
+            "{API_BASE}/files/{}?alt=media",
+            urlencoding::encode(remote_id)
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(access_token)
+            .send()
+            .await
+            .map_err(|e| StorageError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(StorageError::ProviderError(format!(
+                "Google Drive download failed ({status}): {body}"
+            )));
+        }
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| StorageError::NetworkError(e.to_string()))?;
+        Ok(bytes.to_vec())
+    }
 }
 
 #[cfg(test)]

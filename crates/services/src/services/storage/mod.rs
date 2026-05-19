@@ -8,6 +8,8 @@
 //!   text-extractable rows into `data_sources` for the knowledge graph.
 
 pub mod connectors;
+pub mod extract_worker;
+pub mod extractor;
 pub mod sync_worker;
 
 use async_trait::async_trait;
@@ -111,6 +113,20 @@ pub trait StorageConnector: Send + Sync {
         cursor: Option<&str>,
         root_path: Option<&str>,
     ) -> Result<SyncBatch, StorageError>;
+
+    /// Download a file's bytes by its provider-side `remote_id`. The
+    /// `extract_worker` calls this for text-extractable files (PDF, plaintext,
+    /// etc.) to feed the knowledge graph. Default impl errors with
+    /// `UnsupportedProvider` so connectors opt in explicitly.
+    async fn download_file(
+        &self,
+        _access_token: &str,
+        _remote_id: &str,
+    ) -> Result<Vec<u8>, StorageError> {
+        Err(StorageError::UnsupportedProvider(
+            self.provider().to_string(),
+        ))
+    }
 }
 
 pub fn get_connector(provider: &str) -> Result<Box<dyn StorageConnector>, StorageError> {

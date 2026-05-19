@@ -344,6 +344,40 @@ impl StorageConnector for OneDriveConnector {
             next_cursor: final_delta.or_else(|| Some(String::new())),
         })
     }
+
+    /// Download a file's bytes. Graph returns a 302 to a pre-signed CDN URL
+    /// which `reqwest` follows automatically; the body of the final response
+    /// is the raw file content.
+    async fn download_file(
+        &self,
+        access_token: &str,
+        remote_id: &str,
+    ) -> Result<Vec<u8>, StorageError> {
+        let url = format!(
+            "{GRAPH_BASE}/me/drive/items/{}/content",
+            urlencoding::encode(remote_id)
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(access_token)
+            .send()
+            .await
+            .map_err(|e| StorageError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(StorageError::ProviderError(format!(
+                "OneDrive download failed ({status}): {body}"
+            )));
+        }
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| StorageError::NetworkError(e.to_string()))?;
+        Ok(bytes.to_vec())
+    }
 }
 
 #[cfg(test)]

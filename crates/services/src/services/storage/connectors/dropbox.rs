@@ -17,6 +17,7 @@ use crate::services::storage::{
 const AUTH_URL: &str = "https://www.dropbox.com/oauth2/authorize";
 const TOKEN_URL: &str = "https://api.dropbox.com/oauth2/token";
 const API_BASE: &str = "https://api.dropboxapi.com/2";
+const CONTENT_BASE: &str = "https://content.dropboxapi.com/2";
 const DEFAULT_SCOPES: &str = "files.metadata.read files.content.read account_info.read";
 
 pub struct DropboxConnector {
@@ -322,6 +323,38 @@ impl StorageConnector for DropboxConnector {
             changes: all_changes,
             next_cursor: current_cursor,
         })
+    }
+
+    /// Download a file's bytes by its Dropbox `id:<remote_id>` selector.
+    /// Dropbox's download endpoint puts the API arg in a header instead of the
+    /// body; the response body is the raw file content.
+    async fn download_file(
+        &self,
+        access_token: &str,
+        remote_id: &str,
+    ) -> Result<Vec<u8>, StorageError> {
+        let api_arg = serde_json::json!({ "path": format!("id:{remote_id}") }).to_string();
+        let resp = self
+            .client
+            .post(format!("{CONTENT_BASE}/files/download"))
+            .bearer_auth(access_token)
+            .header("Dropbox-API-Arg", api_arg)
+            .send()
+            .await
+            .map_err(|e| StorageError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(StorageError::ProviderError(format!(
+                "Dropbox download failed ({status}): {body}"
+            )));
+        }
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| StorageError::NetworkError(e.to_string()))?;
+        Ok(bytes.to_vec())
     }
 }
 
