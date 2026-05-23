@@ -1,5 +1,7 @@
 //! Chat and command execution handlers for Topsi
 
+use db::models::media_asset::MediaAsset;
+
 use super::*;
 
 /// Chat with Topsi
@@ -53,9 +55,40 @@ pub async fn chat_with_topsi(
 
     let session_id = request.session_id.clone();
 
+    // Build attachment context if attachments provided
+    let attachment_context = if let Some(ref attachment_ids) = request.attachment_ids {
+        if !attachment_ids.is_empty() {
+            match build_attachment_context(&pool, attachment_ids).await {
+                Ok(ctx) => Some(ctx),
+                Err(e) => {
+                    tracing::warn!("Failed to build attachment context: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Merge attachment context into existing context
+    let merged_context = match (request.context, attachment_context) {
+        (Some(mut ctx), Some(attachments)) => {
+            if let Some(obj) = ctx.as_object_mut() {
+                obj.insert("attachments".to_string(), attachments);
+            }
+            Some(ctx)
+        }
+        (None, Some(attachments)) => Some(serde_json::json!({ "attachments": attachments })),
+        (Some(ctx), None) => Some(ctx),
+        (None, None) => None,
+    };
+
     let topsi_request = TopsiRequest::new(TopsiRequestType::Chat {
         message: request.message.clone(),
         model_id: request.model_id.clone(),
+        context: merged_context,
     });
 
     let response = topsi
@@ -152,4 +185,64 @@ pub async fn execute_command(
         })?;
 
     Ok(Json(response))
+}
+
+/// Build structured context from media asset attachments.
+/// For images, includes AI description and analysis.
+/// For documents, includes metadata (actual text extraction would require additional tooling).
+async fn build_attachment_context(
+    pool: &sqlx::SqlitePool,
+    attachment_ids: &[Uuid],
+) -> Result<serde_json::Value, sqlx::Error> {
+    let mut attachments = Vec::new();
+
+    for id in attachment_ids {
+        if let Some(asset) = MediaAsset::find_by_id(pool, *id).await? {
+            let is_image = asset.mime_type.starts_with("image/");
+            let is_document = asset.mime_type.starts_with("application/pdf")
+                || asset.mime_type.starts_with("text/")
+                || asset.mime_type.contains("document");
+
+            let mut attachment_info = serde_json::json!({
+                "id": asset.id.to_string(),
+                "filename": asset.filename,
+                "mimeType": asset.mime_type,
+                "fileSize": asset.file_size_bytes,
+            });
+
+            if is_image {
+                // Include vision AI analysis for images
+                if let Some(desc) = &asset.ai_description {
+                    attachment_info["description"] = serde_json::json!(desc);
+                }
+                if let Some(shot) = &asset.shot_type {
+                    attachment_info["shotType"] = serde_json::json!(shot);
+                }
+                if !asset.scene_tags.is_empty() && asset.scene_tags != "[]" {
+                    if let Ok(tags) = serde_json::from_str::<serde_json::Value>(&asset.scene_tags) {
+                        attachment_info["tags"] = tags;
+                    }
+                }
+                if !asset.dominant_colors.is_empty() && asset.dominant_colors != "[]" {
+                    if let Ok(colors) =
+                        serde_json::from_str::<serde_json::Value>(&asset.dominant_colors)
+                    {
+                        attachment_info["colors"] = colors;
+                    }
+                }
+                attachment_info["type"] = serde_json::json!("image");
+                attachment_info["analysisStatus"] = serde_json::json!(asset.analysis_status);
+            } else if is_document {
+                attachment_info["type"] = serde_json::json!("document");
+                // Document text extraction could be added here in the future
+                // For now, just include metadata
+            } else {
+                attachment_info["type"] = serde_json::json!("file");
+            }
+
+            attachments.push(attachment_info);
+        }
+    }
+
+    Ok(serde_json::json!(attachments))
 }

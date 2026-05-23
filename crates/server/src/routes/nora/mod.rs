@@ -379,6 +379,10 @@ pub struct ChatRequest {
     pub context: Option<serde_json::Value>,
     pub stream: Option<bool>,
     pub project_id: Option<Uuid>,
+    /// Optional media asset IDs to include as attachments in the chat context.
+    /// Assets are fetched from media_assets and their AI analysis is included in the LLM context.
+    #[serde(default)]
+    pub attachment_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Deserialize, TS)]

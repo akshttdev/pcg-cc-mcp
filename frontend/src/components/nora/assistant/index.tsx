@@ -5,10 +5,16 @@ import {
   Send,
   Settings,
   Volume2,
-  VolumeX} from 'lucide-react';
-import React, { useEffect, useRef,useState } from 'react';
+  VolumeX,
+} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import {
+  ChatAttachmentButton,
+  ChatAttachmentList,
+  useChatAttachments,
+} from '@/components/chat/ChatAttachments';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
@@ -29,24 +35,45 @@ import type {
 } from './types';
 import { VoiceControls } from './VoiceControls';
 
-export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProps) {
+export function NoraAssistant({
+  className,
+  defaultSessionId,
+  projectId,
+}: NoraAssistantProps) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [currentInput, setCurrentInput] = useState('');
-  const [conversationHistory, setConversationHistory] = useState<ConversationEntry[]>([]);
-  const [interactionMode, setInteractionMode] = useState<'chat' | 'cinematic'>('chat');
+  const [conversationHistory, setConversationHistory] = useState<
+    ConversationEntry[]
+  >([]);
+  const [interactionMode, setInteractionMode] = useState<'chat' | 'cinematic'>(
+    'chat'
+  );
   const [cinematicForm, setCinematicForm] = useState<CinematicFormState>({
     projectId: '',
     title: '',
     summary: '',
     styleTags: '',
     assetIds: '',
-    autoRender: true
+    autoRender: true,
   });
   const [continuousMode, setContinuousMode] = useState(false);
+
+  // Attachment support - requires projectId prop
+  const attachmentProjectId = projectId || cinematicForm.projectId;
+  const {
+    attachments,
+    attachmentIds,
+    isUploading,
+    addFiles,
+    removeAttachment,
+    clearAttachments,
+  } = useChatAttachments({
+    projectId: attachmentProjectId || 'default',
+  });
 
   const sessionId = useRef(defaultSessionId || `session-${Date.now()}`);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -81,32 +108,32 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
           config: {
             personality: {
               accentStrength: 0.8,
-              formalityLevel: "professional",
-              warmthLevel: "warm",
+              formalityLevel: 'professional',
+              warmthLevel: 'warm',
               proactiveCommunication: true,
               executiveVocabulary: true,
               britishExpressions: true,
-              politenessLevel: "veryPolite"
+              politenessLevel: 'veryPolite',
             },
             voice: {
               tts: {
-                provider: "elevenLabs",
-                voiceId: "ZtcPZrt9K4w8e1OB9M6w",
+                provider: 'elevenLabs',
+                voiceId: 'ZtcPZrt9K4w8e1OB9M6w',
                 speed: 1.0,
                 volume: 0.8,
                 pitch: 0.0,
-                quality: "high",
-                britishVoicePreferences: ["ZtcPZrt9K4w8e1OB9M6w"],
-                fallbackProviders: ["system"]
+                quality: 'high',
+                britishVoicePreferences: ['ZtcPZrt9K4w8e1OB9M6w'],
+                fallbackProviders: ['system'],
               },
               stt: {
-                provider: "system",
-                model: "system_stt",
-                language: "en-GB",
+                provider: 'system',
+                model: 'system_stt',
+                language: 'en-GB',
                 britishDialectSupport: true,
                 executiveVocabulary: true,
                 realTime: false,
-                noiseReduction: true
+                noiseReduction: true,
               },
               audio: {
                 sampleRate: 44100,
@@ -115,29 +142,29 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                 bufferSize: 1024,
                 noiseSuppression: true,
                 echoCancellation: true,
-                autoGainControl: true
+                autoGainControl: true,
               },
               britishAccent: {
                 accentStrength: 0.8,
-                regionalVariant: "receivedPronunciation",
-                formalityLevel: "professional",
-                vocabularyPreferences: "executive"
+                regionalVariant: 'receivedPronunciation',
+                formalityLevel: 'professional',
+                vocabularyPreferences: 'executive',
               },
               executiveMode: {
                 enabled: true,
                 proactiveCommunication: true,
                 executiveSummaryStyle: true,
                 formalAddress: true,
-                businessVocabulary: true
-              }
+                businessVocabulary: true,
+              },
             },
             executiveMode: true,
             proactiveNotifications: true,
             contextAwareness: true,
-            multiAgentCoordination: true
+            multiAgentCoordination: true,
           },
-          activateImmediately: true
-        })
+          activateImmediately: true,
+        }),
       });
 
       if (response.ok) {
@@ -145,30 +172,44 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
         setIsInitialized(true);
         if (payload?.message) {
           const welcomeMessage = payload.message;
-          setConversationHistory(prev => {
+          setConversationHistory((prev) => {
             const alreadyWelcomed = prev.some(
-              entry => entry.type === 'nora' && entry.content === welcomeMessage
+              (entry) =>
+                entry.type === 'nora' && entry.content === welcomeMessage
             );
             if (alreadyWelcomed) return prev;
             return [
               ...prev,
-              { type: 'nora', content: welcomeMessage, timestamp: new Date() }
+              { type: 'nora', content: welcomeMessage, timestamp: new Date() },
             ];
           });
         }
       }
     } catch (error) {
       console.error('Failed to initialize Nora:', error);
-      addMessage('nora', 'I apologise, but I\'m having difficulty connecting at the moment. Please try again shortly.');
+      addMessage(
+        'nora',
+        "I apologise, but I'm having difficulty connecting at the moment. Please try again shortly."
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
-  const addMessage = (type: 'user' | 'nora', content: string, response?: NoraResponse) => {
-    setConversationHistory(prev => [...prev, {
-      type, content, timestamp: new Date(), response
-    }]);
+  const addMessage = (
+    type: 'user' | 'nora',
+    content: string,
+    response?: NoraResponse
+  ) => {
+    setConversationHistory((prev) => [
+      ...prev,
+      {
+        type,
+        content,
+        timestamp: new Date(),
+        response,
+      },
+    ]);
   };
 
   const sendMessage = async (
@@ -183,14 +224,19 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
     setInterimTranscript('');
     setIsLoading(true);
 
-    const request = {
+    const request: Record<string, unknown> = {
       message: content,
       sessionId: sessionId.current,
       requestType,
       voiceEnabled,
       priority: 'normal' as RequestPriority,
-      context: context ?? null
+      context: context ?? null,
     };
+
+    // Include attachment IDs if any
+    if (attachmentIds.length > 0) {
+      request.attachmentIds = attachmentIds;
+    }
 
     try {
       // Stop listening while we process (prevents feedback)
@@ -201,15 +247,20 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       const response = await fetch(resolveApiUrl('/api/nora/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request)
+        body: JSON.stringify(request),
       });
 
       if (response.ok) {
         const noraResponse: NoraResponse = await response.json();
         addMessage('nora', noraResponse.content, noraResponse);
         if (noraResponse.planId) {
-          toast.info(`Nora initiated orchestration plan ${noraResponse.planId.slice(0, 8)}…`);
+          toast.info(
+            `Nora initiated orchestration plan ${noraResponse.planId.slice(0, 8)}…`
+          );
         }
+
+        // Clear attachments after successful send
+        clearAttachments();
 
         // Play voice response if available
         if (noraResponse.voiceResponse && voiceEnabled && audioRef.current) {
@@ -223,7 +274,10 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       }
     } catch (error) {
       console.error('Failed to send message:', error);
-      addMessage('nora', 'I apologise, but I encountered an issue processing your request. Please try again.');
+      addMessage(
+        'nora',
+        'I apologise, but I encountered an issue processing your request. Please try again.'
+      );
       if (continuousMode && shouldContinueListeningRef.current) {
         setTimeout(() => void startMediaRecorder(), 300);
       }
@@ -255,7 +309,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
 
     audioElement.src = `data:audio/mpeg;base64,${base64Audio}`;
     audioElement.load();
-    audioElement.play().catch(err => {
+    audioElement.play().catch((err) => {
       console.error('Failed to play Nora voice response:', err);
       setIsSpeaking(false);
       if (continuousMode && shouldContinueListeningRef.current) {
@@ -274,10 +328,10 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-        ? 'audio/ogg;codecs=opus'
-        : '';
+          ? 'audio/webm'
+          : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+            ? 'audio/ogg;codecs=opus'
+            : '';
 
       mediaRecorderRef.current = mimeType
         ? new MediaRecorder(stream, { mimeType })
@@ -295,33 +349,39 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
         }
 
         // Release microphone
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
 
         if (audioChunksRef.current.length === 0) {
           toast.warning('No audio captured — please speak and try again');
           return;
         }
 
-        const recordedMime = mediaRecorderRef.current?.mimeType || mimeType || 'audio/webm';
-        const audioBlob = new Blob(audioChunksRef.current, { type: recordedMime });
+        const recordedMime =
+          mediaRecorderRef.current?.mimeType || mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: recordedMime,
+        });
         const base64Audio = await blobToBase64(audioBlob);
 
         toast.info('Sending to Nora...');
         setIsLoading(true);
         try {
-          const response = await fetch(resolveApiUrl('/api/nora/voice/interaction'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              interactionId: `interaction-${Date.now()}`,
-              sessionId: sessionId.current,
-              interactionType: 'speechInput',
-              audioInput: base64Audio,
-              responseText: '',
-              processingTimeMs: 0,
-              timestamp: new Date().toISOString(),
-            }),
-          });
+          const response = await fetch(
+            resolveApiUrl('/api/nora/voice/interaction'),
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                interactionId: `interaction-${Date.now()}`,
+                sessionId: sessionId.current,
+                interactionType: 'speechInput',
+                audioInput: base64Audio,
+                responseText: '',
+                processingTimeMs: 0,
+                timestamp: new Date().toISOString(),
+              }),
+            }
+          );
 
           if (response.ok) {
             const result = (await response.json()) as {
@@ -341,12 +401,21 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
               playVoiceResponse(result.audioResponse);
             }
           } else {
-            console.error('[NoraVoice] voice/interaction failed:', response.status);
-            addMessage('nora', "I couldn't process that audio. Please try again.");
+            console.error(
+              '[NoraVoice] voice/interaction failed:',
+              response.status
+            );
+            addMessage(
+              'nora',
+              "I couldn't process that audio. Please try again."
+            );
           }
         } catch (error) {
           console.error('[NoraVoice] request failed:', error);
-          addMessage('nora', 'I ran into an error while processing your voice message. Could you try again?');
+          addMessage(
+            'nora',
+            'I ran into an error while processing your voice message. Could you try again?'
+          );
         } finally {
           setIsLoading(false);
         }
@@ -354,18 +423,25 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
 
       mediaRecorderRef.current.start();
       setIsListening(true);
-      toast.info('Recording — speak now, then click the mic again to send to Nora');
+      toast.info(
+        'Recording — speak now, then click the mic again to send to Nora'
+      );
 
       // Auto-stop after 30s
       autoStopTimerRef.current = window.setTimeout(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        if (
+          mediaRecorderRef.current &&
+          mediaRecorderRef.current.state !== 'inactive'
+        ) {
           mediaRecorderRef.current.stop();
           setIsListening(false);
         }
       }, 30000);
     } catch (error) {
       console.error('Failed to start voice recording:', error);
-      toast.error('Could not access microphone. Please check browser permissions.');
+      toast.error(
+        'Could not access microphone. Please check browser permissions.'
+      );
     }
   };
 
@@ -402,10 +478,15 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       setInterimTranscript('');
     }
 
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== 'inactive'
+    ) {
       mediaRecorderRef.current.stop();
     } else if (mediaRecorderRef.current?.stream) {
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current.stream
+        .getTracks()
+        .forEach((track) => track.stop());
     }
 
     setIsListening(false);
@@ -446,11 +527,20 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
   };
 
   const parseList = (value: string) =>
-    value.split(',').map(entry => entry.trim()).filter(Boolean);
+    value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
 
   const sendCinematicBrief = async () => {
-    if (!cinematicForm.projectId.trim() || !cinematicForm.title.trim() || !cinematicForm.summary.trim()) {
-      toast.error('Project ID, title, and summary are required for cinematic briefs.');
+    if (
+      !cinematicForm.projectId.trim() ||
+      !cinematicForm.title.trim() ||
+      !cinematicForm.summary.trim()
+    ) {
+      toast.error(
+        'Project ID, title, and summary are required for cinematic briefs.'
+      );
       return;
     }
 
@@ -462,7 +552,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       assetIds: parseList(cinematicForm.assetIds),
       styleTags: parseList(cinematicForm.styleTags),
       autoRender: cinematicForm.autoRender,
-      requesterId: 'executive'
+      requesterId: 'executive',
     };
 
     await sendMessage(
@@ -471,12 +561,12 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       contextPayload
     );
 
-    setCinematicForm(prev => ({
+    setCinematicForm((prev) => ({
       ...prev,
       title: '',
       summary: '',
       styleTags: '',
-      assetIds: ''
+      assetIds: '',
     }));
     setCurrentInput('');
   };
@@ -490,13 +580,14 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
     }
   };
 
-  const canSend = interactionMode === 'cinematic'
-    ? Boolean(
-        cinematicForm.projectId.trim() &&
-        cinematicForm.title.trim() &&
-        cinematicForm.summary.trim()
-      )
-    : Boolean((currentInput || interimTranscript).trim());
+  const canSend =
+    interactionMode === 'cinematic'
+      ? Boolean(
+          cinematicForm.projectId.trim() &&
+          cinematicForm.title.trim() &&
+          cinematicForm.summary.trim()
+        )
+      : Boolean((currentInput || interimTranscript).trim());
 
   return (
     <Card className={`flex flex-col h-full ${className}`}>
@@ -512,7 +603,11 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             onClick={() => setVoiceEnabled(!voiceEnabled)}
             className={voiceEnabled ? 'text-blue-600' : 'text-gray-400'}
           >
-            {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            {voiceEnabled ? (
+              <Volume2 className="w-4 h-4" />
+            ) : (
+              <VolumeX className="w-4 h-4" />
+            )}
           </Button>
           <Button
             variant={continuousMode ? 'default' : 'outline'}
@@ -526,7 +621,9 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                 }, 100);
               }
             }}
-            title={continuousMode ? 'Continuous Mode (Call)' : 'Push-to-Talk Mode'}
+            title={
+              continuousMode ? 'Continuous Mode (Call)' : 'Push-to-Talk Mode'
+            }
             className="text-xs"
           >
             {continuousMode ? '📞 Call' : '🎤 PTT'}
@@ -548,7 +645,9 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
               interactionMode={interactionMode}
               onModeChange={setInteractionMode}
               cinematicForm={cinematicForm}
-              onFormChange={(updates) => setCinematicForm(prev => ({ ...prev, ...updates }))}
+              onFormChange={(updates) =>
+                setCinematicForm((prev) => ({ ...prev, ...updates }))
+              }
             />
 
             <ConversationHistory
@@ -557,11 +656,25 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
               onSuggestionClick={setCurrentInput}
             />
 
+            {/* Attachment Previews */}
+            {attachments.length > 0 && (
+              <ChatAttachmentList
+                attachments={attachments}
+                onRemove={removeAttachment}
+                disabled={isLoading || isUploading}
+                className="mb-2"
+              />
+            )}
+
             {/* Input Area */}
             <div className="flex gap-2">
               <div className="flex-1">
                 <Textarea
-                  value={interactionMode === 'cinematic' ? currentInput : (currentInput || interimTranscript)}
+                  value={
+                    interactionMode === 'cinematic'
+                      ? currentInput
+                      : currentInput || interimTranscript
+                  }
                   onChange={(e) => setCurrentInput(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder={
@@ -574,15 +687,36 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                 />
               </div>
               <div className="flex flex-col gap-2">
+                {/* Attachment button - only show when project is available */}
+                {attachmentProjectId && (
+                  <ChatAttachmentButton
+                    onFilesSelected={addFiles}
+                    disabled={isLoading || isUploading}
+                  />
+                )}
                 <Button
-                  onClick={isListening ? stopVoiceRecording : startVoiceRecording}
-                  variant={isListening ? "destructive" : "secondary"}
+                  onClick={
+                    isListening ? stopVoiceRecording : startVoiceRecording
+                  }
+                  variant={isListening ? 'destructive' : 'secondary'}
                   size="icon"
                   disabled={isLoading}
                   className="relative"
-                  title={continuousMode ? (isListening ? 'End Call' : 'Start Call') : (isListening ? 'Stop Recording' : 'Start Recording')}
+                  title={
+                    continuousMode
+                      ? isListening
+                        ? 'End Call'
+                        : 'Start Call'
+                      : isListening
+                        ? 'Stop Recording'
+                        : 'Start Recording'
+                  }
                 >
-                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  {isListening ? (
+                    <MicOff className="w-4 h-4" />
+                  ) : (
+                    <Mic className="w-4 h-4" />
+                  )}
                   {continuousMode && isListening && (
                     <span className="absolute -top-1 -right-1 flex h-3 w-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -614,21 +748,36 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => sendMessage('Please provide a strategic overview of current projects', 'strategyPlanning')}
+                onClick={() =>
+                  sendMessage(
+                    'Please provide a strategic overview of current projects',
+                    'strategyPlanning'
+                  )
+                }
               >
                 Strategy Overview
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => sendMessage('Show me performance analytics for the team', 'performanceAnalysis')}
+                onClick={() =>
+                  sendMessage(
+                    'Show me performance analytics for the team',
+                    'performanceAnalysis'
+                  )
+                }
               >
                 Performance Report
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => sendMessage('Coordinate tasks and priorities', 'taskCoordination')}
+                onClick={() =>
+                  sendMessage(
+                    'Coordinate tasks and priorities',
+                    'taskCoordination'
+                  )
+                }
               >
                 Task Coordination
               </Button>

@@ -527,10 +527,15 @@ impl TopsiAgent {
             .await;
 
         match request.request_type {
-            TopsiRequestType::Chat { message, model_id } => {
+            TopsiRequestType::Chat {
+                message,
+                model_id,
+                context,
+            } => {
                 self.handle_chat(
                     &message,
                     model_id.as_deref(),
+                    context.as_ref(),
                     user_context,
                     &scope,
                     session_id,
@@ -676,6 +681,7 @@ impl TopsiAgent {
         &self,
         message: &str,
         model_override: Option<&str>,
+        context: Option<&serde_json::Value>,
         user_context: &UserContext,
         scope: &AccessScope,
         session_id: Option<&str>,
@@ -715,7 +721,36 @@ impl TopsiAgent {
         };
 
         // Build context string based on access scope
-        let context = self.build_context_for_scope(scope, user_context).await;
+        let mut llm_context = self.build_context_for_scope(scope, user_context).await;
+
+        // Append attachment context if provided
+        if let Some(ctx) = context {
+            if let Some(attachments) = ctx.get("attachments") {
+                llm_context.push_str("\n\n## Attached Files\n");
+                if let Some(arr) = attachments.as_array() {
+                    for attachment in arr {
+                        let filename = attachment
+                            .get("filename")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
+                        let file_type = attachment
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("file");
+                        llm_context.push_str(&format!("\n### {} ({})\n", filename, file_type));
+
+                        if let Some(desc) = attachment.get("description").and_then(|v| v.as_str()) {
+                            llm_context.push_str(&format!("Description: {}\n", desc));
+                        }
+                        if let Some(tags) = attachment.get("tags") {
+                            if let Ok(tags_str) = serde_json::to_string(tags) {
+                                llm_context.push_str(&format!("Tags: {}\n", tags_str));
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Get tool schemas in OpenAI format
         let tools = get_tool_schemas();
@@ -764,7 +799,13 @@ impl TopsiAgent {
 
         // Initial LLM call with conversation history
         let mut response = llm
-            .generate_with_tools_and_history(&system_prompt, message, &context, &tools, &history)
+            .generate_with_tools_and_history(
+                &system_prompt,
+                message,
+                &llm_context,
+                &tools,
+                &history,
+            )
             .await
             .map_err(|e| TopsiError::LLMError(format!("LLM request failed: {}", e)))?;
 
@@ -2894,6 +2935,9 @@ pub enum TopsiRequestType {
         /// the agent's static LLM configured at startup.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model_id: Option<String>,
+        /// Optional context including attachments and other metadata to include in the LLM context.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context: Option<serde_json::Value>,
     },
     /// Get topology for a project
     GetTopology { project_id: Option<Uuid> },

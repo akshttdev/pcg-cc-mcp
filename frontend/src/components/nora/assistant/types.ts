@@ -93,6 +93,8 @@ export interface ContextUpdate {
 export interface NoraAssistantProps {
   className?: string;
   defaultSessionId?: string;
+  /** Project ID for file uploads - required for attachment functionality */
+  projectId?: string;
 }
 
 export interface ConversationEntry {

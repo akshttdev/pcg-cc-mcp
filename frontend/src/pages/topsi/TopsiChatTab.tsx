@@ -1,24 +1,37 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  RefreshCw,
   AlertTriangle,
-  Send,
-  Loader2,
   FolderOpen,
+  Loader2,
   Mic,
   MicOff,
+  RefreshCw,
+  Send,
   Volume2,
 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+
+import {
+  ChatAttachmentButton,
+  ChatAttachmentList,
+  useChatAttachments,
+} from '@/components/chat/ChatAttachments';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import type { TopologyOverview, TopsiStatusResponse } from '@/lib/api';
 import { topsiApi } from '@/lib/api';
-import type { TopsiStatusResponse, TopologyOverview } from '@/lib/api';
+import { cn } from '@/lib/utils';
+
 import type { TopsiChatMessage } from './types';
 
 interface TopsiChatTabProps {
@@ -28,6 +41,8 @@ interface TopsiChatTabProps {
   fetchTopology: () => void;
   fetchIssues: () => void;
   fetchProjects: () => void;
+  /** Project ID for file uploads - required for attachment functionality */
+  projectId?: string;
 }
 
 export function TopsiChatTab({
@@ -37,12 +52,14 @@ export function TopsiChatTab({
   fetchTopology,
   fetchIssues,
   fetchProjects,
+  projectId,
 }: TopsiChatTabProps) {
   const [messages, setMessages] = useState<TopsiChatMessage[]>([
     {
       id: '1',
       role: 'assistant',
-      content: "Hello! I'm Topsi, the PCG Platform Intelligence Agent. I manage projects, coordinate agents, and ensure data isolation between clients. How can I help you today?",
+      content:
+        "Hello! I'm Topsi, the PCG Platform Intelligence Agent. I manage projects, coordinate agents, and ensure data isolation between clients. How can I help you today?",
       timestamp: new Date(),
     },
   ]);
@@ -56,6 +73,18 @@ export function TopsiChatTab({
   const [audioLevel, setAudioLevel] = useState(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
   const [isSpeakerOn, _setIsSpeakerOn] = useState(true);
+
+  // Attachment support - requires projectId prop
+  const {
+    attachments,
+    attachmentIds,
+    isUploading,
+    addFiles,
+    removeAttachment,
+    clearAttachments,
+  } = useChatAttachments({
+    projectId: projectId || 'default',
+  });
 
   // Voice refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -83,6 +112,7 @@ export function TopsiChatTab({
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const messageToSend = inputMessage;
     setInputMessage('');
     setIsSending(true);
 
@@ -91,8 +121,18 @@ export function TopsiChatTab({
     const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     try {
-      const data = await topsiApi.chat({ message: inputMessage, sessionId }, controller.signal);
+      const data = await topsiApi.chat(
+        {
+          message: messageToSend,
+          sessionId,
+          attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
+        },
+        controller.signal
+      );
       clearTimeout(timeoutId);
+
+      // Clear attachments after successful send
+      clearAttachments();
 
       const assistantMessage: TopsiChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -112,7 +152,7 @@ export function TopsiChatTab({
     } finally {
       setIsSending(false);
     }
-  }, [inputMessage, isSending, sessionId]);
+  }, [inputMessage, isSending, sessionId, attachmentIds, clearAttachments]);
 
   // Voice recording functions
   const startRecording = useCallback(async () => {
@@ -147,7 +187,9 @@ export function TopsiChatTab({
       };
 
       mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: 'audio/wav',
+        });
         await processVoiceInput(audioBlob);
       };
 
@@ -168,7 +210,7 @@ export function TopsiChatTab({
     }
 
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
 
@@ -230,7 +272,10 @@ export function TopsiChatTab({
     try {
       const base64Audio = await blobToBase64(audioBlob);
 
-      const voiceResult = await topsiApi.voiceInteraction(sessionId, base64Audio);
+      const voiceResult = await topsiApi.voiceInteraction(
+        sessionId,
+        base64Audio
+      );
       const responseData = voiceResult.data || voiceResult;
 
       // Add user's transcribed message
@@ -245,8 +290,11 @@ export function TopsiChatTab({
       }
 
       // Add Topsi's response
-      const responseText = responseData.responseText || 'I received your message.';
-      const hasAudio = !!(responseData.audioResponse && responseData.audioResponse.length > 100);
+      const responseText =
+        responseData.responseText || 'I received your message.';
+      const hasAudio = !!(
+        responseData.audioResponse && responseData.audioResponse.length > 100
+      );
       const assistantMessage: TopsiChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -309,23 +357,29 @@ export function TopsiChatTab({
                   <div
                     key={msg.id}
                     className={cn(
-                      "flex",
-                      msg.role === 'user' ? "justify-end" : "justify-start"
+                      'flex',
+                      msg.role === 'user' ? 'justify-end' : 'justify-start'
                     )}
                   >
                     <div
                       className={cn(
-                        "max-w-[80%] rounded-lg px-4 py-2",
+                        'max-w-[80%] rounded-lg px-4 py-2',
                         msg.role === 'user'
-                          ? "bg-cyan-600 text-white"
-                          : "bg-muted"
+                          ? 'bg-cyan-600 text-white'
+                          : 'bg-muted'
                       )}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      <div className={cn(
-                        "flex items-center gap-2 text-xs mt-1",
-                        msg.role === 'user' ? "text-cyan-100" : "text-muted-foreground"
-                      )}>
+                      <p className="text-sm whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+                      <div
+                        className={cn(
+                          'flex items-center gap-2 text-xs mt-1',
+                          msg.role === 'user'
+                            ? 'text-cyan-100'
+                            : 'text-muted-foreground'
+                        )}
+                      >
                         <span>{msg.timestamp.toLocaleTimeString()}</span>
                         {msg.hasAudio && msg.role === 'assistant' && (
                           <Volume2 className="w-3 h-3" />
@@ -346,7 +400,9 @@ export function TopsiChatTab({
                     style={{ width: `${audioLevel * 100}%` }}
                   />
                 </div>
-                <p className="text-xs text-center text-muted-foreground mt-1">Listening...</p>
+                <p className="text-xs text-center text-muted-foreground mt-1">
+                  Listening...
+                </p>
               </div>
             )}
             {isProcessingVoice && (
@@ -355,10 +411,26 @@ export function TopsiChatTab({
                 Processing voice...
               </div>
             )}
+            {/* Attachment Previews */}
+            {attachments.length > 0 && (
+              <ChatAttachmentList
+                attachments={attachments}
+                onRemove={removeAttachment}
+                disabled={isSending || isUploading}
+                className="mb-2"
+              />
+            )}
             <div className="flex gap-2 mt-4 flex-shrink-0">
+              {/* Attachment button - only show when project is available */}
+              {projectId && (
+                <ChatAttachmentButton
+                  onFilesSelected={addFiles}
+                  disabled={isSending || isUploading}
+                />
+              )}
               {/* Push-to-talk button */}
               <Button
-                variant={isRecording ? "destructive" : "outline"}
+                variant={isRecording ? 'destructive' : 'outline'}
                 size="icon"
                 className="shrink-0"
                 onMouseDown={handlePushToTalkStart}
@@ -369,16 +441,26 @@ export function TopsiChatTab({
                 disabled={isProcessingVoice || isSending}
                 title="Hold to talk"
               >
-                {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                {isRecording ? (
+                  <MicOff className="w-4 h-4" />
+                ) : (
+                  <Mic className="w-4 h-4" />
+                )}
               </Button>
               <Input
                 placeholder="Ask Topsi anything..."
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                onKeyDown={(e) =>
+                  e.key === 'Enter' && !e.shiftKey && sendMessage()
+                }
                 disabled={isSending || isRecording}
               />
-              <Button onClick={sendMessage} disabled={isSending || !inputMessage.trim()} className="bg-cyan-600 hover:bg-cyan-700">
+              <Button
+                onClick={sendMessage}
+                disabled={isSending || !inputMessage.trim()}
+                className="bg-cyan-600 hover:bg-cyan-700"
+              >
                 {isSending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
@@ -401,28 +483,40 @@ export function TopsiChatTab({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Access Level</span>
+              <span className="text-sm text-muted-foreground">
+                Access Level
+              </span>
               <Badge variant="outline" className="capitalize">
                 {status?.accessScope || 'unknown'}
               </Badge>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Projects Visible</span>
-              <span className="font-medium">{status?.projectsVisible || 0}</span>
+              <span className="text-sm text-muted-foreground">
+                Projects Visible
+              </span>
+              <span className="font-medium">
+                {status?.projectsVisible || 0}
+              </span>
             </div>
             {topology && (
               <>
                 <Separator />
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Total Nodes</span>
+                  <span className="text-sm text-muted-foreground">
+                    Total Nodes
+                  </span>
                   <span className="font-medium">{topology.totalNodes}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Total Edges</span>
+                  <span className="text-sm text-muted-foreground">
+                    Total Edges
+                  </span>
                   <span className="font-medium">{topology.totalEdges}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Clusters</span>
+                  <span className="text-sm text-muted-foreground">
+                    Clusters
+                  </span>
                   <span className="font-medium">{topology.totalClusters}</span>
                 </div>
               </>
@@ -435,15 +529,27 @@ export function TopsiChatTab({
             <CardTitle className="text-lg">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Button variant="outline" className="w-full justify-start" onClick={fetchTopology}>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={fetchTopology}
+            >
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh Topology
             </Button>
-            <Button variant="outline" className="w-full justify-start" onClick={fetchIssues}>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={fetchIssues}
+            >
               <AlertTriangle className="w-4 h-4 mr-2" />
               Detect Issues
             </Button>
-            <Button variant="outline" className="w-full justify-start" onClick={fetchProjects}>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={fetchProjects}
+            >
               <FolderOpen className="w-4 h-4 mr-2" />
               Refresh Projects
             </Button>

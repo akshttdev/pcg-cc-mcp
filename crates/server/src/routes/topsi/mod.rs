@@ -428,6 +428,10 @@ pub struct TopsiChatRequest {
     /// uses the LLM configured at agent initialization.
     #[serde(default)]
     pub model_id: Option<String>,
+    /// Optional media asset IDs to include as attachments in the chat context.
+    /// Assets are fetched from media_assets and their AI analysis is included in the LLM context.
+    #[serde(default)]
+    pub attachment_ids: Option<Vec<Uuid>>,
 }
 
 /// Topology overview response

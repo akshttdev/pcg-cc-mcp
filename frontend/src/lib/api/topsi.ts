@@ -1,4 +1,4 @@
-import { makeRequest, handleApiResponse } from './client';
+import { handleApiResponse, makeRequest } from './client';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,6 +37,15 @@ export interface TopsiChatResponse {
   message?: string;
 }
 
+export interface TopsiChatRequest {
+  message: string;
+  sessionId: string;
+  projectId?: string | null;
+  context?: unknown;
+  modelId?: string;
+  attachmentIds?: string[];
+}
+
 export interface TopsiVoiceResponse {
   data: {
     transcription?: string;
@@ -64,7 +73,9 @@ export interface RecommendationBatch {
 
 export const topsiApi = {
   getStatus: (): Promise<TopsiStatusResponse> =>
-    makeRequest('/api/topsi/status').then(handleApiResponse<TopsiStatusResponse>),
+    makeRequest('/api/topsi/status').then(
+      handleApiResponse<TopsiStatusResponse>
+    ),
 
   initialize: (activateImmediately: boolean): Promise<unknown> =>
     makeRequest('/api/topsi/initialize', {
@@ -73,17 +84,23 @@ export const topsiApi = {
     }).then(handleApiResponse),
 
   getTopology: (): Promise<TopologyOverview> =>
-    makeRequest('/api/topsi/topology').then(handleApiResponse<TopologyOverview>),
+    makeRequest('/api/topsi/topology').then(
+      handleApiResponse<TopologyOverview>
+    ),
 
   getIssues: (): Promise<{ issues: DetectedIssue[] }> =>
-    makeRequest('/api/topsi/issues').then(handleApiResponse<{ issues: DetectedIssue[] }>),
+    makeRequest('/api/topsi/issues').then(
+      handleApiResponse<{ issues: DetectedIssue[] }>
+    ),
 
   getProjects: (): Promise<{ projects: ProjectAccess[] }> =>
-    makeRequest('/api/topsi/projects').then(handleApiResponse<{ projects: ProjectAccess[] }>),
+    makeRequest('/api/topsi/projects').then(
+      handleApiResponse<{ projects: ProjectAccess[] }>
+    ),
 
   chat: (
-    data: { message: string; sessionId: string; projectId?: string | null; context?: unknown },
-    signal?: AbortSignal,
+    data: TopsiChatRequest,
+    signal?: AbortSignal
   ): Promise<TopsiChatResponse> =>
     makeRequest('/api/topsi/chat', {
       method: 'POST',
@@ -91,7 +108,10 @@ export const topsiApi = {
       signal,
     }).then(handleApiResponse<TopsiChatResponse>),
 
-  voiceInteraction: (sessionId: string, audioInput: string): Promise<TopsiVoiceResponse> =>
+  voiceInteraction: (
+    sessionId: string,
+    audioInput: string
+  ): Promise<TopsiVoiceResponse> =>
     makeRequest('/api/topsi/voice/interaction', {
       method: 'POST',
       body: JSON.stringify({ sessionId, audioInput }),
@@ -101,6 +121,6 @@ export const topsiApi = {
     makeRequest(
       projectId
         ? `/api/topsi/recommendations/${projectId}`
-        : '/api/topsi/recommendations',
+        : '/api/topsi/recommendations'
     ).then(handleApiResponse<RecommendationBatch>),
 };
