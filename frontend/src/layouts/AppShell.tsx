@@ -43,6 +43,8 @@ export function AppShell() {
   const location = useLocation();
   const isVirtualEnv = location.pathname.startsWith('/virtual-environment');
   const isInterfacePage = location.pathname === '/interface';
+  // AppShell sits above the routed children, so useParams() can't see :projectId — parse it from the path.
+  const currentProjectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const {
     sidebarCollapsed,
     toggleSidebar,
@@ -211,7 +213,9 @@ export function AppShell() {
                 </div>
               </div>
             </div>
-            {!isVirtualEnv && !isInterfacePage && <TopsiWidget />}
+            {!isVirtualEnv && !isInterfacePage && (
+              <TopsiWidget projectId={currentProjectId} />
+            )}
             <ShortcutsHelp />
             <CommandPalette />
             <KeyboardShortcutsOverlay />

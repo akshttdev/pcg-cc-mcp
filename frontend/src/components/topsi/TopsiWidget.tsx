@@ -1,8 +1,10 @@
 import {
+  Check,
   Loader2,
   Mic,
   MicOff,
   Network,
+  Pencil,
   Phone,
   PhoneOff,
   Send,
@@ -14,6 +16,11 @@ import {
 import { useEffect, useRef,useState } from 'react';
 import { toast } from 'sonner';
 
+import {
+  ChatAttachmentButton,
+  ChatAttachmentList,
+  useChatAttachments,
+} from '@/components/chat/ChatAttachments';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -38,6 +45,8 @@ interface ChatMessage {
 
 interface TopsiWidgetProps {
   className?: string;
+  /** Project ID for file uploads. When unset, the attachment button is hidden. */
+  projectId?: string;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -47,7 +56,7 @@ const SUGGESTED_PROMPTS = [
   { label: 'Recent activity', text: 'What happened across my projects this week?' },
 ] as const;
 
-export function TopsiWidget({ className }: TopsiWidgetProps) {
+export function TopsiWidget({ className, projectId }: TopsiWidgetProps) {
   // Widget state — driven by global store
   const widgetState = useAgentChatStore((s) => s.widgetState);
   const setWidgetState = useAgentChatStore((s) => s.setWidgetState);
@@ -66,6 +75,20 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sessionId] = useState(() => `topsi-widget-${Date.now()}`);
+
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState('');
+
+  const {
+    attachments,
+    attachmentIds,
+    isUploading,
+    addFiles,
+    removeAttachment,
+    clearAttachments,
+  } = useChatAttachments({
+    projectId: projectId || 'default',
+  });
 
   // Meeting state (set when voice-activated)
   const [meetingProjectId, setMeetingProjectId] = useState<string | undefined>();
@@ -171,11 +194,19 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   };
 
   // Core message send logic
-  const sendMessageDirect = async (message: string, context?: typeof pendingContext) => {
+  const sendMessageDirect = async (
+    message: string,
+    context?: typeof pendingContext,
+    options?: { skipAddUserMessage?: boolean }
+  ) => {
     if (!message.trim() || isSending) return;
 
-    addMessage('user', message);
+    if (!options?.skipAddUserMessage) {
+      addMessage('user', message);
+    }
     setIsSending(true);
+
+    const idsToSend = attachmentIds.length > 0 ? attachmentIds : undefined;
 
     try {
       const res = await makeRequest('/api/topsi/chat', {
@@ -184,6 +215,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
           message,
           sessionId,
           ...(context ? { context } : {}),
+          ...(idsToSend ? { attachmentIds: idsToSend } : {}),
         }),
       });
 
@@ -193,6 +225,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         const responseText = responseData.message || 'I received your message.';
 
         addMessage('assistant', responseText);
+        clearAttachments();
 
         const entityId = context?.entityId || 'agent-global';
         if (responseData.tool_calls && Array.isArray(responseData.tool_calls)) {
@@ -241,6 +274,38 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     const msg = inputMessage.trim();
     setInputMessage('');
     await sendMessageDirect(msg);
+  };
+
+  const startEditMessage = (messageId: string, content: string) => {
+    setEditingMessageId(messageId);
+    setEditingContent(content);
+  };
+
+  const cancelEditMessage = () => {
+    setEditingMessageId(null);
+    setEditingContent('');
+  };
+
+  // Truncates trailing messages so the assistant response we get next is based on the new content.
+  const commitEditMessage = async () => {
+    if (!editingMessageId) return;
+    const trimmed = editingContent.trim();
+    if (!trimmed || isSending) return;
+
+    const idx = messages.findIndex((m) => m.id === editingMessageId);
+    if (idx === -1) {
+      cancelEditMessage();
+      return;
+    }
+
+    setMessages((prev) =>
+      prev
+        .slice(0, idx + 1)
+        .map((m, i) => (i === idx ? { ...m, content: trimmed } : m))
+    );
+    cancelEditMessage();
+
+    await sendMessageDirect(trimmed, undefined, { skipAddUserMessage: true });
   };
 
   // Workflow polling
@@ -480,35 +545,107 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
                   </div>
                 </div>
               )}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={cn(
-                    "flex",
-                    msg.role === 'user' ? "justify-end" : "justify-start"
-                  )}
-                >
+              {messages.map((msg) => {
+                const isEditing = editingMessageId === msg.id;
+                const isUser = msg.role === 'user';
+                return (
                   <div
+                    key={msg.id}
                     className={cn(
-                      "max-w-[85%] rounded-lg px-3 py-2 text-sm",
-                      msg.role === 'user'
-                        ? "bg-cyan-600 text-white"
-                        : "bg-muted"
+                      "group flex",
+                      isUser ? "justify-end" : "justify-start"
                     )}
                   >
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
-                    <div className={cn(
-                      "flex items-center gap-2 mt-1 text-xs",
-                      msg.role === 'user' ? "text-cyan-100" : "text-muted-foreground"
-                    )}>
-                      <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      {msg.hasAudio && msg.role === 'assistant' && (
-                        <Volume2 className="h-3 w-3" />
+                    <div
+                      className={cn(
+                        "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+                        isUser ? "bg-cyan-600 text-white" : "bg-muted"
+                      )}
+                    >
+                      {isEditing ? (
+                        <div className="flex flex-col gap-2">
+                          <textarea
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                commitEditMessage();
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelEditMessage();
+                              }
+                            }}
+                            autoFocus
+                            rows={2}
+                            className={cn(
+                              "w-full resize-y rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-300",
+                              isUser
+                                ? "bg-cyan-700 text-white placeholder:text-cyan-200"
+                                : "bg-background text-foreground"
+                            )}
+                          />
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={cancelEditMessage}
+                              className={cn(
+                                "rounded p-1 hover:bg-black/10",
+                                isUser ? "text-cyan-100" : "text-muted-foreground"
+                              )}
+                              title="Cancel edit"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={commitEditMessage}
+                              disabled={!editingContent.trim() || isSending}
+                              className={cn(
+                                "rounded p-1 hover:bg-black/10 disabled:opacity-40",
+                                isUser ? "text-white" : "text-foreground"
+                              )}
+                              title="Re-send edited message"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-start gap-1">
+                            <p className="flex-1 whitespace-pre-wrap">{msg.content}</p>
+                            {isUser && (
+                              <button
+                                type="button"
+                                onClick={() => startEditMessage(msg.id, msg.content)}
+                                disabled={isSending || editingMessageId !== null}
+                                className={cn(
+                                  "shrink-0 rounded p-0.5 text-cyan-100/70 hover:bg-cyan-700 hover:text-white",
+                                  "opacity-0 group-hover:opacity-100 transition-opacity",
+                                  "focus:opacity-100 focus:outline-none disabled:cursor-not-allowed disabled:opacity-0"
+                                )}
+                                title="Edit and re-send"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                          <div className={cn(
+                            "flex items-center gap-2 mt-1 text-xs",
+                            isUser ? "text-cyan-100" : "text-muted-foreground"
+                          )}>
+                            <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            {msg.hasAudio && msg.role === 'assistant' && (
+                              <Volume2 className="h-3 w-3" />
+                            )}
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {(isSending || voiceState.isProcessingVoice) && (
                 <div className="flex justify-start">
                   <div className="bg-muted rounded-lg px-3 py-2">
@@ -534,7 +671,26 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
               </div>
             )}
 
+            {/* Attachment previews */}
+            {attachments.length > 0 && (
+              <ChatAttachmentList
+                attachments={attachments}
+                onRemove={removeAttachment}
+                disabled={isSending || isUploading}
+                className="mb-2"
+              />
+            )}
+
             <div className="flex items-center gap-2">
+              {/* Attachment button — only when a project is in scope */}
+              {projectId && (
+                <ChatAttachmentButton
+                  onFilesSelected={addFiles}
+                  disabled={isSending || isUploading}
+                  className="h-10 w-10 shrink-0"
+                />
+              )}
+
               {/* Push-to-talk button */}
               <Button
                 variant={voiceState.isRecording ? "destructive" : "outline"}
@@ -566,7 +722,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
                 size="icon"
                 className="h-10 w-10 shrink-0 bg-cyan-600 hover:bg-cyan-700"
                 onClick={sendTextMessage}
-                disabled={isSending || !inputMessage.trim()}
+                disabled={isSending || isUploading || !inputMessage.trim()}
                 title="Send message"
               >
                 {isSending ? (
