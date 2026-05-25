@@ -21,7 +21,8 @@ members = [
     "crates/setup-wizard",
     "crates/editron-runner",
     "crates/discord-bot",
-    "crates/pcg-sync"
+    "crates/pcg-sync",
+    "crates/loop-engine"
 ]
 exclude = [
     "src-tauri"

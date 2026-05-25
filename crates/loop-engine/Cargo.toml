@@ -1,0 +1,24 @@
+[package]
+name = "loop-engine"
+version = "0.0.1"
+edition = "2021"
+description = "Autonomous dev loop orchestration — Auri + Playwright + Fake User with a circuit breaker"
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+tokio-util = "0.7"
+async-trait = "0.1"
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+chrono = { version = "0.4", features = ["serde"] }
+blake3 = "1.5"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util", "macros"] }
+tempfile = "3.8"
