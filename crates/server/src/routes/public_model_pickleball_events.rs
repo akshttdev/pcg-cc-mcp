@@ -7,14 +7,14 @@
 //! Tenancy: scoped to MODEL_PICKLEBALL_ORGANIZATION_ID (same env var
 //! the POST handlers use).
 
-use axum::{extract::State, response::Json as ResponseJson, routing::get, Router};
+use axum::{Router, extract::State, response::Json as ResponseJson, routing::get};
 use db::db_uuid::DbUuid;
 use deployment::Deployment;
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use utils::response::ApiResponse;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ---------------------------------------------------------------------------
 // Response shapes (must match TS adapters in
