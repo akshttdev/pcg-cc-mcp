@@ -104,6 +104,7 @@ pub mod project_controllers;
 pub mod project_folders;
 pub mod projects;
 pub mod proposals;
+pub mod public_model_pickleball;
 pub mod pulse;
 pub mod pythia;
 pub mod quickbooks;
@@ -311,6 +312,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(workflow_triggers::public_router(&deployment))
         .merge(pythia::router(&deployment))
         .merge(pcg_router::router(&deployment))
+        .merge(public_model_pickleball::public_router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))
         .merge(protected_routes)
         .merge(admin_routes)
