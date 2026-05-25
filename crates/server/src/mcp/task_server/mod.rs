@@ -186,7 +186,7 @@ impl ServerHandler for TaskServer {
                  get_vibe_budget, list_agents, \
                  list_social_accounts, list_social_posts, get_social_post, create_social_post, \
                  publish_social_post, post_to_social, \
-                 list_media_assets, get_media_asset, upload_media_from_url, \
+                 list_media_assets, get_media_asset, upload_media_from_url, ingest_storage_file_as_media_asset, \
                  get_content_opportunities, approve_content_opportunity, reject_content_opportunity, \
                  get_social_performance_summary, get_audience_insights, get_share_of_voice, \
                  get_kol_signals, get_tracked_entities, add_tracked_entity, generate_client_report_summary. \
