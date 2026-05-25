@@ -9,11 +9,11 @@
 //! info but verification is intentionally deferred to a follow-up PR.
 
 use axum::{
+    Router,
     extract::State,
     http::{HeaderMap, StatusCode},
     response::Json as ResponseJson,
     routing::post,
-    Router,
 };
 use db::db_uuid::DbUuid;
 use deployment::Deployment;
@@ -22,7 +22,7 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use utils::response::ApiResponse;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 // ---------------------------------------------------------------------------
 // Common types
