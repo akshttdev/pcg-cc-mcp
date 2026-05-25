@@ -12,10 +12,13 @@
 
 use std::path::PathBuf;
 
-use db::models::media_asset::{CreateMediaAsset, MediaAsset};
+use db::models::{
+    integration_connection::IntegrationConnection,
+    media_asset::{CreateMediaAsset, MediaAsset},
+};
 use rmcp::{handler::server::tool::Parameters, model::CallToolResult, schemars, tool, ErrorData};
 use serde::{Deserialize, Serialize};
-use services::services::editron::asset_intelligence;
+use services::services::{editron::asset_intelligence, oauth_token_manager};
 use uuid::Uuid;
 
 use super::{helpers::*, TaskServer};
@@ -38,6 +41,24 @@ pub struct ListMediaAssetsRequest {
 pub struct GetMediaAssetRequest {
     #[schemars(description = "Media asset UUID")]
     pub media_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct IngestStorageFileRequest {
+    #[schemars(description = "Organization UUID whose OneDrive connection should be used")]
+    pub org_id: String,
+    #[schemars(
+        description = "Provider-side file identifier (OneDrive remote_id) as returned by list_storage_files"
+    )]
+    pub file_id: String,
+    #[schemars(description = "Filename to store the asset as (e.g. \"_J5I2604.jpg\")")]
+    pub filename: String,
+    #[schemars(description = "Project UUID to register the asset under")]
+    pub project_id: String,
+    #[schemars(
+        description = "Optional MIME type from list_storage_files. If omitted, falls back to the Graph response Content-Type."
+    )]
+    pub mime_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -303,6 +324,194 @@ impl TaskServer {
             file_path_str,
             project_uuid,
             filename,
+        );
+
+        Ok(success_json(&serde_json::json!({
+            "success": true,
+            "asset": asset_to_summary(&asset),
+            "reused": false,
+        })))
+    }
+
+    #[tool(
+        description = "Download a file from connected OneDrive storage (by file_id from list_storage_files) and register it as a project media asset. Triggers automatic AI vision analysis (description, scene tags, shot type) and KG registration. Idempotent — safe to call twice."
+    )]
+    pub(super) async fn ingest_storage_file_as_media_asset(
+        &self,
+        Parameters(req): Parameters<IngestStorageFileRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let org_uuid = match parse_uuid(&req.org_id, "org_id") {
+            Ok(u) => u,
+            Err(r) => return Ok(r),
+        };
+        let project_uuid = match parse_uuid(&req.project_id, "project_id") {
+            Ok(u) => u,
+            Err(r) => return Ok(r),
+        };
+
+        // ── Locate an active OneDrive connection for this org ────────────────
+        let connections =
+            match IntegrationConnection::find_by_org_and_provider(&self.pool, org_uuid, "onedrive")
+                .await
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    return Ok(error_result(
+                        "Failed to load OneDrive connections",
+                        Some(&e.to_string()),
+                    ));
+                }
+            };
+        let connection = match connections.into_iter().find(|c| c.status == "active") {
+            Some(c) => c,
+            None => {
+                return Ok(error_result(
+                    "No active OneDrive connection for this organization. Connect OneDrive first.",
+                    None,
+                ));
+            }
+        };
+
+        // Fresh access token — auto-refreshes if within 5min of expiry.
+        let access_token = match oauth_token_manager::get_access_token(&self.pool, connection.id)
+            .await
+        {
+            Ok(t) => t,
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to obtain OneDrive access token",
+                    Some(&e.to_string()),
+                ));
+            }
+        };
+
+        // ── Prepare destination path & dirs ──────────────────────────────────
+        let project_dir = PathBuf::from(media_root()).join(project_uuid.to_string());
+        if let Err(e) = tokio::fs::create_dir_all(&project_dir).await {
+            return Ok(error_result(
+                "Cannot create project media directory",
+                Some(&e.to_string()),
+            ));
+        }
+        let dest = project_dir.join(&req.filename);
+        let file_path_str = dest.to_string_lossy().into_owned();
+
+        // ── Idempotency: same (project, file_path) already registered ────────
+        let existing: Option<MediaAsset> =
+            sqlx::query_as("SELECT * FROM media_assets WHERE file_path = ? AND project_id = ?")
+                .bind(&file_path_str)
+                .bind(project_uuid)
+                .fetch_optional(&self.pool)
+                .await
+                .unwrap_or(None);
+        if let Some(asset) = existing {
+            return Ok(success_json(&serde_json::json!({
+                "success": true,
+                "asset": asset_to_summary(&asset),
+                "reused": true,
+            })));
+        }
+
+        // ── Download via Microsoft Graph ─────────────────────────────────────
+        // Graph returns a 302 to a pre-signed SharePoint/CDN URL — reqwest's
+        // default policy (10 redirects) handles that.
+        let client = match reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to construct HTTP client",
+                    Some(&e.to_string()),
+                ));
+            }
+        };
+
+        let download_url = format!(
+            "https://graph.microsoft.com/v1.0/me/drive/items/{}/content",
+            urlencoding::encode(&req.file_id)
+        );
+
+        let resp = match client.get(&download_url).bearer_auth(&access_token).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to fetch file from OneDrive",
+                    Some(&e.to_string()),
+                ));
+            }
+        };
+        if !resp.status().is_success() {
+            return Ok(error_result(
+                "OneDrive returned non-success status",
+                Some(&format!("HTTP {}", resp.status())),
+            ));
+        }
+
+        // Prefer caller-provided mime, fall back to response header, else octet-stream.
+        let mime_type = req.mime_type.clone().unwrap_or_else(|| {
+            resp.headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("application/octet-stream")
+                .split(';')
+                .next()
+                .unwrap_or("application/octet-stream")
+                .to_string()
+        });
+
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to read OneDrive response bytes",
+                    Some(&e.to_string()),
+                ));
+            }
+        };
+        let file_size = bytes.len() as i64;
+
+        if let Err(e) = tokio::fs::write(&dest, &bytes).await {
+            return Ok(error_result(
+                "Failed to write asset to disk",
+                Some(&e.to_string()),
+            ));
+        }
+
+        // ── Insert media_assets row ──────────────────────────────────────────
+        let asset = match MediaAsset::create(
+            &self.pool,
+            CreateMediaAsset {
+                project_id: project_uuid,
+                batch_id: None,
+                filename: req.filename.clone(),
+                file_path: file_path_str.clone(),
+                file_size_bytes: Some(file_size),
+                mime_type: Some(mime_type),
+                duration_seconds: None,
+                width: None,
+                height: None,
+            },
+        )
+        .await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to insert media_assets row",
+                    Some(&e.to_string()),
+                ));
+            }
+        };
+
+        // Fire-and-forget vision AI + KG registration.
+        asset_intelligence::analyze_async(
+            self.pool.clone(),
+            asset.id,
+            file_path_str,
+            project_uuid,
+            req.filename,
         );
 
         Ok(success_json(&serde_json::json!({
